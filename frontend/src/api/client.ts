@@ -9,8 +9,11 @@ import type {
   CompLocation,
 } from '../types'
 
+// Use environment variable for API URL, fallback to /api for local dev with proxy
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: API_BASE_URL,
   timeout: 120_000,
 })
 
@@ -80,7 +83,7 @@ export function getMailingDownloadUrl(
   exportType: ExportType = 'full'
 ): string {
   const name = encodeURIComponent(campaignName ?? 'mailing-list')
-  return `/api/mailing/download?match_id=${matchId}&campaign_name=${name}&export_type=${exportType}`
+  return `${API_BASE_URL}/mailing/download?match_id=${matchId}&campaign_name=${name}&export_type=${exportType}`
 }
 
 // ─── Campaigns ─────────────────────────────────────────────────────────────
@@ -118,7 +121,7 @@ export async function deleteCampaign(id: string): Promise<void> {
 }
 
 export function getCampaignDownloadUrl(id: string): string {
-  return `/api/campaigns/${id}/download`
+  return `${API_BASE_URL}/campaigns/${id}/download`
 }
 
 export default api
