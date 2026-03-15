@@ -12,7 +12,7 @@ import type { ZipStats } from '../types'
 import CompMap from '../components/CompMap'
 import WelcomeScreen from './WelcomeScreen'
 
-const CHART_COLORS = ['#C9A84C','#D4B55E','#E8C86E','#A07828','#B8943B','#10b981','#06b6d4','#8b5cf6','#f97316','#f59e0b','#34d399','#e879f9']
+const CHART_COLORS = ['#5C2977','#8B4DB8','#D5A940','#7B3E99','#A068C8','#2D7A4F','#B8860B','#C05000','#3D1A5C','#6B5B8A','#4CAF7A','#9B8AAE']
 
 export default function Dashboard() {
   const { compsStats, dashboardData, setDashboardData, setCurrentPage } = useApp()
@@ -82,43 +82,43 @@ export default function Dashboard() {
   const cols: Column<ZipStats>[] = [
     {
       key: 'zip_code', header: 'ZIP', sortable: true,
-      render: (v) => <span className="font-mono font-semibold text-blue-400">{String(v)}</span>,
+      render: (v) => <span className="font-mono" style={{ color: '#5C2977', fontWeight: 600, cursor: 'pointer' }}>{String(v)}</span>,
     },
     {
       key: 'sales_count', header: 'Sales', sortable: true, align: 'right',
-      render: (v) => <span className="font-bold text-blue-400">{String(v)}</span>,
+      render: (v) => <span style={{ color: '#5C2977', fontWeight: 600 }}>{String(v)}</span>,
     },
     {
       key: 'median_lot_size', header: 'Median Ac', sortable: true, align: 'right',
-      render: (v) => v == null ? <span className="text-gray-600">—</span> : <span>{(v as number).toFixed(2)}</span>,
+      render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span>{(v as number).toFixed(2)}</span>,
     },
     {
       key: 'min_lot_size', header: 'Min Ac', sortable: true, align: 'right', defaultHidden: true,
-      render: (v) => v == null ? <span className="text-gray-600">—</span> : <span>{(v as number).toFixed(2)}</span>,
+      render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span>{(v as number).toFixed(2)}</span>,
     },
     {
       key: 'max_lot_size', header: 'Max Ac', sortable: true, align: 'right', defaultHidden: true,
-      render: (v) => v == null ? <span className="text-gray-600">—</span> : <span>{(v as number).toFixed(2)}</span>,
+      render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span>{(v as number).toFixed(2)}</span>,
     },
     {
       key: 'min_sale_price', header: 'Min Price', sortable: true, align: 'right', defaultHidden: true,
-      render: (v) => v == null ? <span className="text-gray-600">—</span> : <span>${Math.round(v as number).toLocaleString()}</span>,
+      render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span>${Math.round(v as number).toLocaleString()}</span>,
     },
     {
       key: 'max_sale_price', header: 'Max Price', sortable: true, align: 'right',
-      render: (v) => v == null ? <span className="text-gray-600">—</span> : <span>${Math.round(v as number).toLocaleString()}</span>,
+      render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span>${Math.round(v as number).toLocaleString()}</span>,
     },
     {
       key: 'median_price_per_acre', header: 'Median $/Ac', sortable: true, align: 'right',
-      render: (v) => v == null ? <span className="text-gray-600">—</span> : (
-        <span className="font-semibold" style={{ color: (v as number) > 500000 ? '#f59e0b' : '#C9A84C' }}>
+      render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : (
+        <span className="font-semibold" style={{ color: (v as number) > 500000 ? '#D5A940' : '#D5A940' }}>
           ${Math.round(v as number).toLocaleString()}
         </span>
       ),
     },
     {
       key: 'avg_price_per_acre', header: 'Avg $/Ac', sortable: true, align: 'right', defaultHidden: true,
-      render: (v) => v == null ? <span className="text-gray-600">—</span> : <span>${Math.round(v as number).toLocaleString()}</span>,
+      render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span>${Math.round(v as number).toLocaleString()}</span>,
     },
     {
       key: 'price_band_lt50k', header: 'Price Bands', align: 'left',
@@ -131,10 +131,10 @@ export default function Dashboard() {
   ]
 
   const tooltipStyle = {
-    contentStyle: { background: '#161616', border: '1px solid rgba(201,168,76,0.2)', borderRadius: 8, fontSize: 12 },
-    labelStyle: { color: '#F5F0E8', fontWeight: 600 },
-    itemStyle: { color: '#8A8070' },
-    cursor: { fill: 'rgba(201,168,76,0.06)' },
+    contentStyle: { background: '#3D1A5C', border: '1px solid rgba(213,169,64,0.3)', borderRadius: 8, fontSize: 12 },
+    labelStyle: { color: '#FFFFFF', fontWeight: 600 },
+    itemStyle: { color: '#E8D5F5' },
+    cursor: { fill: 'rgba(92,41,119,0.06)' },
   }
 
   return (
@@ -142,8 +142,8 @@ export default function Dashboard() {
       {/* Page header */}
       <div className="page-header">
         <div>
-          <h1 className="text-lg font-semibold" style={{ color: '#f9fafb' }}>ZIP Code Intelligence Dashboard</h1>
-          <p className="text-xs mt-0.5" style={{ color: '#8A8070' }}>
+          <h1 className="text-lg" style={{ color: '#1A0A2E', fontWeight: 700 }}>ZIP Code Intelligence Dashboard</h1>
+          <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>
             {compsStats.valid_rows.toLocaleString()} valid sold comps · {dashboardData?.available_zips.length ?? '…'} ZIP codes
           </p>
         </div>
@@ -161,7 +161,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="p-8 max-w-[1400px]">
+      <div className="p-8 max-w-[1400px] mx-auto w-full">
         {/* ── Summary Stats Cards ─────────────────────────────────── */}
         {dashboardData && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -170,14 +170,14 @@ export default function Dashboard() {
               value={dashboardData.valid_comps.toLocaleString()}
               sub={`of ${dashboardData.total_comps.toLocaleString()} total`}
               icon={<IconDB />}
-              accent="#3b82f6"
+              accent="#5C2977"
             />
             <SummaryCard
               label="Median Sale Price"
               value={dashboardData.median_price ? `$${Math.round(dashboardData.median_price).toLocaleString()}` : '—'}
               sub="across all ZIPs"
               icon={<IconDollar />}
-              accent="#10b981"
+              accent="#D5A940"
             />
             <SummaryCard
               label="Median $/Acre"
@@ -186,14 +186,14 @@ export default function Dashboard() {
                 : '—'}
               sub="all valid comps"
               icon={<IconAcre />}
-              accent="#8b5cf6"
+              accent="#8B4DB8"
             />
             <SummaryCard
               label="Most Active ZIP"
               value={dashboardData.zip_stats[0]?.zip_code ?? '—'}
               sub={dashboardData.zip_stats[0] ? `${dashboardData.zip_stats[0].sales_count} sales` : ''}
               icon={<IconPin />}
-              accent="#f59e0b"
+              accent="#D5A940"
             />
           </div>
         )}
@@ -202,9 +202,9 @@ export default function Dashboard() {
         {zipOptions.length > 0 && (
           <div className="card mb-6">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-medium" style={{ color: '#F5F0E8' }}>Filter by ZIP Code</p>
+              <p className="text-sm font-medium" style={{ color: '#1A0A2E' }}>Filter by ZIP Code</p>
               {selectedZips.length > 0 && (
-                <button className="text-xs hover:opacity-80 transition-opacity" style={{ color: '#C9A84C' }} onClick={() => setSelectedZips([])}>
+                <button className="text-xs hover:opacity-80 transition-opacity" style={{ color: '#5C2977' }} onClick={() => setSelectedZips([])}>
                   Clear all
                 </button>
               )}
@@ -217,8 +217,8 @@ export default function Dashboard() {
                   className="px-3 py-1 rounded-full text-sm font-medium transition-all"
                   style={
                     selectedZips.includes(zip)
-                      ? { background: 'linear-gradient(135deg, #C9A84C 0%, #A07828 100%)', color: '#080808', border: '1px solid #C9A84C' }
-                      : { background: '#0F0F0F', color: '#8A8070', border: '1px solid rgba(201,168,76,0.2)' }
+                      ? { background: '#5C2977', color: '#FFFFFF', border: '1px solid #5C2977', boxShadow: '0 2px 8px rgba(92,41,119,0.3)' }
+                      : { background: '#FFFFFF', color: '#5C2977', border: '1.5px solid #D4B8E8' }
                   }
                 >
                   {zip}
@@ -235,7 +235,7 @@ export default function Dashboard() {
         )}
 
         {error && (
-          <div className="rounded-xl px-5 py-4 mb-6 text-sm" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}>
+          <div className="rounded-xl px-5 py-4 mb-6 text-sm" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#dc2626' }}>
             {error}
           </div>
         )}
@@ -244,7 +244,7 @@ export default function Dashboard() {
           <>
             <div className="card mb-6">
               <div className="flex items-center justify-between">
-                <h2 className="font-semibold text-sm" style={{ color: '#F5F0E8' }}>Dashboard View</h2>
+                <h2 className="font-semibold text-sm" style={{ color: '#1A0A2E' }}>Dashboard View</h2>
                 <div className="inline-flex gap-1">
                   <button
                     className={`toggle-btn${viewMode === 'charts' ? ' active' : ''}`}
@@ -266,16 +266,16 @@ export default function Dashboard() {
             {dashboardData.insight && (
               <div className="insight-panel mb-6">
                 <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-none" style={{ background: 'rgba(59,130,246,0.15)' }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C9A84C" strokeWidth="2">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-none" style={{ background: 'rgba(92,41,119,0.1)' }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D5A940" strokeWidth="2">
                       <circle cx="12" cy="12" r="10"/>
                       <line x1="12" y1="8" x2="12" y2="12"/>
                       <line x1="12" y1="16" x2="12.01" y2="16"/>
                     </svg>
                   </div>
                   <div>
-                    <p className="text-sm font-semibold mb-1" style={{ color: '#93c5fd' }}>Market Intelligence</p>
-                    <p className="text-sm leading-relaxed" style={{ color: '#d1d5db' }}>{dashboardData.insight}</p>
+                    <p className="text-sm font-semibold mb-1" style={{ color: '#5C2977' }}>Market Intelligence</p>
+                    <p className="text-sm leading-relaxed" style={{ color: '#3D2B5E' }}>{dashboardData.insight}</p>
                   </div>
                 </div>
               </div>
@@ -286,13 +286,13 @@ export default function Dashboard() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
               {/* Sales Volume */}
               <div className="card">
-                <h2 className="font-semibold text-sm mb-1" style={{ color: '#F5F0E8' }}>Sales Volume by ZIP</h2>
-                <p className="text-xs mb-4" style={{ color: '#8A8070' }}>Number of valid sales per ZIP code (sorted descending)</p>
+                <h2 className="font-semibold text-sm mb-1" style={{ color: '#1A0A2E' }}>Sales Volume by ZIP</h2>
+                <p className="text-xs mb-4" style={{ color: '#6B5B8A' }}>Number of valid sales per ZIP code (sorted descending)</p>
                 <ResponsiveContainer width="100%" height={240}>
                   <BarChart data={volumeData} margin={{ left: 0, right: 8, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(201,168,76,0.08)" vertical={false} />
-                    <XAxis dataKey="zip" tick={{ fill: '#8A8070', fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fill: '#8A8070', fontSize: 11 }} axisLine={false} tickLine={false} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(92,41,119,0.06)" vertical={false} />
+                    <XAxis dataKey="zip" tick={{ fill: '#6B5B8A', fontSize: 11 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fill: '#6B5B8A', fontSize: 11 }} axisLine={false} tickLine={false} />
                     <Tooltip {...tooltipStyle} formatter={(v: number) => [v.toLocaleString(), 'Sales']} />
                     <Bar dataKey="sales" radius={[4, 4, 0, 0]}>
                       {volumeData.map((_, i) => (
@@ -305,14 +305,14 @@ export default function Dashboard() {
 
               {/* Median PPA */}
               <div className="card">
-                <h2 className="font-semibold text-sm mb-1" style={{ color: '#F5F0E8' }}>Median Price Per Acre by ZIP</h2>
-                <p className="text-xs mb-4" style={{ color: '#8A8070' }}>Outlier ZIPs indicate waterfront or premium areas</p>
+                <h2 className="font-semibold text-sm mb-1" style={{ color: '#1A0A2E' }}>Median Price Per Acre by ZIP</h2>
+                <p className="text-xs mb-4" style={{ color: '#6B5B8A' }}>Outlier ZIPs indicate waterfront or premium areas</p>
                 <ResponsiveContainer width="100%" height={240}>
                   <BarChart data={ppaData} margin={{ left: 0, right: 8, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(201,168,76,0.08)" vertical={false} />
-                    <XAxis dataKey="zip" tick={{ fill: '#8A8070', fontSize: 11 }} axisLine={false} tickLine={false} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(92,41,119,0.06)" vertical={false} />
+                    <XAxis dataKey="zip" tick={{ fill: '#6B5B8A', fontSize: 11 }} axisLine={false} tickLine={false} />
                     <YAxis
-                      tick={{ fill: '#8A8070', fontSize: 11 }}
+                      tick={{ fill: '#6B5B8A', fontSize: 11 }}
                       tickFormatter={(v) => v >= 1000 ? `$${(v / 1000).toFixed(0)}K` : `$${v}`}
                       axisLine={false} tickLine={false}
                     />
@@ -324,7 +324,7 @@ export default function Dashboard() {
                       {ppaData.map((entry, i) => (
                         <Cell
                           key={i}
-                          fill={entry.ppa > maxPPA * 0.7 ? '#f59e0b' : CHART_COLORS[i % CHART_COLORS.length]}
+                          fill={entry.ppa > maxPPA * 0.7 ? '#D5A940' : CHART_COLORS[i % CHART_COLORS.length]}
                         />
                       ))}
                     </Bar>
@@ -337,9 +337,9 @@ export default function Dashboard() {
             {viewMode === 'map' && (
               <div className="card mb-6">
                 <div className="flex items-center justify-between mb-3">
-                  <h2 className="font-semibold text-sm" style={{ color: '#F5F0E8' }}>Sold Comps Map</h2>
+                  <h2 className="font-semibold text-sm" style={{ color: '#1A0A2E' }}>Sold Comps Map</h2>
                   {mapVisibleZips.length > 0 && (
-                    <button className="text-xs" style={{ color: '#C9A84C' }} onClick={() => setMapVisibleZips([])}>
+                    <button className="text-xs" style={{ color: '#5C2977' }} onClick={() => setMapVisibleZips([])}>
                       Show all ZIPs
                     </button>
                   )}
@@ -352,7 +352,7 @@ export default function Dashboard() {
                       className="px-2.5 py-1 rounded-full text-xs font-medium border"
                       style={mapVisibleZips.length === 0 || mapVisibleZips.includes(zip)
                         ? { borderColor: CHART_COLORS[i % CHART_COLORS.length], color: CHART_COLORS[i % CHART_COLORS.length], background: `${CHART_COLORS[i % CHART_COLORS.length]}20` }
-                        : { borderColor: 'rgba(201,168,76,0.2)', color: '#8A8070', background: '#0d1421' }}
+                        : { borderColor: '#E8E0F0', color: '#6B5B8A', background: '#F8F6FB' }}
                     >
                       {zip}
                     </button>
@@ -368,24 +368,24 @@ export default function Dashboard() {
             )}
 
             <div className="card mb-6">
-              <h2 className="font-semibold mb-3" style={{ color: '#F5F0E8' }}>Market Intelligence</h2>
-              <p className="text-sm leading-relaxed mb-4" style={{ color: '#D1CABD' }}>
+              <h2 className="font-semibold mb-3" style={{ color: '#1A0A2E' }}>Market Intelligence</h2>
+              <p className="text-sm leading-relaxed mb-4" style={{ color: '#3D2B5E' }}>
                 {market.paragraph}
               </p>
 
-              <div className="rounded-xl p-4" style={{ background: '#0d1421', border: '1px solid rgba(201,168,76,0.12)' }}>
-                <p className="text-xs uppercase tracking-wider mb-3" style={{ color: '#8A8070' }}>Recommended Target Profile</p>
+              <div className="rounded-xl p-4" style={{ background: '#F8F6FB', border: '1px solid #E8E0F0' }}>
+                <p className="text-xs uppercase tracking-wider mb-3" style={{ color: '#6B5B8A' }}>Recommended Target Profile</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                   <div>
-                    <span style={{ color: '#8A8070' }}>Ideal acreage range:</span>{' '}
-                    <span style={{ color: '#F5F0E8' }}>{market.idealAcreageRange}</span>
+                    <span style={{ color: '#6B5B8A' }}>Ideal acreage range:</span>{' '}
+                    <span style={{ color: '#1A0A2E' }}>{market.idealAcreageRange}</span>
                   </div>
                   <div>
-                    <span style={{ color: '#8A8070' }}>Expected offer range:</span>{' '}
-                    <span style={{ color: '#10b981' }}>{market.expectedOfferRange}</span>
+                    <span style={{ color: '#6B5B8A' }}>Expected offer range:</span>{' '}
+                    <span style={{ color: '#D5A940' }}>{market.expectedOfferRange}</span>
                   </div>
                   <div>
-                    <span style={{ color: '#8A8070' }}>Target ZIPs:</span>
+                    <span style={{ color: '#6B5B8A' }}>Target ZIPs:</span>
                     <div className="flex flex-wrap gap-1.5 mt-1">
                       {market.targetZips.length > 0 ? market.targetZips.map((z) => (
                         <button
@@ -395,15 +395,15 @@ export default function Dashboard() {
                         >
                           {z}
                         </button>
-                      )) : <span className="text-xs" style={{ color: '#8A8070' }}>No ZIPs with 20+ sales</span>}
+                      )) : <span className="text-xs" style={{ color: '#6B5B8A' }}>No ZIPs with 20+ sales</span>}
                     </div>
                   </div>
                   <div>
-                    <span style={{ color: '#8A8070' }}>Avoid ZIPs:</span>
+                    <span style={{ color: '#6B5B8A' }}>Avoid ZIPs:</span>
                     <div className="flex flex-wrap gap-1.5 mt-1">
                       {market.avoidZips.length > 0 ? market.avoidZips.map((z) => (
                         <span key={z} className="badge badge-red text-[10px]">{z}</span>
-                      )) : <span className="text-xs" style={{ color: '#8A8070' }}>None</span>}
+                      )) : <span className="text-xs" style={{ color: '#6B5B8A' }}>None</span>}
                     </div>
                   </div>
                 </div>
@@ -413,9 +413,9 @@ export default function Dashboard() {
             {/* ── ZIP Stats Table ───────────────────────────────── */}
             <div className="card">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="font-semibold" style={{ color: '#F5F0E8' }}>
+                <h2 className="font-semibold" style={{ color: '#1A0A2E' }}>
                   ZIP Performance Table
-                  <span className="text-sm font-normal ml-2" style={{ color: '#8A8070' }}>
+                  <span className="text-sm font-normal ml-2" style={{ color: '#6B5B8A' }}>
                     ({dashboardData.zip_stats.length} ZIPs)
                   </span>
                 </h2>
@@ -547,39 +547,39 @@ function SummaryCard({ label, value, sub, icon, accent }: {
   return (
     <div className="stat-card">
       <div className="flex items-start justify-between mb-3">
-        <p className="text-xs uppercase tracking-wider font-medium" style={{ color: '#8A8070' }}>{label}</p>
+        <p className="text-xs uppercase tracking-wider font-medium" style={{ color: '#6B5B8A', letterSpacing: '0.8px' }}>{label}</p>
         <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${accent}20`, color: accent }}>
           {icon}
         </div>
       </div>
       <p className="text-2xl font-bold mb-0.5" style={{ color: accent }}>{value}</p>
-      {sub && <p className="text-xs" style={{ color: '#8A8070' }}>{sub}</p>}
+      {sub && <p className="text-xs" style={{ color: '#6B5B8A' }}>{sub}</p>}
     </div>
   )
 }
 
 function PriceBandPills({ row }: { row: ZipStats }) {
   const total = row.price_band_lt50k + row.price_band_50k_100k + row.price_band_100k_250k + row.price_band_gt250k
-  if (total === 0) return <span className="text-gray-600 text-xs">—</span>
+  if (total === 0) return <span className="text-xs" style={{ color: '#9B8AAE' }}>—</span>
   return (
     <div className="flex gap-1 flex-wrap">
       {row.price_band_lt50k > 0 && (
-        <span className="badge" style={{ background: 'rgba(16,185,129,0.12)', color: '#34d399', border: '1px solid rgba(16,185,129,0.25)', fontSize: '10px' }}>
+        <span className="badge" style={{ background: 'rgba(45,122,79,0.08)', color: '#2D7A4F', border: '1px solid rgba(45,122,79,0.2)', fontSize: '10px' }}>
           &lt;$50K·{row.price_band_lt50k}
         </span>
       )}
       {row.price_band_50k_100k > 0 && (
-        <span className="badge" style={{ background: 'rgba(201,168,76,0.12)', color: '#C9A84C', border: '1px solid rgba(201,168,76,0.25)', fontSize: '10px' }}>
+        <span className="badge" style={{ background: 'rgba(92,41,119,0.08)', color: '#5C2977', border: '1px solid rgba(92,41,119,0.2)', fontSize: '10px' }}>
           $50–100K·{row.price_band_50k_100k}
         </span>
       )}
       {row.price_band_100k_250k > 0 && (
-        <span className="badge" style={{ background: 'rgba(139,92,246,0.12)', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.25)', fontSize: '10px' }}>
+        <span className="badge" style={{ background: 'rgba(139,77,184,0.08)', color: '#8B4DB8', border: '1px solid rgba(139,77,184,0.2)', fontSize: '10px' }}>
           $100–250K·{row.price_band_100k_250k}
         </span>
       )}
       {row.price_band_gt250k > 0 && (
-        <span className="badge" style={{ background: 'rgba(245,158,11,0.12)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.25)', fontSize: '10px' }}>
+        <span className="badge" style={{ background: 'rgba(213,169,64,0.1)', color: '#8B6A00', border: '1px solid rgba(213,169,64,0.25)', fontSize: '10px' }}>
           $250K+·{row.price_band_gt250k}
         </span>
       )}

@@ -171,30 +171,30 @@ export default function MatchTargets() {
     { key: 'parcel_city', header: 'City', defaultHidden: true },
     {
       key: 'lot_acres', header: 'Acres', sortable: true, align: 'right',
-      render: (v) => v == null ? <span className="text-gray-600">—</span> : <span>{(v as number).toFixed(2)}</span>,
+      render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span>{(v as number).toFixed(2)}</span>,
     },
     {
       key: 'suggested_offer_mid', header: 'Mid Offer', sortable: true, align: 'right',
-      render: (v) => v == null ? <span className="text-gray-600">—</span> : (
-        <span className="font-semibold text-emerald-400">${Math.round(v as number).toLocaleString()}</span>
+      render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : (
+        <span className="font-semibold" style={{ color: '#2D7A4F', fontWeight: 600 }}>${Math.round(v as number).toLocaleString()}</span>
       ),
     },
     {
       key: 'suggested_offer_low', header: 'Low', align: 'right', defaultHidden: true,
-      render: (v) => v == null ? <span className="text-gray-600">—</span> : <span className="text-xs text-gray-400">${Math.round(v as number).toLocaleString()}</span>,
+      render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs" style={{ color: '#6B5B8A' }}>${Math.round(v as number).toLocaleString()}</span>,
     },
     {
       key: 'suggested_offer_high', header: 'High', align: 'right', defaultHidden: true,
-      render: (v) => v == null ? <span className="text-gray-600">—</span> : <span className="text-xs text-gray-400">${Math.round(v as number).toLocaleString()}</span>,
+      render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs" style={{ color: '#6B5B8A' }}>${Math.round(v as number).toLocaleString()}</span>,
     },
     {
       key: 'flood_zone', header: 'Flood', defaultHidden: true,
-      render: (v) => <span className="text-xs text-gray-400">{String(v || '—')}</span>,
+      render: (v) => <span className="text-xs" style={{ color: '#6B5B8A' }}>{String(v || '—')}</span>,
     },
     {
       key: 'buildability_pct', header: 'Build%', sortable: true, align: 'right', defaultHidden: true,
-      render: (v) => v == null ? <span className="text-gray-600">—</span> : (
-        <span style={{ color: (v as number) > 70 ? '#10b981' : (v as number) > 40 ? '#f59e0b' : '#ef4444', fontSize: '12px' }}>
+      render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : (
+        <span style={{ color: (v as number) > 70 ? '#2D7A4F' : (v as number) > 40 ? '#f59e0b' : '#ef4444', fontSize: '12px' }}>
           {(v as number).toFixed(0)}%
         </span>
       ),
@@ -207,8 +207,8 @@ export default function MatchTargets() {
       {/* Page header */}
       <div className="page-header">
         <div>
-          <h1 className="text-lg font-semibold" style={{ color: '#f9fafb' }}>Match Targets</h1>
-          <p className="text-xs mt-0.5" style={{ color: '#8A8070' }}>Upload target parcels and run the matching engine with smart filters</p>
+          <h1 className="text-lg font-semibold" style={{ color: '#1A0A2E' }}>Match Targets</h1>
+          <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>Upload target parcels and run the matching engine with smart filters</p>
         </div>
         {matchResult && (
           <button className="btn-primary text-sm" onClick={() => setCurrentPage('mailing-list')}>
@@ -217,24 +217,24 @@ export default function MatchTargets() {
         )}
       </div>
 
-      <div className="p-8 max-w-[1400px]">
+      <div className="p-8 max-w-[1400px] mx-auto w-full">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
           {/* Upload targets */}
           <div className="card">
-            <h2 className="font-semibold mb-4" style={{ color: '#e5e7eb' }}>Target Parcels CSV</h2>
+            <h2 className="font-semibold mb-4" style={{ color: '#1A0A2E' }}>Target Parcels CSV</h2>
             {targetStats ? (
-              <div className="rounded-lg px-4 py-3 flex items-center justify-between" style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)' }}>
+              <div className="rounded-lg px-4 py-3 flex items-center justify-between" style={{ background: 'rgba(45,122,79,0.06)', border: '1px solid rgba(45,122,79,0.15)' }}>
                 <div>
-                  <p className="font-medium text-sm" style={{ color: '#34d399' }}>
+                  <p className="font-medium text-sm" style={{ color: '#2D7A4F' }}>
                     ✓ {targetStats.total_rows.toLocaleString()} rows loaded
                   </p>
-                  <p className="text-xs mt-0.5" style={{ color: 'rgba(52,211,153,0.6)' }}>
+                  <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>
                     {targetStats.columns_found.length} columns · {fileName}
                   </p>
                 </div>
                 <button
                   className="text-xs hover:text-gray-300 transition-colors"
-                  style={{ color: '#8A8070' }}
+                  style={{ color: '#6B5B8A' }}
                   onClick={() => { setTargetStats(null); setFileName(null) }}
                 >
                   Replace
@@ -253,7 +253,7 @@ export default function MatchTargets() {
 
           {/* Core filters */}
           <div className="card">
-            <h2 className="font-semibold mb-4" style={{ color: '#e5e7eb' }}>Matching Parameters</h2>
+            <h2 className="font-semibold mb-4" style={{ color: '#1A0A2E' }}>Matching Parameters</h2>
             <div className="space-y-4">
               <SliderRow label="Radius" value={radiusMiles} onChange={setRadiusMiles} min={1} max={50} step={1} display={`${radiusMiles} miles`} />
               <SliderRow label="Acreage Tolerance" value={acreageTol} onChange={setAcreageTol} min={5} max={200} step={5} display={`±${acreageTol}%`} />
@@ -266,12 +266,12 @@ export default function MatchTargets() {
         {availableZips.length > 0 && (
           <div className="card mb-6">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-medium" style={{ color: '#F5F0E8' }}>
+              <p className="text-sm font-medium" style={{ color: '#1A0A2E' }}>
                 ZIP Filter
-                <span className="text-xs font-normal ml-2" style={{ color: '#8A8070' }}>(leave empty to match all)</span>
+                <span className="text-xs font-normal ml-2" style={{ color: '#6B5B8A' }}>(leave empty to match all)</span>
               </p>
               {zipFilter.length > 0 && (
-                <button className="text-xs hover:opacity-80 transition-opacity" style={{ color: '#C9A84C' }} onClick={() => setZipFilter([])}>Clear all</button>
+                <button className="text-xs hover:opacity-80 transition-opacity" style={{ color: '#5C2977' }} onClick={() => setZipFilter([])}>Clear all</button>
               )}
             </div>
             <div className="flex flex-wrap gap-2">
@@ -279,8 +279,8 @@ export default function MatchTargets() {
                 <button key={zip} onClick={() => toggleZip(zip)}
                   className="px-3 py-1 rounded-full text-xs font-medium transition-all"
                   style={zipFilter.includes(zip)
-                    ? { background: 'linear-gradient(135deg, #C9A84C 0%, #A07828 100%)', color: '#080808', border: '1px solid #C9A84C' }
-                    : { background: '#0F0F0F', color: '#8A8070', border: '1px solid rgba(201,168,76,0.2)' }}
+                    ? { background: '#5C2977', color: 'white', border: '1px solid #5C2977' }
+                    : { background: '#FFFFFF', color: '#5C2977', border: '1px solid #D4B8E8' }}
                 >{zip}</button>
               ))}
             </div>
@@ -291,7 +291,7 @@ export default function MatchTargets() {
         <div className="card mb-6">
           <button
             className="w-full flex items-center justify-between text-sm font-medium"
-            style={{ color: '#F5F0E8' }}
+            style={{ color: '#1A0A2E' }}
             onClick={() => setShowAdvanced((v) => !v)}
           >
             <span className="flex items-center gap-2">
@@ -305,41 +305,41 @@ export default function MatchTargets() {
                 </span>
               )}
             </span>
-            <span style={{ color: '#8A8070' }}>{showAdvanced ? '▲' : '▼'}</span>
+            <span style={{ color: '#6B5B8A' }}>{showAdvanced ? '▲' : '▼'}</span>
           </button>
 
           {showAdvanced && (
             <div className="mt-5 space-y-5">
               {/* Acreage range */}
               <div>
-                <p className="text-xs font-medium mb-2" style={{ color: '#8A8070' }}>ACREAGE RANGE</p>
+                <p className="text-xs font-medium mb-2" style={{ color: '#6B5B8A' }}>ACREAGE RANGE</p>
                 <div className="flex items-center gap-3">
                   <input type="number" step="0.1" min="0" placeholder="Min acres" className="input-base text-xs py-2"
                     value={minAcreage} onChange={(e) => setMinAcreage(e.target.value)} />
-                  <span style={{ color: '#8A8070' }}>to</span>
+                  <span style={{ color: '#6B5B8A' }}>to</span>
                   <input type="number" step="0.1" min="0" placeholder="Max acres" className="input-base text-xs py-2"
                     value={maxAcreage} onChange={(e) => setMaxAcreage(e.target.value)} />
                 </div>
               </div>
 
-              <div className="h-px" style={{ background: 'rgba(201,168,76,0.1)' }} />
+              <div className="h-px" style={{ background: 'rgba(92,41,119,0.08)' }} />
 
               {/* Flood zone */}
               <div>
-                <p className="text-xs font-medium mb-2" style={{ color: '#8A8070' }}>FLOOD ZONE</p>
-                <div className="inline-flex rounded-lg overflow-hidden" style={{ border: '1px solid rgba(201,168,76,0.2)' }}>
-                  <button className="px-3 py-1.5 text-xs transition-all" style={floodZoneFilter === 'all' ? { background: 'linear-gradient(135deg, #C9A84C 0%, #A07828 100%)', color: '#080808' } : { background: '#0F0F0F', color: '#8A8070' }} onClick={() => setFloodZoneFilter('all')}>All</button>
-                  <button className="px-3 py-1.5 text-xs transition-all" style={floodZoneFilter === 'exclude' ? { background: 'linear-gradient(135deg, #C9A84C 0%, #A07828 100%)', color: '#080808' } : { background: '#0F0F0F', color: '#8A8070' }} onClick={() => setFloodZoneFilter('exclude')}>Exclude</button>
-                  <button className="px-3 py-1.5 text-xs transition-all" style={floodZoneFilter === 'only' ? { background: 'linear-gradient(135deg, #C9A84C 0%, #A07828 100%)', color: '#080808' } : { background: '#0F0F0F', color: '#8A8070' }} onClick={() => setFloodZoneFilter('only')}>Only</button>
+                <p className="text-xs font-medium mb-2" style={{ color: '#6B5B8A' }}>FLOOD ZONE</p>
+                <div className="inline-flex rounded-lg overflow-hidden" style={{ border: '1px solid #E8E0F0' }}>
+                  <button className="px-3 py-1.5 text-xs transition-all" style={floodZoneFilter === 'all' ? { background: '#5C2977', color: 'white' } : { background: '#FFFFFF', color: '#6B5B8A' }} onClick={() => setFloodZoneFilter('all')}>All</button>
+                  <button className="px-3 py-1.5 text-xs transition-all" style={floodZoneFilter === 'exclude' ? { background: '#5C2977', color: 'white' } : { background: '#FFFFFF', color: '#6B5B8A' }} onClick={() => setFloodZoneFilter('exclude')}>Exclude</button>
+                  <button className="px-3 py-1.5 text-xs transition-all" style={floodZoneFilter === 'only' ? { background: '#5C2977', color: 'white' } : { background: '#FFFFFF', color: '#6B5B8A' }} onClick={() => setFloodZoneFilter('only')}>Only</button>
                 </div>
               </div>
 
-              <div className="h-px" style={{ background: 'rgba(201,168,76,0.1)' }} />
+              <div className="h-px" style={{ background: 'rgba(92,41,119,0.08)' }} />
 
               {/* Buildability */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-medium" style={{ color: '#8A8070' }}>BUILDABILITY MINIMUM</p>
+                  <p className="text-xs font-medium" style={{ color: '#6B5B8A' }}>BUILDABILITY MINIMUM</p>
                   <ToggleOption label="Enable" checked={useBuildability} onChange={setUseBuildability} />
                 </div>
                 {useBuildability && (
@@ -347,11 +347,11 @@ export default function MatchTargets() {
                 )}
               </div>
 
-              <div className="h-px" style={{ background: 'rgba(201,168,76,0.12)' }} />
+              <div className="h-px" style={{ background: 'rgba(92,41,119,0.08)' }} />
 
               {/* Parcel flags */}
               <div>
-                <p className="text-xs font-medium mb-3" style={{ color: '#8A8070' }}>PARCEL FLAGS</p>
+                <p className="text-xs font-medium mb-3" style={{ color: '#6B5B8A' }}>PARCEL FLAGS</p>
                 <div className="grid grid-cols-2 gap-3">
                   <ToggleOption label="Vacant land only" checked={vacantOnly} onChange={setVacantOnly} />
                   <ToggleOption label="Require road frontage" checked={requireRoadFrontage} onChange={setRequireRoadFrontage} />
@@ -359,7 +359,7 @@ export default function MatchTargets() {
                   <ToggleOption label="Require TLP estimate" checked={requireTlp} onChange={setRequireTlp} />
                 </div>
                 <div className="mt-3 max-w-xs">
-                  <label className="text-xs block mb-1" style={{ color: '#8A8070' }}>Price ceiling (TLP Estimate)</label>
+                  <label className="text-xs block mb-1" style={{ color: '#6B5B8A' }}>Price ceiling (TLP Estimate)</label>
                   <input
                     type="number"
                     min="0"
@@ -378,7 +378,7 @@ export default function MatchTargets() {
         {/* Filter chips summary */}
         {activeFilters.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-5">
-            <span className="text-xs self-center" style={{ color: '#8A8070' }}>Active filters:</span>
+            <span className="text-xs self-center" style={{ color: '#6B5B8A' }}>Active filters:</span>
             {activeFilters.map((f, i) => (
               <span key={i} className="filter-chip">
                 {f.label}
@@ -403,10 +403,10 @@ export default function MatchTargets() {
               border: 'none',
               cursor: !targetStats || matchLoading ? 'not-allowed' : 'pointer',
               opacity: !targetStats || matchLoading ? 0.5 : 1,
-              background: 'linear-gradient(135deg, #1d4ed8 0%, #3b82f6 50%, #06b6d4 100%)',
+              background: 'linear-gradient(135deg, #5C2977 0%, #8B4DB8 50%, #D5A940 100%)',
               backgroundSize: '200% auto',
               color: 'white',
-              boxShadow: '0 4px 20px rgba(59,130,246,0.4), 0 0 40px rgba(59,130,246,0.15)',
+              boxShadow: '0 4px 20px rgba(92,41,119,0.35)',
               transition: 'all 0.3s ease',
               display: 'flex',
               alignItems: 'center',
@@ -415,15 +415,15 @@ export default function MatchTargets() {
             }}
             onMouseEnter={(e) => {
               if (!matchLoading && targetStats) {
-                (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 8px 30px rgba(59,130,246,0.6), 0 0 60px rgba(59,130,246,0.2)'
+                (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 8px 30px rgba(92,41,119,0.5)'
                 ;(e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-2px)'
-                ;(e.currentTarget as HTMLButtonElement).style.background = 'linear-gradient(135deg, #2563eb 0%, #60a5fa 50%, #22d3ee 100%)'
+                ;(e.currentTarget as HTMLButtonElement).style.background = 'linear-gradient(135deg, #3D1A5C 0%, #5C2977 50%, #D5A940 100%)'
               }
             }}
             onMouseLeave={(e) => {
-              ;(e.currentTarget as HTMLButtonElement).style.boxShadow = '0 4px 20px rgba(59,130,246,0.4), 0 0 40px rgba(59,130,246,0.15)'
+              ;(e.currentTarget as HTMLButtonElement).style.boxShadow = '0 4px 20px rgba(92,41,119,0.35)'
               ;(e.currentTarget as HTMLButtonElement).style.transform = 'none'
-              ;(e.currentTarget as HTMLButtonElement).style.background = 'linear-gradient(135deg, #1d4ed8 0%, #3b82f6 50%, #06b6d4 100%)'
+              ;(e.currentTarget as HTMLButtonElement).style.background = 'linear-gradient(135deg, #5C2977 0%, #8B4DB8 50%, #D5A940 100%)'
             }}
           >
             {matchLoading ? (
@@ -438,14 +438,14 @@ export default function MatchTargets() {
             )}
           </button>
           {targetStats && !matchLoading && (
-            <p className="text-sm mt-2 text-center" style={{ color: '#8A8070' }}>
+            <p className="text-sm mt-2 text-center" style={{ color: '#6B5B8A' }}>
               {targetStats.total_rows.toLocaleString()} targets × {compsStats.valid_rows.toLocaleString()} comps
             </p>
           )}
         </div>
 
         {matchError && (
-          <div className="rounded-xl px-5 py-4 mb-6 text-sm" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}>
+          <div className="rounded-xl px-5 py-4 mb-6 text-sm" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#dc2626' }}>
             {matchError}
           </div>
         )}
@@ -454,25 +454,25 @@ export default function MatchTargets() {
           <>
             {/* Results summary */}
             <div className="grid grid-cols-3 gap-4 mb-6">
-              <ResultCard label="Total Targets" value={matchResult.total_targets.toLocaleString()} accent="#C9A84C" />
-              <ResultCard label="Matched" value={matchResult.matched_count.toLocaleString()} accent="#10b981" />
+              <ResultCard label="Total Targets" value={matchResult.total_targets.toLocaleString()} accent="#5C2977" />
+              <ResultCard label="Matched" value={matchResult.matched_count.toLocaleString()} accent="#2D7A4F" />
               <ResultCard
                 label="Match Rate"
                 value={`${matchResult.total_targets > 0 ? Math.round((matchResult.matched_count / matchResult.total_targets) * 100) : 0}%`}
-                accent="#8b5cf6"
+                accent="#8B4DB8"
               />
             </div>
 
             {/* Score distribution pills */}
             <div className="flex items-center gap-3 mb-5">
-              <span className="text-xs" style={{ color: '#8A8070' }}>Score distribution:</span>
+              <span className="text-xs" style={{ color: '#6B5B8A' }}>Score distribution:</span>
               {[5, 4, 3, 2, 1, 0].map((s) => {
                 const count = matchResult.results.filter((r) => r.match_score === s).length
                 if (count === 0) return null
                 return (
                   <span key={s} className="flex items-center gap-1.5">
                     <ScoreBadge score={s} />
-                    <span className="text-xs" style={{ color: '#8A8070' }}>{count.toLocaleString()}</span>
+                    <span className="text-xs" style={{ color: '#6B5B8A' }}>{count.toLocaleString()}</span>
                   </span>
                 )
               })}
@@ -480,9 +480,9 @@ export default function MatchTargets() {
 
             <div className="card">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="font-semibold" style={{ color: '#F5F0E8' }}>
+                <h2 className="font-semibold" style={{ color: '#1A0A2E' }}>
                   Matched Parcels
-                  <span className="text-sm font-normal ml-2" style={{ color: '#8A8070' }}>sorted by score</span>
+                  <span className="text-sm font-normal ml-2" style={{ color: '#6B5B8A' }}>sorted by score</span>
                 </h2>
                 <div className="inline-flex gap-1">
                   <button
@@ -539,15 +539,15 @@ function SliderRow({ label, value, onChange, min, max, step, display }: {
     <div>
       {label && (
         <div className="flex justify-between text-sm mb-1.5">
-          <span style={{ color: '#8A8070' }}>{label}</span>
-          <span className="font-medium" style={{ color: '#C9A84C' }}>{display}</span>
+          <span style={{ color: '#6B5B8A' }}>{label}</span>
+          <span className="font-medium" style={{ color: '#5C2977' }}>{display}</span>
         </div>
       )}
       <input type="range" min={min} max={max} step={step} value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full cursor-pointer" style={{ accentColor: '#C9A84C' }}
+        className="w-full cursor-pointer" style={{ accentColor: '#5C2977' }}
       />
-      <div className="flex justify-between text-xs mt-0.5" style={{ color: '#3A3025' }}>
+      <div className="flex justify-between text-xs mt-0.5" style={{ color: '#9B8AAE' }}>
         <span>{min}</span><span>{max}</span>
       </div>
     </div>
@@ -560,14 +560,14 @@ function ToggleOption({ label, checked, onChange }: { label: string; checked: bo
       <div
         onClick={() => onChange(!checked)}
         className="w-9 h-5 rounded-full relative transition-colors cursor-pointer"
-        style={{ background: checked ? '#C9A84C' : '#252015' }}
+        style={{ background: checked ? '#5C2977' : '#E8E0F0' }}
       >
         <div
           className="w-4 h-4 rounded-full absolute top-0.5 transition-transform"
-          style={{ background: checked ? '#080808' : '#8A8070', transform: checked ? 'translateX(18px)' : 'translateX(2px)' }}
+          style={{ background: checked ? '#FFFFFF' : '#9B8AAE', transform: checked ? 'translateX(18px)' : 'translateX(2px)' }}
         />
       </div>
-      <span className="text-xs select-none" style={{ color: checked ? '#F5F0E8' : '#8A8070' }}>{label}</span>
+      <span className="text-xs select-none" style={{ color: checked ? '#1A0A2E' : '#6B5B8A' }}>{label}</span>
     </label>
   )
 }
@@ -576,7 +576,7 @@ function ScoreBadge({ score }: { score: number }) {
   return (
     <span
       className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold text-white score-badge-${score}`}
-      style={{ background: score === 4 ? '#0891b2' : score === 3 ? '#d97706' : score === 2 ? '#ea580c' : score === 1 ? '#dc2626' : '#059669' }}
+      style={{ background: score === 4 ? '#5C2977' : score === 3 ? '#D5A940' : score === 2 ? '#C06820' : score === 1 ? '#B03030' : '#2D7A4F' }}
     >
       {score}
     </span>
@@ -585,8 +585,8 @@ function ScoreBadge({ score }: { score: number }) {
 
 function ResultCard({ label, value, accent }: { label: string; value: string; accent: string }) {
   return (
-    <div className="rounded-xl p-4" style={{ background: `${accent}12`, border: `1px solid ${accent}30` }}>
-      <p className="text-xs uppercase tracking-wider mb-1" style={{ color: '#8A8070' }}>{label}</p>
+    <div className="rounded-xl p-4" style={{ background: '#F8F6FB', border: '1px solid #E8E0F0' }}>
+      <p className="text-xs uppercase tracking-wider mb-1" style={{ color: '#6B5B8A' }}>{label}</p>
       <p className="text-2xl font-bold" style={{ color: accent }}>{value}</p>
     </div>
   )

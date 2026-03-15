@@ -36,7 +36,7 @@ export default function UploadComps() {
     header: col,
     render: (val) =>
       val == null ? (
-        <span className="text-gray-600">—</span>
+        <span style={{ color: '#9B8AAE' }}>—</span>
       ) : (
         <span className="max-w-[180px] block truncate text-xs" title={String(val)}>
           {String(val)}
@@ -49,8 +49,8 @@ export default function UploadComps() {
       {/* Page header */}
       <div className="page-header">
         <div>
-          <h1 className="text-lg font-semibold" style={{ color: '#f9fafb' }}>Upload Sold Comps</h1>
-          <p className="text-xs mt-0.5" style={{ color: '#8A8070' }}>Step 1 of 5 — Import your Land Portal sold comps export</p>
+          <h1 className="text-lg font-semibold" style={{ color: '#1A0A2E', fontWeight: 700 }}>Upload Sold Comps</h1>
+          <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>Step 1 of 5 — Import your Land Portal sold comps export</p>
         </div>
         {compsStats && (
           <button className="btn-primary text-sm" onClick={() => setCurrentPage('dashboard')}>
@@ -59,7 +59,7 @@ export default function UploadComps() {
         )}
       </div>
 
-      <div className="p-8 max-w-4xl">
+      <div className="p-8 max-w-4xl mx-auto w-full">
         {/* Upload zone */}
         <div className="card mb-6">
           <FileUpload
@@ -72,7 +72,7 @@ export default function UploadComps() {
         </div>
 
         {error && (
-          <div className="rounded-xl px-5 py-4 mb-6 text-sm" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}>
+          <div className="rounded-xl px-5 py-4 mb-6 text-sm" style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.3)', color: '#dc2626' }}>
             <strong className="font-semibold">Error:</strong> {error}
           </div>
         )}
@@ -80,15 +80,15 @@ export default function UploadComps() {
         {compsStats && (
           <>
             {/* Success banner */}
-            <div className="rounded-xl px-5 py-4 mb-6 flex items-start gap-4" style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)' }}>
-              <div className="w-8 h-8 rounded-full flex items-center justify-center flex-none" style={{ background: 'rgba(16,185,129,0.15)' }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2.5">
+            <div className="rounded-xl px-5 py-4 mb-6 flex items-start gap-4" style={{ background: 'rgba(45,122,79,0.06)', border: '1px solid rgba(45,122,79,0.2)', borderLeft: '4px solid #2D7A4F' }}>
+              <div className="w-8 h-8 rounded-full flex items-center justify-center flex-none" style={{ background: 'rgba(45,122,79,0.1)' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2D7A4F" strokeWidth="2.5">
                   <polyline points="20 6 9 17 4 12"/>
                 </svg>
               </div>
               <div>
-                <p className="font-semibold text-sm" style={{ color: '#34d399' }}>File uploaded successfully</p>
-                <p className="text-sm mt-0.5" style={{ color: 'rgba(52,211,153,0.75)' }}>
+                <p className="font-semibold text-sm" style={{ color: '#2D7A4F' }}>File uploaded successfully</p>
+                <p className="text-sm mt-0.5" style={{ color: '#1A4A2E' }}>
                   <strong>{compsStats.total_rows.toLocaleString()}</strong> total rows —{' '}
                   <strong>{compsStats.valid_rows.toLocaleString()}</strong> have a valid sale price and will be used for analysis.
                 </p>
@@ -97,15 +97,15 @@ export default function UploadComps() {
 
             {/* Stats grid */}
             <div className="grid grid-cols-3 gap-4 mb-6">
-              <StatCard label="Total Rows" value={compsStats.total_rows.toLocaleString()} accent="#C9A84C" />
-              <StatCard label="Valid Sale Prices" value={compsStats.valid_rows.toLocaleString()} accent="#10b981" />
-              <StatCard label="Columns Detected" value={compsStats.columns_found.length.toString()} accent="#8b5cf6" />
+              <StatCard label="Total Rows" value={compsStats.total_rows.toLocaleString()} accent="#5C2977" />
+              <StatCard label="Valid Sale Prices" value={compsStats.valid_rows.toLocaleString()} accent="#2D7A4F" />
+              <StatCard label="Columns Detected" value={compsStats.columns_found.length.toString()} accent="#8B4DB8" />
             </div>
 
             {/* Missing columns warning */}
             {compsStats.missing_columns.length > 0 && (
-              <div className="rounded-xl px-5 py-4 mb-6" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)' }}>
-                <p className="font-semibold text-sm mb-2" style={{ color: '#fbbf24' }}>
+              <div className="rounded-xl px-5 py-4 mb-6" style={{ background: 'rgba(213,169,64,0.06)', border: '1px solid rgba(213,169,64,0.2)' }}>
+                <p className="font-semibold text-sm mb-2" style={{ color: '#8B6A00' }}>
                   ⚠ Missing expected columns ({compsStats.missing_columns.length})
                 </p>
                 <div className="flex flex-wrap gap-2">
@@ -113,7 +113,7 @@ export default function UploadComps() {
                     <code
                       key={col}
                       className="text-xs px-2 py-0.5 rounded"
-                      style={{ background: 'rgba(245,158,11,0.15)', color: '#fbbf24' }}
+                      style={{ background: 'rgba(213,169,64,0.1)', color: '#8B6A00' }}
                     >
                       {col}
                     </code>
@@ -125,10 +125,10 @@ export default function UploadComps() {
             {/* Data preview */}
             <div className="card">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="font-semibold" style={{ color: '#F5F0E8' }}>
+                <h2 className="font-semibold" style={{ color: '#1A0A2E' }}>
                   Data Preview
                 </h2>
-                <span className="text-xs" style={{ color: '#8A8070' }}>First 20 rows · 12 columns shown</span>
+                <span className="text-xs" style={{ color: '#6B5B8A' }}>First 20 rows · 12 columns shown</span>
               </div>
               <DataTable<Record<string, unknown>>
                 columns={previewCols}
@@ -152,8 +152,8 @@ export default function UploadComps() {
 
 function StatCard({ label, value, accent }: { label: string; value: string; accent: string }) {
   return (
-    <div className="rounded-xl p-5" style={{ background: 'linear-gradient(135deg, #1A1610 0%, #161616 100%)', border: '1px solid rgba(201,168,76,0.12)' }}>
-      <p className="text-xs uppercase tracking-wider mb-2" style={{ color: '#8A8070' }}>{label}</p>
+    <div className="rounded-xl p-5" style={{ background: '#FFFFFF', border: '1px solid #E8E0F0', borderRadius: 12, boxShadow: '0 2px 8px rgba(92,41,119,0.06)' }}>
+      <p className="text-xs uppercase tracking-wider mb-2" style={{ color: '#6B5B8A', letterSpacing: '0.8px' }}>{label}</p>
       <p className="text-2xl font-bold" style={{ color: accent }}>{value}</p>
     </div>
   )

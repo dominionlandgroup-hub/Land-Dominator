@@ -13,7 +13,7 @@ import type { MatchedParcel } from '../types'
 import { getConfidence } from '../types'
 import WelcomeScreen from './WelcomeScreen'
 
-const ZIP_COLORS = ['#C9A84C','#8b5cf6','#10b981','#f59e0b','#06b6d4','#ef4444','#84cc16','#f97316','#14b8a6']
+const ZIP_COLORS = ['#5C2977','#8B4DB8','#2D7A4F','#D5A940','#7B3E99','#C05000','#4CAF7A','#B8860B','#3D1A5C']
 
 export default function MailingList() {
   const {
@@ -147,7 +147,7 @@ export default function MailingList() {
         const idx = workingRows.indexOf(row)
         const id = rowId(row, idx)
         const checked = selectedIds.has(id)
-        return <input type="checkbox" checked={checked} onChange={() => toggleSelect(id)} className="accent-blue-500" />
+        return <input type="checkbox" checked={checked} onChange={() => toggleSelect(id)} className="accent-brand-600" />
       },
     },
     {
@@ -160,7 +160,7 @@ export default function MailingList() {
         const flagged = flaggedIds.has(id)
         return (
           <button onClick={() => toggleFlag(id)} title="Flag row">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill={flagged ? '#facc15' : 'none'} stroke={flagged ? '#facc15' : '#8A8070'} strokeWidth="2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill={flagged ? '#facc15' : 'none'} stroke={flagged ? '#facc15' : '#9B8AAE'} strokeWidth="2">
               <path d="M5 3v18"/>
               <path d="M5 4h11l-2 4 2 4H5"/>
             </svg>
@@ -224,7 +224,7 @@ export default function MailingList() {
       sortable: true,
       align: 'right',
       render: (v) =>
-        v == null ? <span style={{ color: '#4b5563' }}>—</span> : <span>{(v as number).toFixed(2)}</span>,
+        v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span>{(v as number).toFixed(2)}</span>,
     },
     {
       key: 'suggested_offer_low',
@@ -233,7 +233,7 @@ export default function MailingList() {
       align: 'right',
       defaultHidden: true,
       render: (v) =>
-        v == null ? <span style={{ color: '#4b5563' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span>,
+        v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span>,
     },
     {
       key: 'suggested_offer_mid',
@@ -242,9 +242,9 @@ export default function MailingList() {
       align: 'right',
       render: (v) =>
         v == null ? (
-          <span style={{ color: '#4b5563' }}>—</span>
+          <span style={{ color: '#9B8AAE' }}>—</span>
         ) : (
-          <span className="font-semibold" style={{ color: '#10b981' }}>
+          <span className="font-semibold" style={{ color: '#2D7A4F' }}>
             ${Math.round(v as number).toLocaleString()}
           </span>
         ),
@@ -256,7 +256,7 @@ export default function MailingList() {
       align: 'right',
       defaultHidden: true,
       render: (v) =>
-        v == null ? <span style={{ color: '#4b5563' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span>,
+        v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span>,
     },
     {
       key: 'tlp_estimate',
@@ -264,13 +264,13 @@ export default function MailingList() {
       align: 'right',
       defaultHidden: true,
       render: (v) =>
-        v == null ? <span style={{ color: '#4b5563' }}>—</span> : <span className="text-xs" style={{ color: '#8A8070' }}>${Math.round(v as number).toLocaleString()}</span>,
+        v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs" style={{ color: '#6B5B8A' }}>${Math.round(v as number).toLocaleString()}</span>,
     },
     {
       key: 'flood_zone',
       header: 'Flood',
       defaultHidden: true,
-      render: (v) => <span className="text-xs" style={{ color: '#8A8070' }}>{String(v || '—')}</span>,
+      render: (v) => <span className="text-xs" style={{ color: '#6B5B8A' }}>{String(v || '—')}</span>,
     },
     {
       key: 'buildability_pct',
@@ -279,11 +279,11 @@ export default function MailingList() {
       defaultHidden: true,
       render: (v) =>
         v == null ? (
-          <span style={{ color: '#4b5563' }}>—</span>
+          <span style={{ color: '#9B8AAE' }}>—</span>
         ) : (
           <span
             className="text-xs"
-            style={{ color: (v as number) > 70 ? '#10b981' : (v as number) > 40 ? '#f59e0b' : '#ef4444' }}
+            style={{ color: (v as number) > 70 ? '#2D7A4F' : (v as number) > 40 ? '#D5A940' : '#ef4444' }}
           >
             {(v as number).toFixed(0)}%
           </span>
@@ -297,8 +297,8 @@ export default function MailingList() {
       {/* Page header */}
       <div className="page-header">
         <div>
-          <h1 className="text-lg font-semibold" style={{ color: '#F5F0E8' }}>Mailing List</h1>
-          <p className="text-xs mt-0.5" style={{ color: '#8A8070' }}>
+          <h1 className="text-lg font-semibold" style={{ color: '#1A0A2E' }}>Mailing List</h1>
+          <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>
             Deduplicated, mail-ready list with offer pricing
             {mailingPreview && ` · ${mailingPreview.total_after_dedup.toLocaleString()} records`}
           </p>
@@ -321,6 +321,7 @@ export default function MailingList() {
                 href={highConfUrl}
                 download
                 className="btn-secondary text-sm no-underline"
+                style={{ borderColor: '#D5A940', color: '#D5A940' }}
                 title="Download parcels with 3+ matching comps"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -334,6 +335,7 @@ export default function MailingList() {
                 href={top500Url}
                 download
                 className="btn-secondary text-sm no-underline"
+                style={{ borderColor: '#D5A940', color: '#D5A940' }}
                 title="Top 500 records by match score"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -361,7 +363,7 @@ export default function MailingList() {
         </div>
       </div>
 
-      <div className="p-8 max-w-[1400px]">
+      <div className="p-8 max-w-[1400px] mx-auto w-full">
         {loading && (
           <div className="flex justify-center py-16">
             <LoadingSpinner size="lg" label="Applying deduplication rules…" />
@@ -370,7 +372,7 @@ export default function MailingList() {
 
         {error && (
           <div className="rounded-xl px-5 py-4 mb-6 text-sm flex items-center justify-between"
-            style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}>
+            style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#dc2626' }}>
             <span>{error}</span>
             <button className="btn-secondary text-sm" onClick={load}>Retry</button>
           </div>
@@ -378,14 +380,14 @@ export default function MailingList() {
 
         {savedName && (
           <div className="rounded-xl px-5 py-4 mb-6 text-sm flex items-center gap-3"
-            style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)', color: '#34d399' }}>
+            style={{ background: 'rgba(45,122,79,0.06)', border: '1px solid rgba(45,122,79,0.15)', color: '#2D7A4F' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <polyline points="20 6 9 17 4 12"/>
             </svg>
             <span>Campaign <strong>"{savedName}"</strong> saved.</span>
             <button
               className="ml-auto text-xs underline"
-              style={{ color: '#34d399' }}
+              style={{ color: '#2D7A4F' }}
               onClick={() => setCurrentPage('campaigns')}
             >
               View Campaigns →
@@ -398,18 +400,18 @@ export default function MailingList() {
             <div className="card mb-6">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
                 <div>
-                  <p style={{ color: '#8A8070' }}>Total acquisition value</p>
-                  <p className="font-semibold" style={{ color: '#10b981' }}>
+                  <p style={{ color: '#6B5B8A' }}>Total acquisition value</p>
+                  <p className="font-semibold" style={{ color: '#2D7A4F' }}>
                     ${Math.round(totalAcq).toLocaleString()}
-                    {hasOutlier && <span className="text-xs font-normal ml-1" style={{ color: '#8A8070' }}>(includes outliers)</span>}
+                    {hasOutlier && <span className="text-xs font-normal ml-1" style={{ color: '#6B5B8A' }}>(includes outliers)</span>}
                   </p>
                 </div>
                 <div>
-                  <p style={{ color: '#8A8070' }}>Average offer per parcel</p>
-                  <p className="font-semibold" style={{ color: '#F5F0E8' }}>${Math.round(avgOffer).toLocaleString()}</p>
+                  <p style={{ color: '#6B5B8A' }}>Average offer per parcel</p>
+                  <p className="font-semibold" style={{ color: '#1A0A2E' }}>${Math.round(avgOffer).toLocaleString()}</p>
                 </div>
                 <div>
-                  <p style={{ color: '#8A8070' }}>ZIP breakdown</p>
+                  <p style={{ color: '#6B5B8A' }}>ZIP breakdown</p>
                   <div className="flex flex-wrap gap-1.5 mt-1">
                     {Array.from(zipBreakdown.entries()).sort((a, b) => b[1] - a[1]).map(([zip, n], i) => (
                       <span key={zip} className="badge text-[10px]" style={{ background: `${ZIP_COLORS[i % ZIP_COLORS.length]}20`, color: ZIP_COLORS[i % ZIP_COLORS.length], border: `1px solid ${ZIP_COLORS[i % ZIP_COLORS.length]}55` }}>
@@ -419,12 +421,12 @@ export default function MailingList() {
                   </div>
                 </div>
                 <div>
-                  <p style={{ color: '#8A8070' }}>Offer price range</p>
-                  <p className="font-semibold" style={{ color: '#F5F0E8' }}>
+                  <p style={{ color: '#6B5B8A' }}>Offer price range</p>
+                  <p className="font-semibold" style={{ color: '#1A0A2E' }}>
                     ${Math.round(offerMin).toLocaleString()} – ${Math.round(offerMax95).toLocaleString()}
                   </p>
                   {hasOutlier && (
-                    <p className="text-xs mt-0.5" style={{ color: '#8A8070' }}>
+                    <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>
                       95th pct cap · actual max ${Math.round(offerMax).toLocaleString()}
                     </p>
                   )}
@@ -434,44 +436,44 @@ export default function MailingList() {
 
             {/* Dedup stats */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-              <DedupeCard label="Before Dedup" value={mailingPreview.total_before_dedup.toLocaleString()} accent="#8A8070" />
-              <DedupeCard label="After Dedup"value={mailingPreview.total_after_dedup.toLocaleString()} accent="#10b981" highlight />
-              <DedupeCard label="Foreign Removed" value={mailingPreview.filtered_foreign.toLocaleString()} accent="#f59e0b" />
+              <DedupeCard label="Before Dedup" value={mailingPreview.total_before_dedup.toLocaleString()} accent="#6B5B8A" />
+              <DedupeCard label="After Dedup"value={mailingPreview.total_after_dedup.toLocaleString()} accent="#2D7A4F" highlight />
+              <DedupeCard label="Foreign Removed" value={mailingPreview.filtered_foreign.toLocaleString()} accent="#D5A940" />
               <DedupeCard
                 label="Total Removed"
                 value={(mailingPreview.total_before_dedup - mailingPreview.total_after_dedup).toLocaleString()}
-                accent="#8A8070"
+                accent="#6B5B8A"
               />
             </div>
 
             {/* Export buttons row */}
             <div className="card mb-6">
-              <h2 className="text-sm font-semibold mb-4" style={{ color: '#F5F0E8' }}>Export Options</h2>
+              <h2 className="text-sm font-semibold mb-4" style={{ color: '#1A0A2E' }}>Export Options</h2>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <ExportOption
                   title="Full List"
                   subtitle={`All ${afterDedup.toLocaleString()} deduplicated records`}
                   badge="ALL"
-                  badgeColor="#C9A84C"
+                  badgeColor="#D5A940"
                   href={fullUrl}
                 />
                 <ExportOption
                   title="High Confidence Only"
                   subtitle={`${highConfCount.toLocaleString()} records with 3+ comp matches`}
                   badge="3+ COMPS"
-                  badgeColor="#10b981"
+                  badgeColor="#2D7A4F"
                   href={highConfUrl}
                 />
                 <ExportOption
                   title="Top 500 Records"
                   subtitle="Best-scored parcels, ideal for first mailer"
                   badge="TOP 500"
-                  badgeColor="#f59e0b"
+                  badgeColor="#D5A940"
                   href={top500Url}
                 />
               </div>
               {flaggedRows.length > 0 && (
-                <div className="mt-4 pt-4" style={{ borderTop: '1px solid rgba(201,168,76,0.12)' }}>
+                <div className="mt-4 pt-4" style={{ borderTop: '1px solid #E8E0F0' }}>
                   <button className="btn-secondary text-sm" onClick={() => downloadRows(flaggedRows, `flagged-${flaggedRows.length}`)}>
                     Download Flagged ({flaggedRows.length})
                   </button>
@@ -482,9 +484,9 @@ export default function MailingList() {
             {/* Table */}
             <div className="card">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="font-semibold" style={{ color: '#F5F0E8' }}>
+                <h2 className="font-semibold" style={{ color: '#1A0A2E' }}>
                   Ready to Mail{' '}
-                  <span className="text-sm font-normal" style={{ color: '#8A8070' }}>
+                  <span className="text-sm font-normal" style={{ color: '#6B5B8A' }}>
                     ({mailingPreview.total_after_dedup.toLocaleString()} records)
                   </span>
                 </h2>
@@ -511,8 +513,8 @@ export default function MailingList() {
             <div className="mt-6 card">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="font-semibold" style={{ color: '#F5F0E8' }}>Save as Campaign</h2>
-                  <p className="text-xs mt-0.5" style={{ color: '#8A8070' }}>
+                  <h2 className="font-semibold" style={{ color: '#1A0A2E' }}>Save as Campaign</h2>
+                  <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>
                     Store this run with a name so you can re-download it anytime
                   </p>
                 </div>
@@ -527,7 +529,7 @@ export default function MailingList() {
               </div>
 
               {showSavePanel && (
-                <div className="mt-4 pt-4" style={{ borderTop: '1px solid rgba(201,168,76,0.12)' }}>
+                <div className="mt-4 pt-4" style={{ borderTop: '1px solid #E8E0F0' }}>
                   <div className="flex gap-3">
                     <input
                       type="text"
@@ -554,7 +556,7 @@ export default function MailingList() {
                       Cancel
                     </button>
                   </div>
-                  {saveError && <p className="text-sm mt-2" style={{ color: '#f87171' }}>{saveError}</p>}
+                  {saveError && <p className="text-sm mt-2" style={{ color: '#dc2626' }}>{saveError}</p>}
                 </div>
               )}
             </div>
@@ -602,12 +604,12 @@ function DedupeCard({ label, value, accent, highlight = false }: {
     <div
       className="rounded-xl p-4"
       style={{
-        background: highlight ? `${accent}14` : '#0d1421',
-        border: `1px solid ${highlight ? `${accent}40` : 'rgba(201,168,76,0.12)'}`,
+        background: highlight ? `${accent}14` : '#F8F6FB',
+        border: `1px solid ${highlight ? `${accent}40` : '#E8E0F0'}`,
       }}
     >
-      <p className="text-xs uppercase tracking-wider mb-1" style={{ color: '#8A8070' }}>{label}</p>
-      <p className="text-2xl font-bold" style={{ color: highlight ? accent : '#F5F0E8' }}>{value}</p>
+      <p className="text-xs uppercase tracking-wider mb-1" style={{ color: '#6B5B8A' }}>{label}</p>
+      <p className="text-2xl font-bold" style={{ color: highlight ? accent : '#1A0A2E' }}>{value}</p>
     </div>
   )
 }
@@ -620,12 +622,12 @@ function ExportOption({ title, subtitle, badge, badgeColor, href }: {
       href={href}
       download
       className="no-underline block rounded-xl p-4 transition-all"
-      style={{ background: '#0d1421', border: '1px solid rgba(201,168,76,0.12)' }}
+      style={{ background: '#FFFFFF', border: '1.5px solid #E8E0F0' }}
       onMouseEnter={(e) => (e.currentTarget.style.borderColor = badgeColor)}
-      onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'rgba(201,168,76,0.12)')}
+      onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#E8E0F0')}
     >
       <div className="flex items-center justify-between mb-2">
-        <p className="text-sm font-semibold" style={{ color: '#F5F0E8' }}>{title}</p>
+        <p className="text-sm font-semibold" style={{ color: '#1A0A2E' }}>{title}</p>
         <span
           className="text-[10px] font-bold px-2 py-0.5 rounded-full"
           style={{ background: `${badgeColor}20`, color: badgeColor, border: `1px solid ${badgeColor}40` }}
@@ -633,7 +635,7 @@ function ExportOption({ title, subtitle, badge, badgeColor, href }: {
           {badge}
         </span>
       </div>
-      <p className="text-xs" style={{ color: '#8A8070' }}>{subtitle}</p>
+      <p className="text-xs" style={{ color: '#6B5B8A' }}>{subtitle}</p>
       <div className="mt-3 flex items-center gap-1 text-xs font-medium" style={{ color: badgeColor }}>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -650,7 +652,7 @@ function ScoreBadge({ score }: { score: number }) {
   return (
     <span
       className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold text-white score-badge-${score}`}
-      style={{ background: score === 4 ? '#0891b2' : score === 3 ? '#d97706' : score === 2 ? '#ea580c' : score === 1 ? '#dc2626' : '#059669' }}
+      style={{ background: score === 4 ? '#5C2977' : score === 3 ? '#D5A940' : score === 2 ? '#C06820' : score === 1 ? '#B03030' : '#2D7A4F' }}
     >
       {score}
     </span>

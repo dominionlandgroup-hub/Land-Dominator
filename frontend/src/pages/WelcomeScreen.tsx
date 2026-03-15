@@ -5,27 +5,27 @@ export default function WelcomeScreen({ contextualMessage }: { contextualMessage
   const { setCurrentPage } = useApp()
 
   return (
-    <div className="flex items-center justify-center min-h-screen p-8" style={{ background: '#080808' }}>
+    <div className="flex items-center justify-center min-h-screen p-8" style={{ background: '#F8F6FB' }}>
       <div className="max-w-2xl w-full">
         {/* Hero */}
         <div className="text-center mb-12">
           <div
             className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6"
-            style={{ background: 'linear-gradient(135deg, #C9A84C 0%, #A07828 100%)' }}
+            style={{ background: 'linear-gradient(135deg, #5C2977 0%, #8B4DB8 100%)' }}
           >
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5">
               <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
               <polyline points="9 22 9 12 15 12 15 22"/>
             </svg>
           </div>
-          <h1 className="text-3xl font-bold mb-3" style={{ color: '#f9fafb' }}>
-            Welcome to Land Parcel Analysis Tool
+          <h1 className="text-3xl font-bold mb-3" style={{ color: '#1A0A2E' }}>
+            Welcome to Land Specialists
           </h1>
-          <p className="text-lg" style={{ color: '#8A8070' }}>
+          <p className="text-lg" style={{ color: '#6B5B8A' }}>
             Follow 3 steps to generate your first mailing list
           </p>
           {contextualMessage && (
-            <p className="text-sm mt-3" style={{ color: '#C9A84C' }}>{contextualMessage}</p>
+            <p className="text-sm mt-3" style={{ color: '#5C2977' }}>{contextualMessage}</p>
           )}
         </div>
 
@@ -42,7 +42,7 @@ export default function WelcomeScreen({ contextualMessage }: { contextualMessage
             }
             title="Upload Sold Comps"
             description="Start by uploading your Land Portal sold comps CSV"
-            accent="#C9A84C"
+            accent="#5C2977"
           />
           <StepCard
             number={2}
@@ -54,7 +54,7 @@ export default function WelcomeScreen({ contextualMessage }: { contextualMessage
             }
             title="Analyze and Match"
             description="Review ZIP performance and match against your target list"
-            accent="#C9A84C"
+            accent="#5C2977"
           />
           <StepCard
             number={3}
@@ -69,13 +69,13 @@ export default function WelcomeScreen({ contextualMessage }: { contextualMessage
             }
             title="Download Mailing List"
             description="Export a clean deduplicated list with suggested offer prices"
-            accent="#10b981"
+            accent="#2D7A4F"
           />
         </div>
 
         {/* Features */}
-        <div className="rounded-2xl p-6 mb-8" style={{ background: '#161616', border: '1px solid rgba(201,168,76,0.12)' }}>
-          <p className="text-xs font-semibold uppercase tracking-wider mb-4" style={{ color: '#8A8070' }}>
+        <div className="rounded-2xl p-6 mb-8" style={{ background: '#FFFFFF', border: '1px solid #E8E0F0' }}>
+          <p className="text-xs font-semibold uppercase tracking-wider mb-4" style={{ color: '#6B5B8A' }}>
             What you get
           </p>
           <div className="grid grid-cols-2 gap-3">
@@ -88,10 +88,10 @@ export default function WelcomeScreen({ contextualMessage }: { contextualMessage
               'Campaign history with re-download',
             ].map((f) => (
               <div key={f} className="flex items-center gap-2">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2.5">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2D7A4F" strokeWidth="2.5">
                   <polyline points="20 6 9 17 4 12"/>
                 </svg>
-                <span className="text-sm" style={{ color: '#D1CABD' }}>{f}</span>
+                <span className="text-sm" style={{ color: '#3D2B5E' }}>{f}</span>
               </div>
             ))}
           </div>
@@ -121,7 +121,7 @@ function StepCard({ number, icon, title, description, accent }: {
   return (
     <div
       className="rounded-2xl p-5 relative"
-      style={{ background: '#161616', border: '1px solid rgba(201,168,76,0.12)' }}
+      style={{ background: '#FFFFFF', border: '1px solid #E8E0F0' }}
     >
       <div
         className="absolute -top-3 -left-1 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
@@ -135,8 +135,8 @@ function StepCard({ number, icon, title, description, accent }: {
       >
         {icon}
       </div>
-      <h3 className="font-semibold mb-1.5" style={{ color: '#f9fafb' }}>{title}</h3>
-      <p className="text-sm leading-relaxed" style={{ color: '#8A8070' }}>{description}</p>
+      <h3 className="font-semibold mb-1.5" style={{ color: '#1A0A2E' }}>{title}</h3>
+      <p className="text-sm leading-relaxed" style={{ color: '#6B5B8A' }}>{description}</p>
     </div>
   )
 }

@@ -109,7 +109,8 @@ export default function DataTable<T extends object>({
           {searchable && (
             <div className="relative flex-1 max-w-xs">
               <svg
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"
+                className="absolute left-3 top-1/2 -translate-y-1/2"
+                style={{ color: '#9B8AAE' }}
                 width="14" height="14" viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" strokeWidth="2"
               >
@@ -125,7 +126,8 @@ export default function DataTable<T extends object>({
               />
               {search && (
                 <button
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2"
+                  style={{ color: '#9B8AAE' }}
                   onClick={() => handleSearchChange('')}
                 >
                   ×
@@ -134,7 +136,7 @@ export default function DataTable<T extends object>({
             </div>
           )}
           {search && (
-            <span className="text-xs text-gray-400">
+            <span className="text-xs" style={{ color: '#6B5B8A' }}>
               {sorted.length.toLocaleString()} of {data.length.toLocaleString()}
             </span>
           )}
@@ -157,9 +159,9 @@ export default function DataTable<T extends object>({
             {showColToggle && (
               <div
                 className="absolute right-0 top-full mt-1 rounded-lg p-3 z-50 shadow-xl min-w-[180px]"
-                style={{ background: '#161616', border: '1px solid rgba(201,168,76,0.15)' }}
+                style={{ background: '#FFFFFF', border: '1px solid #E8E0F0' }}
               >
-                <div className="text-xs mb-2 font-medium uppercase tracking-wider" style={{ color: '#8A8070' }}>Toggle Columns</div>
+                <div className="text-xs mb-2 font-medium uppercase tracking-wider" style={{ color: '#6B5B8A' }}>Toggle Columns</div>
                 <div className="space-y-1 max-h-64 overflow-y-auto">
                   {columns.map((col) => (
                     <label key={col.key} className="flex items-center gap-2 cursor-pointer py-0.5">
@@ -168,15 +170,15 @@ export default function DataTable<T extends object>({
                         checked={!hiddenCols.has(col.key)}
                         onChange={() => toggleCol(col.key)}
                         className="w-3.5 h-3.5"
-                        style={{ accentColor: '#C9A84C' }}
+                        style={{ accentColor: '#5C2977' }}
                       />
-                      <span className="text-xs" style={{ color: '#D1CABD' }}>{col.header}</span>
+                      <span className="text-xs" style={{ color: '#3D2B5E' }}>{col.header}</span>
                     </label>
                   ))}
                 </div>
                 <button
                   className="text-xs mt-2"
-                  style={{ color: '#C9A84C' }}
+                  style={{ color: '#5C2977' }}
                   onClick={() => setHiddenCols(new Set())}
                 >
                   Show all
@@ -188,12 +190,12 @@ export default function DataTable<T extends object>({
       )}
 
       {data.length === 0 ? (
-        <div className="text-center py-12 text-gray-500 text-sm">{emptyMessage}</div>
+        <div className="text-center py-12 text-sm" style={{ color: '#6B5B8A' }}>{emptyMessage}</div>
       ) : (
         <>
-          <div className="overflow-x-auto rounded-lg" style={{ border: '1px solid rgba(201,168,76,0.12)' }}>
+          <div className="overflow-x-auto rounded-lg" style={{ border: '1px solid #E8E0F0' }}>
             <table className="w-full text-sm min-w-max">
-              <thead className="sticky top-0 z-10" style={{ background: '#0d1421', borderBottom: '2px solid rgba(201,168,76,0.2)' }}>
+              <thead className="sticky top-0 z-10" style={{ background: '#F0EBF8', borderBottom: '2px solid #D4B8E8' }}>
                 <tr>
                   {visibleCols.map((col) => (
                     <th
@@ -204,13 +206,13 @@ export default function DataTable<T extends object>({
                         ${col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : ''}
                         ${col.width ?? ''}
                       `}
-                      style={{ color: sortKey === col.key ? '#C9A84C' : '#8A8070' }}
+                      style={{ color: sortKey === col.key ? '#5C2977' : '#3D2B5E' }}
                       onClick={() => col.sortable && handleSort(String(col.key))}
                     >
                       <span className="inline-flex items-center gap-1">
                         {col.header}
                         {col.sortable && (
-                          <span style={{ color: sortKey === String(col.key) ? '#C9A84C' : '#3A3025' }}>
+                          <span style={{ color: sortKey === String(col.key) ? '#5C2977' : '#C4A8D8' }}>
                             {sortKey === String(col.key)
                               ? sortDir === 'asc' ? '↑' : '↓'
                               : '↕'}
@@ -221,12 +223,12 @@ export default function DataTable<T extends object>({
                   ))}
                 </tr>
               </thead>
-              <tbody style={{ background: '#161616' }}>
+              <tbody style={{ background: '#FFFFFF' }}>
                 {pageData.map((row, i) => (
                   <tr
                     key={i}
                     className="table-row-hover"
-                    style={{ borderBottom: '1px solid rgba(201,168,76,0.06)', background: i % 2 === 1 ? 'rgba(255,255,255,0.02)' : undefined }}
+                    style={{ borderBottom: '1px solid rgba(92,41,119,0.06)', background: i % 2 === 1 ? '#FDFBFF' : undefined }}
                   >
                     {visibleCols.map((col) => {
                       const val = (row as Record<string, unknown>)[col.key]
@@ -237,12 +239,12 @@ export default function DataTable<T extends object>({
                             px-4 py-2.5 whitespace-nowrap
                             ${col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : ''}
                           `}
-                          style={{ color: '#D1CABD' }}
+                          style={{ color: '#3D2B5E' }}
                         >
                           {col.render
                             ? col.render(val as unknown, row)
                             : val == null
-                            ? <span style={{ color: '#3A3025' }}>—</span>
+                            ? <span style={{ color: '#9B8AAE' }}>—</span>
                             : String(val)}
                         </td>
                       )
@@ -254,15 +256,15 @@ export default function DataTable<T extends object>({
           </div>
 
           {/* Pagination */}
-          <div className="flex items-center justify-between text-xs px-1" style={{ color: '#8A8070' }}>
+          <div className="flex items-center justify-between text-xs px-1" style={{ color: '#6B5B8A' }}>
             <span>
               Showing{' '}
-              <strong style={{ color: '#F5F0E8' }}>{(page * pageSize + 1).toLocaleString()}</strong>
+              <strong style={{ color: '#1A0A2E' }}>{(page * pageSize + 1).toLocaleString()}</strong>
               –
-              <strong style={{ color: '#F5F0E8' }}>
+              <strong style={{ color: '#1A0A2E' }}>
                 {Math.min((page + 1) * pageSize, sorted.length).toLocaleString()}
               </strong>{' '}
-              of <strong style={{ color: '#F5F0E8' }}>{sorted.length.toLocaleString()}</strong> rows
+              of <strong style={{ color: '#1A0A2E' }}>{sorted.length.toLocaleString()}</strong> rows
             </span>
             {totalPages > 1 && (
               <div className="flex items-center gap-1">
@@ -270,35 +272,35 @@ export default function DataTable<T extends object>({
                   onClick={() => setPage(0)}
                   disabled={page === 0}
                   className="px-2 py-1 rounded disabled:opacity-30 transition-colors"
-                  style={{ color: '#8A8070' }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(201,168,76,0.1)')}
+                  style={{ color: '#6B5B8A' }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(92,41,119,0.06)')}
                   onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                 >«</button>
                 <button
                   onClick={() => setPage((p) => Math.max(0, p - 1))}
                   disabled={page === 0}
                   className="px-2.5 py-1 rounded disabled:opacity-30 transition-colors"
-                  style={{ color: '#8A8070' }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(201,168,76,0.1)')}
+                  style={{ color: '#6B5B8A' }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(92,41,119,0.06)')}
                   onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                 >‹ Prev</button>
-                <span className="px-3 py-1 rounded" style={{ background: '#252015', color: '#D1CABD' }}>
+                <span className="px-3 py-1 rounded" style={{ background: '#F0EBF8', color: '#1A0A2E' }}>
                   {page + 1} / {totalPages}
                 </span>
                 <button
                   onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
                   disabled={page >= totalPages - 1}
                   className="px-2.5 py-1 rounded disabled:opacity-30 transition-colors"
-                  style={{ color: '#8A8070' }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(201,168,76,0.1)')}
+                  style={{ color: '#6B5B8A' }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(92,41,119,0.06)')}
                   onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                 >Next ›</button>
                 <button
                   onClick={() => setPage(totalPages - 1)}
                   disabled={page >= totalPages - 1}
                   className="px-2 py-1 rounded disabled:opacity-30 transition-colors"
-                  style={{ color: '#8A8070' }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(201,168,76,0.1)')}
+                  style={{ color: '#6B5B8A' }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(92,41,119,0.06)')}
                   onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                 >»</button>
               </div>

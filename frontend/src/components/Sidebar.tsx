@@ -85,19 +85,19 @@ export default function Sidebar() {
   }
 
   return (
-    <aside className="w-64 min-h-screen flex flex-col shrink-0" style={{ background: '#060606', borderRight: '1px solid rgba(201,168,76,0.12)' }}>
+    <aside className="w-64 min-h-screen flex flex-col shrink-0" style={{ background: '#3D1A5C', borderRight: '1px solid #5C2977' }}>
       {/* Logo */}
-      <div className="px-5 py-5" style={{ borderBottom: '1px solid rgba(201,168,76,0.12)' }}>
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #C9A84C 0%, #A07828 100%)' }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#080808" strokeWidth="2.5">
+      <div className="px-5 py-5" style={{ borderBottom: '1px solid rgba(213,169,64,0.2)' }}>
+        <div className="flex items-center gap-3" style={{ background: '#2A0F42' }}>
+          <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #5C2977 0%, #3D1A55 100%)' }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#D5A940" strokeWidth="2.5">
               <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
               <polyline points="9 22 9 12 15 12 15 22"/>
             </svg>
           </div>
           <div>
-            <div className="text-sm font-semibold leading-tight" style={{ color: '#F5F0E8' }}>Land Parcel</div>
-            <div className="text-xs" style={{ color: '#8A8070' }}>Analysis Tool</div>
+            <div className="text-sm font-semibold leading-tight" style={{ color: '#E8D5F5' }}>Land Specialists</div>
+            <div className="text-xs" style={{ color: '#9B8AAE' }}>Analysis Tool</div>
           </div>
         </div>
       </div>
@@ -117,21 +117,21 @@ export default function Sidebar() {
               disabled={locked}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-150 relative"
               style={{
-                background: active ? 'linear-gradient(90deg, rgba(59,130,246,0.12) 0%, transparent 100%)' : 'transparent',
-                color: locked ? '#3A3025' : active ? '#93c5fd' : complete ? '#D1CABD' : '#8A8070',
+                background: active ? 'linear-gradient(90deg, rgba(213,169,64,0.2) 0%, transparent 100%)' : 'transparent',
+                color: locked ? '#5C2977' : active ? '#D5A940' : complete ? '#E8D5F5' : '#E8D5F5',
                 cursor: locked ? 'not-allowed' : 'pointer',
-                borderLeft: active ? '3px solid #3b82f6' : '3px solid transparent',
+                borderLeft: active ? '3px solid #D5A940' : '3px solid transparent',
               }}
               onMouseEnter={(e) => {
                 if (!locked && !active) {
-                  (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)'
-                  ;(e.currentTarget as HTMLElement).style.color = '#e5e7eb'
+                  (e.currentTarget as HTMLElement).style.background = 'rgba(213,169,64,0.12)'
+                  ;(e.currentTarget as HTMLElement).style.color = '#E8D5F5'
                 }
               }}
               onMouseLeave={(e) => {
                 if (!locked && !active) {
                   (e.currentTarget as HTMLElement).style.background = 'transparent'
-                  ;(e.currentTarget as HTMLElement).style.color = complete ? '#D1CABD' : '#8A8070'
+                  ;(e.currentTarget as HTMLElement).style.color = complete ? '#E8D5F5' : '#E8D5F5'
                 }
               }}
             >
@@ -140,14 +140,14 @@ export default function Sidebar() {
                 className="flex-none w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold"
                 style={{
                   background: active
-                    ? '#C9A84C'
+                    ? '#D5A940'
                     : complete
-                    ? '#10b981'
+                    ? '#D5A940'
                     : locked
-                    ? '#1A1510'
-                    : '#252015',
-                  color: active ? '#080808' : complete ? '#000' : locked ? '#3A3025' : '#8A8070',
-                  boxShadow: active ? '0 0 0 3px rgba(59,130,246,0.25)' : 'none',
+                    ? '#2A0F42'
+                    : 'rgba(232,213,245,0.15)',
+                  color: active ? '#3D1A5C' : complete ? '#3D1A5C' : locked ? '#5C2977' : 'rgba(232,213,245,0.4)',
+                  boxShadow: active ? '0 0 0 3px rgba(213,169,64,0.35)' : 'none',
                 }}
               >
                 {complete ? <IconCheck /> : item.step}
@@ -164,7 +164,7 @@ export default function Sidebar() {
       </nav>
 
       {/* Status footer */}
-      <div className="p-4 space-y-2" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+      <div className="p-4 space-y-2" style={{ borderTop: '1px solid rgba(213,169,64,0.2)' }}>
         <StatusRow
           label="Comps"
           value={compsStats ? `${compsStats.total_rows.toLocaleString()} rows` : 'Not loaded'}
@@ -188,13 +188,13 @@ export default function Sidebar() {
 function StatusRow({ label, value, active }: { label: string; value: string; active: boolean }) {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-xs" style={{ color: '#8A8070' }}>{label}</span>
+      <span className="text-xs" style={{ color: '#9B8AAE' }}>{label}</span>
       <span
         className="text-xs px-2 py-0.5 rounded-full"
         style={
           active
-            ? { background: 'rgba(16,185,129,0.12)', color: '#34d399', border: '1px solid rgba(16,185,129,0.25)', boxShadow: '0 0 8px rgba(16,185,129,0.25)' }
-            : { background: '#111008', color: '#8A8070', border: '1px solid rgba(255,255,255,0.06)' }
+            ? { background: 'rgba(213,169,64,0.15)', color: '#D5A940', border: '1px solid rgba(213,169,64,0.3)' }
+            : { background: '#2A0F42', color: '#9B8AAE', border: '1px solid rgba(232,213,245,0.1)' }
         }
       >
         {value}

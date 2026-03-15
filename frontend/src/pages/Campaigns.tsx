@@ -125,8 +125,8 @@ export default function Campaigns() {
       {/* Page header */}
       <div className="page-header">
         <div>
-          <h1 className="text-lg font-semibold" style={{ color: '#F5F0E8' }}>Campaigns</h1>
-          <p className="text-xs mt-0.5" style={{ color: '#8A8070' }}>
+          <h1 className="text-lg font-semibold" style={{ color: '#1A0A2E' }}>Campaigns</h1>
+          <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>
             {campaigns.length} savedcampaign{campaigns.length !== 1 ? 's' : ''} · Re-download CSVs anytime
           </p>
         </div>
@@ -153,13 +153,13 @@ export default function Campaigns() {
         </div>
       </div>
 
-      <div className="p-8 max-w-5xl">
+      <div className="p-8 max-w-5xl mx-auto w-full">
         {/* Save current run */}
         {matchResult ? (
           <div className="card mb-6">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="font-semibold" style={{ color: '#F5F0E8' }}>Save Current Run</h2>
-              <span className="text-xs px-2.5 py-1 rounded-full" style={{ background: 'rgba(201,168,76,0.12)', color: '#C9A84C', border: '1px solid rgba(201,168,76,0.25)' }}>
+              <h2 className="font-semibold" style={{ color: '#1A0A2E' }}>Save Current Run</h2>
+              <span className="text-xs px-2.5 py-1 rounded-full" style={{ background: 'rgba(92,41,119,0.08)', color: '#5C2977', border: '1px solid rgba(92,41,119,0.2)' }}>
                 {matchResult.matched_count.toLocaleString()} matched parcels
               </span>
             </div>
@@ -182,9 +182,9 @@ export default function Campaigns() {
                 {saving ? <><LoadingSpinner size="sm" /> Saving…</> : 'Save Campaign'}
               </button>
             </div>
-            {saveError && <p className="text-sm mt-2" style={{ color: '#f87171' }}>{saveError}</p>}
+            {saveError && <p className="text-sm mt-2" style={{ color: '#dc2626' }}>{saveError}</p>}
             {savedId && (
-              <p className="text-sm mt-2" style={{ color: '#34d399' }}>
+              <p className="text-sm mt-2" style={{ color: '#2D7A4F' }}>
                 Campaign saved successfully.
               </p>
             )}
@@ -192,17 +192,17 @@ export default function Campaigns() {
         ) : (
           <div
             className="rounded-xl px-5 py-4 mb-6 text-sm text-center"
-            style={{ background: '#0d1421', border: '1px dashed rgba(201,168,76,0.12)', color: '#8A8070' }}
+            style={{ background: '#F8F6FB', border: '1px dashed #E8E0F0', color: '#6B5B8A' }}
           >
             Run the matching engine to save a new campaign.{' '}
-            <button className="text-blue-400 hover:text-blue-300 underline" onClick={() => setCurrentPage('match-targets')}>
+            <button className="underline" style={{ color: '#5C2977' }} onClick={() => setCurrentPage('match-targets')}>
               Go to Match Targets →
             </button>
           </div>
         )}
 
         {error && (
-          <div className="rounded-xl px-5 py-4 mb-6 text-sm" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}>
+          <div className="rounded-xl px-5 py-4 mb-6 text-sm" style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.3)', color: '#dc2626' }}>
             {error}
           </div>
         )}
@@ -211,8 +211,8 @@ export default function Campaigns() {
         {showCompare && compareCampaigns.length === 2 && (
           <div className="card mb-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold" style={{ color: '#F5F0E8' }}>Campaign Comparison</h2>
-              <button className="text-xs" style={{ color: '#8A8070' }} onClick={() => setShowCompare(false)}>
+              <h2 className="font-semibold" style={{ color: '#1A0A2E' }}>Campaign Comparison</h2>
+              <button className="text-xs" style={{ color: '#6B5B8A' }} onClick={() => setShowCompare(false)}>
                 × Close
               </button>
             </div>
@@ -224,7 +224,7 @@ export default function Campaigns() {
           </div>
         )}
         {showCompare && compareCampaigns.length < 2 && (
-          <div className="rounded-xl px-5 py-4 mb-6 text-sm" style={{ background: '#0d1421', border: '1px solid rgba(201,168,76,0.12)', color: '#8A8070' }}>
+          <div className="rounded-xl px-5 py-4 mb-6 text-sm" style={{ background: '#F8F6FB', border: '1px solid #E8E0F0', color: '#6B5B8A' }}>
             Select 2 campaignsbelow to compare them side by side.
           </div>
         )}
@@ -235,7 +235,7 @@ export default function Campaigns() {
             <LoadingSpinner size="lg" label="Loading campaigns…" />
           </div>
         ) : campaigns.length === 0 ? (
-          <div className="text-center py-16" style={{ color: '#8A8070' }}>
+          <div className="text-center py-16" style={{ color: '#6B5B8A' }}>
             <svg className="mx-auto mb-4 opacity-30" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
             </svg>
@@ -329,8 +329,8 @@ function CampaignCard({
     <div
       className="rounded-xl p-5 transition-all"
       style={{
-        background: isNew ? 'rgba(16,185,129,0.05)' : '#161616',
-        border: `1px solid ${isNew ? 'rgba(16,185,129,0.3)' : isSelectedForCompare ? '#C9A84C' : 'rgba(201,168,76,0.12)'}`,
+        background: isNew ? 'rgba(45,122,79,0.04)' : '#FFFFFF',
+        border: `1px solid ${isNew ? 'rgba(45,122,79,0.2)' : isSelectedForCompare ? '#D5A940' : '#E8E0F0'}`,
       }}
     >
       {/* Top row: name + actions */}
@@ -355,36 +355,36 @@ function CampaignCard({
             </div>
           ) : (
             <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="font-semibold truncate" style={{ color: '#F5F0E8' }}>{camp.name}</h3>
+              <h3 className="font-semibold truncate" style={{ color: '#1A0A2E' }}>{camp.name}</h3>
               {isNew && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
-                  style={{ background: 'rgba(16,185,129,0.15)', color: '#34d399', border: '1px solid rgba(16,185,129,0.3)' }}>
+                  style={{ background: 'rgba(45,122,79,0.1)', color: '#2D7A4F', border: '1px solid rgba(45,122,79,0.2)' }}>
                   NEW
                 </span>
               )}
             </div>
           )}
-          <p className="text-xs mt-1" style={{ color: '#8A8070' }}>{formatDate(camp.created_at)}</p>
-          <p className="text-xs mt-2" style={{ color: '#C9A84C' }}>{filtersSummary}</p>
-          <p className="text-xs mt-1" style={{ color: '#34d399' }}>{offerSummary}</p>
+          <p className="text-xs mt-1" style={{ color: '#6B5B8A' }}>{formatDate(camp.created_at)}</p>
+          <p className="text-xs mt-2" style={{ color: '#5C2977' }}>{filtersSummary}</p>
+          <p className="text-xs mt-1" style={{ color: '#2D7A4F' }}>{offerSummary}</p>
         </div>
 
         {/* Stats */}
         <div className="flex items-center gap-5 flex-none">
           {camp.stats.mailing_list_count != null && (
             <div className="text-center">
-              <p className="font-bold text-sm" style={{ color: '#10b981' }}>
+              <p className="font-bold text-sm" style={{ color: '#2D7A4F' }}>
                 {Number(camp.stats.mailing_list_count).toLocaleString()}
               </p>
-              <p className="text-xs" style={{ color: '#8A8070' }}>mailing</p>
+              <p className="text-xs" style={{ color: '#6B5B8A' }}>mailing</p>
             </div>
           )}
           {camp.stats.matched_count != null && (
             <div className="text-center">
-              <p className="font-bold text-sm" style={{ color: '#C9A84C' }}>
+              <p className="font-bold text-sm" style={{ color: '#5C2977' }}>
                 {Number(camp.stats.matched_count).toLocaleString()}
               </p>
-              <p className="text-xs" style={{ color: '#8A8070' }}>matched</p>
+              <p className="text-xs" style={{ color: '#6B5B8A' }}>matched</p>
             </div>
           )}
         </div>
@@ -392,7 +392,7 @@ function CampaignCard({
 
       {/* Bottom row: action buttons */}
       {renamingId !== camp.id && (
-        <div className="flex items-center gap-2 mt-4 pt-3 flex-wrap" style={{ borderTop: '1px solid rgba(201,168,76,0.12)' }}>
+        <div className="flex items-center gap-2 mt-4 pt-3 flex-wrap" style={{ borderTop: '1px solid #E8E0F0' }}>
           {camp.has_output && (
             <a
               href={getCampaignDownloadUrl(camp.id)}
@@ -435,7 +435,7 @@ function CampaignCard({
           <button
             className="btn-secondary text-xs"
             onClick={onToggleCompare}
-            style={isSelectedForCompare ? { borderColor: '#C9A84C', color: '#C9A84C' } : {}}
+            style={isSelectedForCompare ? { borderColor: '#D5A940', color: '#D5A940' } : {}}
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="18" y1="20" x2="18" y2="10"/>
@@ -458,10 +458,10 @@ function CampaignCard({
 
           {deletingId === camp.id ? (
             <div className="flex items-center gap-1 ml-auto">
-              <span className="text-xs" style={{ color: '#f87171' }}>Delete permanently?</span>
+              <span className="text-xs" style={{ color: '#dc2626' }}>Delete permanently?</span>
               <button
                 className="text-xs px-2 py-1 rounded font-medium"
-                style={{ background: 'rgba(239,68,68,0.15)', color: '#f87171', border: '1px solid rgba(239,68,68,0.3)' }}
+                style={{ background: 'rgba(239,68,68,0.15)', color: '#dc2626', border: '1px solid rgba(239,68,68,0.3)' }}
                 onClick={onDeleteConfirm}
               >
                 Yes, delete
@@ -471,10 +471,10 @@ function CampaignCard({
           ) : (
             <button
               className="text-xs px-2.5 py-1.5 rounded-lg ml-auto transition-colors"
-              style={{ color: '#8A8070' }}
+              style={{ color: '#6B5B8A' }}
               onClick={onDeleteStart}
-              onMouseEnter={(e) => (e.currentTarget.style.color = '#f87171')}
-              onMouseLeave={(e) => (e.currentTarget.style.color = '#8A8070')}
+              onMouseEnter={(e) => (e.currentTarget.style.color = '#dc2626')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = '#6B5B8A')}
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polyline points="3 6 5 6 21 6"/>
@@ -496,7 +496,7 @@ function CampaignCard({
           onBlur={saveNotes}
           placeholder="Add notes, e.g. Sent to printer March 15"
         />
-        {savingNotes && <p className="text-[11px] mt-1" style={{ color: '#8A8070' }}>Saving notes…</p>}
+        {savingNotes && <p className="text-[11px] mt-1" style={{ color: '#6B5B8A' }}>Saving notes…</p>}
       </div>
     </div>
   )
@@ -509,37 +509,37 @@ function CompareCard({ campaign: camp, formatDate }: { campaign: Campaign; forma
 
   const statRows: { label: string; value: string; color?: string }[] = []
   if (camp.stats.matched_count != null)
-    statRows.push({ label: 'Matched Parcels', value: Number(camp.stats.matched_count).toLocaleString(), color: '#C9A84C' })
+    statRows.push({ label: 'Matched Parcels', value: Number(camp.stats.matched_count).toLocaleString(), color: '#5C2977' })
   if (camp.stats.mailing_list_count != null)
-    statRows.push({ label: 'Mailing List', value: Number(camp.stats.mailing_list_count).toLocaleString(), color: '#10b981' })
+    statRows.push({ label: 'Mailing List', value: Number(camp.stats.mailing_list_count).toLocaleString(), color: '#2D7A4F' })
 
   return (
-    <div className="rounded-xl p-4" style={{ background: '#0d1421', border: '1px solid rgba(201,168,76,0.12)' }}>
-      <h3 className="font-semibold mb-1 truncate" style={{ color: '#F5F0E8' }}>{camp.name}</h3>
-      <p className="text-xs mb-4" style={{ color: '#8A8070' }}>{formatDate(camp.created_at)}</p>
+    <div className="rounded-xl p-4" style={{ background: '#F8F6FB', border: '1px solid #E8E0F0' }}>
+      <h3 className="font-semibold mb-1 truncate" style={{ color: '#1A0A2E' }}>{camp.name}</h3>
+      <p className="text-xs mb-4" style={{ color: '#6B5B8A' }}>{formatDate(camp.created_at)}</p>
 
       {statRows.length > 0 && (
         <div className="space-y-2 mb-4">
           {statRows.map((row) => (
             <div key={row.label} className="flex justify-between items-center">
-              <span className="text-xs" style={{ color: '#8A8070' }}>{row.label}</span>
-              <span className="text-sm font-bold" style={{ color: row.color ?? '#F5F0E8' }}>{row.value}</span>
+              <span className="text-xs" style={{ color: '#6B5B8A' }}>{row.label}</span>
+              <span className="text-sm font-bold" style={{ color: row.color ?? '#3D2B5E' }}>{row.value}</span>
             </div>
           ))}
         </div>
       )}
 
       {filters && Object.keys(filters).length > 0 && (
-        <div style={{ borderTop: '1px solid rgba(201,168,76,0.12)', paddingTop: '12px' }}>
-          <p className="text-xs font-medium mb-2" style={{ color: '#8A8070' }}>Filter Settings</p>
+        <div style={{ borderTop: '1px solid #E8E0F0', paddingTop: '12px' }}>
+          <p className="text-xs font-medium mb-2" style={{ color: '#6B5B8A' }}>Filter Settings</p>
           <div className="space-y-1">
             {Object.entries(filters).slice(0, 8).map(([k, v]) => (
               v != null && v !== false && (
                 <div key={k} className="flex justify-between items-center">
-                  <span className="text-xs" style={{ color: '#8A8070' }}>
+                  <span className="text-xs" style={{ color: '#6B5B8A' }}>
                     {k.replace(/_/g, ' ')}
                   </span>
-                  <span className="text-xs font-medium" style={{ color: '#8A8070' }}>
+                  <span className="text-xs font-medium" style={{ color: '#6B5B8A' }}>
                     {String(v)}
                   </span>
                 </div>

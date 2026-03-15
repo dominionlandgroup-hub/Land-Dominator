@@ -3,9 +3,9 @@ import LoadingSpinner from './LoadingSpinner'
 import type { CompLocation } from '../types'
 
 const CHART_COLORS = [
-  '#3b82f6','#6366f1','#8b5cf6','#a855f7','#ec4899',
-  '#f59e0b','#10b981','#06b6d4','#f97316','#14b8a6',
-  '#84cc16','#e879f9','#ef4444','#0ea5e9','#d946ef',
+  '#5C2977','#8B4DB8','#D5A940','#7B3E99','#ec4899',
+  '#f59e0b','#2D7A4F','#A068C8','#f97316','#4CAF7A',
+  '#84cc16','#e879f9','#B03030','#3D1A5C','#d946ef',
 ]
 
 interface Props {
@@ -78,7 +78,7 @@ export default function CompMap({ comps, availableZips, visibleZips, onZipToggle
       const zipComps = safeComps.filter((c) => c.zip === zip)
       if (zipComps.length === 0) return
 
-      const color = zipColorMap[zip] || '#C9A84C'
+      const color = zipColorMap[zip] || '#D5A940'
 
       // Use markerClusterGroup if available, else fall back to layerGroup
       const group = L.markerClusterGroup
@@ -116,13 +116,13 @@ export default function CompMap({ comps, availableZips, visibleZips, onZipToggle
             weight: 0.5,
           })
           marker.bindPopup(
-            `<div style="font-family:Inter,sans-serif;font-size:12px;min-width:180px">
-              <div style="font-weight:600;color:#C9A84C;margin-bottom:6px">ZIP ${c.zip}</div>
-              ${c.apn ? `<div><span style="color:#8A8070">APN:</span> ${c.apn}</div>` : ''}
-              <div><span style="color:#8A8070">Sale Price:</span> <strong>$${Math.round(c.sale_price).toLocaleString()}</strong></div>
-              <div><span style="color:#8A8070">Lot Size:</span> ${c.lot_acres.toFixed(2)} acres</div>
-              <div><span style="color:#8A8070">Price/Acre:</span> $${Math.round(c.price_per_acre).toLocaleString()}</div>
-              ${c.sale_date ? `<div><span style="color:#8A8070">Sale Date:</span> ${c.sale_date}</div>` : ''}
+            `<div style="font-family:Montserrat,sans-serif;font-size:12px;min-width:180px">
+              <div style="font-weight:600;color:#D5A940;margin-bottom:6px">ZIP ${c.zip}</div>
+              ${c.apn ? `<div><span style="color:#6B5B8A">APN:</span> ${c.apn}</div>` : ''}
+              <div><span style="color:#6B5B8A">Sale Price:</span> <strong>$${Math.round(c.sale_price).toLocaleString()}</strong></div>
+              <div><span style="color:#6B5B8A">Lot Size:</span> ${c.lot_acres.toFixed(2)} acres</div>
+              <div><span style="color:#6B5B8A">Price/Acre:</span> $${Math.round(c.price_per_acre).toLocaleString()}</div>
+              ${c.sale_date ? `<div><span style="color:#6B5B8A">Sale Date:</span> ${c.sale_date}</div>` : ''}
             </div>`,
             { maxWidth: 220 }
           )
@@ -164,14 +164,14 @@ export default function CompMap({ comps, availableZips, visibleZips, onZipToggle
         blur: 15,
         maxZoom: 17,
         max: 1.0,
-        gradient: { 0.4: '#3b82f6', 0.65: '#8b5cf6', 1: '#f59e0b' },
+        gradient: { 0.4: '#5C2977', 0.65: '#8B4DB8', 1: '#D5A940' },
       }).addTo(mapRef.current)
     }
   }, [showHeatmap, safeComps, effectiveVisibleZips.join(',')])
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center" style={{ height: 500, background: '#0d1421', borderRadius: 12 }}>
+      <div className="flex items-center justify-center" style={{ height: 500, background: '#F0EBF8', borderRadius: 12 }}>
         <LoadingSpinner size="lg" label="Loading comp locations…" />
       </div>
     )
@@ -185,7 +185,7 @@ export default function CompMap({ comps, availableZips, visibleZips, onZipToggle
       {/* Map controls */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs" style={{ color: '#8A8070' }}>
+          <span className="text-xs" style={{ color: '#6B5B8A' }}>
             {withCoords.toLocaleString()} comp locations shown
           </span>
           {safeComps.length > 0 && safeComps.length >= 7999 && (
@@ -211,7 +211,7 @@ export default function CompMap({ comps, availableZips, visibleZips, onZipToggle
         {/* Map container */}
         <div
           ref={containerRef}
-          style={{ width: '100%', height: 500, borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(201,168,76,0.15)' }}
+          style={{ width: '100%', height: 500, borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(213,169,64,0.15)' }}
         />
 
         {/* Legend */}
@@ -219,12 +219,12 @@ export default function CompMap({ comps, availableZips, visibleZips, onZipToggle
           <div
             style={{
               position: 'absolute', top: 10, right: 10, zIndex: 1000,
-              background: 'rgba(13,20,33,0.9)', border: '1px solid rgba(201,168,76,0.2)',
+              background: 'rgba(255,255,255,0.95)', border: '1px solid #E8E0F0',
               borderRadius: 8, padding: '8px 12px', maxHeight: 220, overflowY: 'auto',
-              backdropFilter: 'blur(10px)',
+              boxShadow: '0 2px 12px rgba(92,41,119,0.1)',
             }}
           >
-            <p style={{ color: '#8A8070', fontSize: 10, fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>ZIP Legend</p>
+            <p style={{ color: '#6B5B8A', fontSize: 10, fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>ZIP Legend</p>
             {safeAvailableZips.map((zip) => (
               <div
                 key={zip}
@@ -232,8 +232,8 @@ export default function CompMap({ comps, availableZips, visibleZips, onZipToggle
                 style={{ opacity: effectiveVisibleZips.includes(zip) ? 1 : 0.35 }}
                 onClick={() => onZipToggle(zip)}
               >
-                <div style={{ width: 10, height: 10, borderRadius: '50%', background: zipColorMap[zip] || '#C9A84C', flexShrink: 0 }} />
-                <span style={{ fontSize: 11, color: '#F5F0E8' }}>{zip}</span>
+                <div style={{ width: 10, height: 10, borderRadius: '50%', background: zipColorMap[zip] || '#D5A940', flexShrink: 0 }} />
+                <span style={{ fontSize: 11, color: '#1A0A2E' }}>{zip}</span>
               </div>
             ))}
           </div>
@@ -245,7 +245,7 @@ export default function CompMap({ comps, availableZips, visibleZips, onZipToggle
           className="flex items-center justify-center"
           style={{ marginTop: -500, height: 500, pointerEvents: 'none' }}
         >
-          <p style={{ color: '#8A8070', fontSize: 14 }}>Map library failed to load. Refresh the page to retry.</p>
+          <p style={{ color: '#6B5B8A', fontSize: 14 }}>Map library failed to load. Refresh the page to retry.</p>
         </div>
       )}
 
@@ -254,7 +254,7 @@ export default function CompMap({ comps, availableZips, visibleZips, onZipToggle
           className="flex items-center justify-center"
           style={{ marginTop: -500, height: 500, pointerEvents: 'none' }}
         >
-          <p style={{ color: '#8A8070', fontSize: 14 }}>No comp locations available (CSV may be missing Latitude/Longitude columns)</p>
+          <p style={{ color: '#6B5B8A', fontSize: 14 }}>No comp locations available (CSV may be missing Latitude/Longitude columns)</p>
         </div>
       )}
     </div>

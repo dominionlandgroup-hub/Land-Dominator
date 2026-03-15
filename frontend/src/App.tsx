@@ -36,9 +36,9 @@ function PageContent() {
 export default function App() {
   return (
     <AppProvider>
-      <div className="flex min-h-screen bg-[#050c1a]">
+      <div className="flex min-h-screen" style={{ background: '#F8F6FB' }}>
         <Sidebar />
-        <main className="flex-1 overflow-auto">
+        <main className="flex-1 overflow-auto" style={{ background: '#F8F6FB' }}>
           <PageContent />
         </main>
       </div>

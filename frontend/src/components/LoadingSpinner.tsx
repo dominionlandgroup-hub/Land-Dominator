@@ -11,9 +11,10 @@ export default function LoadingSpinner({ size = 'md', label }: Props) {
   return (
     <div className="flex flex-col items-center gap-3">
       <div
-        className={`${dim} rounded-full border-2 border-blue-800 border-t-blue-400 animate-spin`}
+        className={`${dim} rounded-full animate-spin`}
+        style={{ border: '2px solid #E8E0F0', borderTopColor: '#5C2977' }}
       />
-      {label && <p className="text-slate-400 text-sm">{label}</p>}
+      {label && <p className="text-sm" style={{ color: '#6B5B8A' }}>{label}</p>}
     </div>
   )
 }

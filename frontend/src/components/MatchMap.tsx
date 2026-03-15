@@ -3,12 +3,12 @@ import type { MatchedParcel, CompLocation } from '../types'
 import { getConfidence } from '../types'
 
 const SCORE_COLORS: Record<number, string> = {
-  5: '#10b981',
+  5: '#2D7A4F',
   4: '#06b6d4',
   3: '#f59e0b',
   2: '#f97316',
   1: '#ef4444',
-  0: '#8A8070',
+  0: '#6B5B8A',
 }
 
 interface Props {
@@ -73,8 +73,8 @@ export default function MatchMap({ targets, comps = [], radiusMiles = 10, onSele
     const markers = comps.slice(0, 3000).map((c) =>
       L.circleMarker([c.lat, c.lng], {
         radius: 3,
-        color: '#6b7280',
-        fillColor: '#6b7280',
+        color: '#9B8AAE',
+        fillColor: '#9B8AAE',
         fillOpacity: 0.3,
         weight: 0,
       })
@@ -136,13 +136,13 @@ export default function MatchMap({ targets, comps = [], radiusMiles = 10, onSele
           weight: 1.5,
         })
         m.bindPopup(
-          `<div style="font-family:Inter,sans-serif;font-size:12px;min-width:190px">
+          `<div style="font-family:Montserrat,sans-serif;font-size:12px;min-width:190px">
             <div style="font-weight:700;margin-bottom:6px;color:${color}">${t.owner_name || 'Unknown Owner'}</div>
-            <div><span style="color:#8A8070">APN:</span> <span style="font-family:monospace">${t.apn}</span></div>
-            <div><span style="color:#8A8070">Acres:</span> ${t.lot_acres?.toFixed(2) ?? '—'}</div>
-            <div><span style="color:#8A8070">Score:</span> <strong style="color:${color}">${t.match_score}/5</strong></div>
-            <div><span style="color:#8A8070">Confidence:</span> <strong>${conf}</strong> (${t.matched_comp_count} comps)</div>
-            ${t.suggested_offer_mid != null ? `<div><span style="color:#8A8070">Offer Mid:</span> <strong style="color:#10b981">$${Math.round(t.suggested_offer_mid).toLocaleString()}</strong></div>` : ''}
+            <div><span style="color:#6B5B8A">APN:</span> <span style="font-family:monospace">${t.apn}</span></div>
+            <div><span style="color:#6B5B8A">Acres:</span> ${t.lot_acres?.toFixed(2) ?? '—'}</div>
+            <div><span style="color:#6B5B8A">Score:</span> <strong style="color:${color}">${t.match_score}/5</strong></div>
+            <div><span style="color:#6B5B8A">Confidence:</span> <strong>${conf}</strong> (${t.matched_comp_count} comps)</div>
+            ${t.suggested_offer_mid != null ? `<div><span style="color:#6B5B8A">Offer Mid:</span> <strong style="color:#2D7A4F">$${Math.round(t.suggested_offer_mid).toLocaleString()}</strong></div>` : ''}
           </div>`,
           { maxWidth: 240 }
         )
@@ -170,7 +170,7 @@ export default function MatchMap({ targets, comps = [], radiusMiles = 10, onSele
         radiusCircleRef.current?.remove()
         radiusCircleRef.current = L.circle([centLat, centLon], {
           radius: radiusMiles * 1609.34,
-          color: '#C9A84C',
+          color: '#D5A940',
           weight: 1,
           dashArray: '6 4',
           fillOpacity: 0.03,
@@ -244,7 +244,7 @@ export default function MatchMap({ targets, comps = [], radiusMiles = 10, onSele
         draw: {
           polyline: false, polygon: false, circle: false,
           marker: false, circlemarker: false,
-          rectangle: { shapeOptions: { color: '#3b82f6', weight: 2, dashArray: '4 2' } },
+          rectangle: { shapeOptions: { color: '#5C2977', weight: 2, dashArray: '4 2' } },
         },
         edit: { featureGroup: drawLayerRef.current, edit: false, remove: true },
       })
@@ -291,7 +291,7 @@ export default function MatchMap({ targets, comps = [], radiusMiles = 10, onSele
     <div>
       {/* Score filter toggles */}
       <div className="flex items-center gap-2 mb-3 flex-wrap">
-        <span className="text-xs" style={{ color: '#8A8070' }}>Filter by score:</span>
+        <span className="text-xs" style={{ color: '#6B5B8A' }}>Filter by score:</span>
         {[5, 4, 3, 2, 1].map((s) => {
           const color = SCORE_COLORS[s]
           const active = activeScores.has(s)
@@ -306,7 +306,7 @@ export default function MatchMap({ targets, comps = [], radiusMiles = 10, onSele
                 padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600,
                 border: `1px solid ${active ? color : 'rgba(255,255,255,0.1)'}`,
                 background: active ? `${color}22` : 'transparent',
-                color: active ? color : '#8A8070',
+                color: active ? color : '#6B5B8A',
                 cursor: 'pointer', transition: 'all 0.15s ease',
               }}
             >
@@ -324,7 +324,7 @@ export default function MatchMap({ targets, comps = [], radiusMiles = 10, onSele
           </button>
           <button
             className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all ${selectMode ? 'text-white' : 'btn-secondary'}`}
-            style={selectMode ? { background: '#3b82f6', border: '1px solid #2563eb', color: 'white' } : {}}
+            style={selectMode ? { background: '#5C2977', border: '1px solid #3D1A55', color: 'white' } : {}}
             onClick={() => { setSelectMode((v) => !v); if (selectMode) setSelectedParcels([]) }}
           >
             {selectMode ? 'Cancel Draw' : 'Draw Rectangle'}
@@ -344,26 +344,26 @@ export default function MatchMap({ targets, comps = [], radiusMiles = 10, onSele
       />
 
       {/* Mini stats bar */}
-      <div className="flex items-center gap-6 mt-3 px-4 py-2.5 rounded-lg" style={{ background: '#0d1421', border: '1px solid rgba(59,130,246,0.12)' }}>
+      <div className="flex items-center gap-6 mt-3 px-4 py-2.5 rounded-lg" style={{ background: '#F0EBF8', border: '1px solid #E8E0F0' }}>
         <div>
-          <span className="text-xs" style={{ color: '#8A8070' }}>Parcels shown: </span>
-          <span className="text-sm font-bold" style={{ color: '#60a5fa' }}>{visibleCount.toLocaleString()}</span>
+          <span className="text-xs" style={{ color: '#6B5B8A' }}>Parcels shown: </span>
+          <span className="text-sm font-bold" style={{ color: '#D5A940' }}>{visibleCount.toLocaleString()}</span>
         </div>
         {avgOffer != null && (
           <div>
-            <span className="text-xs" style={{ color: '#8A8070' }}>Avg offer: </span>
-            <span className="text-sm font-bold" style={{ color: '#10b981' }}>${Math.round(avgOffer).toLocaleString()}</span>
+            <span className="text-xs" style={{ color: '#6B5B8A' }}>Avg offer: </span>
+            <span className="text-sm font-bold" style={{ color: '#2D7A4F' }}>${Math.round(avgOffer).toLocaleString()}</span>
           </div>
         )}
         {highestScore > 0 && (
           <div>
-            <span className="text-xs" style={{ color: '#8A8070' }}>Highest score: </span>
+            <span className="text-xs" style={{ color: '#6B5B8A' }}>Highest score: </span>
             <span className="text-sm font-bold" style={{ color: SCORE_COLORS[highestScore] }}>{highestScore}/5</span>
           </div>
         )}
         {selectedParcels.length > 0 && (
           <div>
-            <span className="text-xs" style={{ color: '#8A8070' }}>Selected: </span>
+            <span className="text-xs" style={{ color: '#6B5B8A' }}>Selected: </span>
             <span className="text-sm font-bold" style={{ color: '#f59e0b' }}>{selectedParcels.length}</span>
           </div>
         )}
@@ -372,13 +372,13 @@ export default function MatchMap({ targets, comps = [], radiusMiles = 10, onSele
             {[5, 4, 3, 2, 1].map((s) => (
               <div key={s} className="flex items-center gap-1">
                 <div style={{ width: 8, height: 8, borderRadius: '50%', background: SCORE_COLORS[s] }} />
-                <span style={{ fontSize: 10, color: '#8A8070' }}>{s}</span>
+                <span style={{ fontSize: 10, color: '#6B5B8A' }}>{s}</span>
               </div>
             ))}
             {comps.length > 0 && (
               <div className="flex items-center gap-1">
-                <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#6b7280' }} />
-                <span style={{ fontSize: 10, color: '#8A8070' }}>Comp</span>
+                <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#9B8AAE' }} />
+                <span style={{ fontSize: 10, color: '#6B5B8A' }}>Comp</span>
               </div>
             )}
           </div>
