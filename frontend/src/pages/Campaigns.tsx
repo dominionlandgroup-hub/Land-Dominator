@@ -1,0 +1,571 @@
+import React, { useEffect, useState } from 'react'
+import LoadingSpinner from '../components/LoadingSpinner'
+import { useApp } from '../context/AppContext'
+import {
+  listCampaigns,
+  createCampaign,
+  renameCampaign,
+  updateCampaignNotes,
+  deleteCampaign,
+  getCampaignDownloadUrl,
+} from '../api/client'
+import type { Campaign, MatchFilters } from '../types'
+
+export default function Campaigns() {
+  const { matchResult, lastFilters, setLastFilters, setCurrentPage } = useApp()
+
+  const [campaigns, setCampaigns] = useState<Campaign[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  // Save new campaign
+  const [newName, setNewName] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [savedId, setSavedId] = useState<string | null>(null)
+
+  // Rename
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+
+  // Delete confirmation
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+
+  // Comparison mode
+  const [compareIds, setCompareIds] = useState<string[]>([])
+  const [showCompare, setShowCompare] = useState(false)
+
+  useEffect(() => { fetchList() }, [])
+
+  async function fetchList() {
+    setLoading(true)
+    setError(null)
+    try {
+      const list = await listCampaigns()
+      setCampaigns(list)
+    } catch {
+      setError('Failed to load campaigns.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleSave() {
+    if (!matchResult || !newName.trim()) return
+    setSaving(true)
+    setSaveError(null)
+    try {
+      const camp = await createCampaign(newName.trim(), matchResult.match_id, lastFilters ?? {})
+      setCampaigns((prev) => [camp, ...prev])
+      setSavedId(camp.id)
+      setNewName('')
+    } catch (e: unknown) {
+      const msg =
+        (e as { response?: { data?: { detail?: string } } })?.response?.data
+          ?.detail ?? 'Failed to save campaign.'
+      setSaveError(msg)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleRename(id: string) {
+    if (!renameValue.trim()) return
+    try {
+      const updated = await renameCampaign(id, renameValue.trim())
+      setCampaigns((prev) => prev.map((c) => (c.id === id ? updated : c)))
+      setRenamingId(null)
+      setRenameValue('')
+    } catch {
+      // silently ignore
+    }
+  }
+
+  async function handleDelete(id: string) {
+    try {
+      await deleteCampaign(id)
+      setCampaigns((prev) => prev.filter((c) => c.id !== id))
+      if (compareIds.includes(id)) setCompareIds((prev) => prev.filter((i) => i !== id))
+    } catch {
+      setError('Failed to delete campaign.')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  function handleDuplicateSettings(camp: Campaign) {
+    const filters = ((camp.settings?.filters as Partial<MatchFilters> | undefined) ?? (camp.settings as Partial<MatchFilters> | undefined))
+    if (filters) {
+      setLastFilters(filters)
+    }
+    setCurrentPage('match-targets')
+  }
+
+  function toggleCompare(id: string) {
+    setCompareIds((prev) => {
+      if (prev.includes(id)) return prev.filter((i) => i !== id)
+      if (prev.length >= 2) return [prev[1], id] // keep newest 2
+      return [...prev, id]
+    })
+  }
+
+  function formatDate(iso: string): string {
+    try {
+      return new Date(iso).toLocaleString('en-US', {
+        month: 'short', day: 'numeric', year: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+      })
+    } catch { return iso }
+  }
+
+  const compareCampaigns = campaigns.filter((c) => compareIds.includes(c.id))
+
+  return (
+    <div className="flex flex-col min-h-screen">
+      {/* Page header */}
+      <div className="page-header">
+        <div>
+          <h1 className="text-lg font-semibold" style={{ color: '#F5F0E8' }}>Campaigns</h1>
+          <p className="text-xs mt-0.5" style={{ color: '#8A8070' }}>
+            {campaigns.length} savedcampaign{campaigns.length !== 1 ? 's' : ''} · Re-download CSVs anytime
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            className="btn-secondary text-sm"
+            onClick={fetchList}
+            disabled={loading}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="23 4 23 10 17 10"/>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+            </svg>
+            Refresh
+          </button>
+          {compareIds.length > 0 && (
+            <button
+              className="btn-secondary text-sm"
+              onClick={() => setShowCompare((v) => !v)}
+            >
+              {showCompare ? 'Hide Compare' : `Compare (${compareIds.length}/2)`}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="p-8 max-w-5xl">
+        {/* Save current run */}
+        {matchResult ? (
+          <div className="card mb-6">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-semibold" style={{ color: '#F5F0E8' }}>Save Current Run</h2>
+              <span className="text-xs px-2.5 py-1 rounded-full" style={{ background: 'rgba(201,168,76,0.12)', color: '#C9A84C', border: '1px solid rgba(201,168,76,0.25)' }}>
+                {matchResult.matched_count.toLocaleString()} matched parcels
+              </span>
+            </div>
+            <div className="flex gap-3">
+              <input
+                type="text"
+                className="input-base flex-1"
+                placeholder="e.g. Brunswick Final March 2026"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSave()}
+                disabled={saving}
+                maxLength={80}
+              />
+              <button
+                className="btn-primary flex-none"
+                onClick={handleSave}
+                disabled={saving || !newName.trim()}
+              >
+                {saving ? <><LoadingSpinner size="sm" /> Saving…</> : 'Save Campaign'}
+              </button>
+            </div>
+            {saveError && <p className="text-sm mt-2" style={{ color: '#f87171' }}>{saveError}</p>}
+            {savedId && (
+              <p className="text-sm mt-2" style={{ color: '#34d399' }}>
+                Campaign saved successfully.
+              </p>
+            )}
+          </div>
+        ) : (
+          <div
+            className="rounded-xl px-5 py-4 mb-6 text-sm text-center"
+            style={{ background: '#0d1421', border: '1px dashed rgba(201,168,76,0.12)', color: '#8A8070' }}
+          >
+            Run the matching engine to save a new campaign.{' '}
+            <button className="text-blue-400 hover:text-blue-300 underline" onClick={() => setCurrentPage('match-targets')}>
+              Go to Match Targets →
+            </button>
+          </div>
+        )}
+
+        {error && (
+          <div className="rounded-xl px-5 py-4 mb-6 text-sm" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}>
+            {error}
+          </div>
+        )}
+
+        {/* Compare panel */}
+        {showCompare && compareCampaigns.length === 2 && (
+          <div className="card mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold" style={{ color: '#F5F0E8' }}>Campaign Comparison</h2>
+              <button className="text-xs" style={{ color: '#8A8070' }} onClick={() => setShowCompare(false)}>
+                × Close
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              {compareCampaigns.map((camp) => (
+                <CompareCard key={camp.id} campaign={camp} formatDate={formatDate} />
+              ))}
+            </div>
+          </div>
+        )}
+        {showCompare && compareCampaigns.length < 2 && (
+          <div className="rounded-xl px-5 py-4 mb-6 text-sm" style={{ background: '#0d1421', border: '1px solid rgba(201,168,76,0.12)', color: '#8A8070' }}>
+            Select 2 campaignsbelow to compare them side by side.
+          </div>
+        )}
+
+        {/* Campaign cards */}
+        {loading ? (
+          <div className="flex justify-center py-16">
+            <LoadingSpinner size="lg" label="Loading campaigns…" />
+          </div>
+        ) : campaigns.length === 0 ? (
+          <div className="text-center py-16" style={{ color: '#8A8070' }}>
+            <svg className="mx-auto mb-4 opacity-30" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+            </svg>
+            <p className="text-sm">No campaigns saved yet.</p>
+            <p className="text-xs mt-1">Run the matching engine and save your first campaign.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {campaigns.map((camp) => (
+              <CampaignCard
+                key={camp.id}
+                campaign={camp}
+                formatDate={formatDate}
+                isNew={camp.id === savedId}
+                isSelectedForCompare={compareIds.includes(camp.id)}
+                renamingId={renamingId}
+                renameValue={renameValue}
+                deletingId={deletingId}
+                onRenameStart={() => { setRenamingId(camp.id); setRenameValue(camp.name) }}
+                onRenameChange={setRenameValue}
+                onRenameSubmit={() => handleRename(camp.id)}
+                onRenameCancel={() => setRenamingId(null)}
+                onDeleteStart={() => setDeletingId(camp.id)}
+                onDeleteConfirm={() => handleDelete(camp.id)}
+                onDeleteCancel={() => setDeletingId(null)}
+                onDuplicateSettings={() => handleDuplicateSettings(camp)}
+                onToggleCompare={() => toggleCompare(camp.id)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Campaign Card ──────────────────────────────────────────────────────────────
+
+function CampaignCard({
+  campaign: camp,
+  formatDate,
+  isNew,
+  isSelectedForCompare,
+  renamingId,
+  renameValue,
+  deletingId,
+  onRenameStart,
+  onRenameChange,
+  onRenameSubmit,
+  onRenameCancel,
+  onDeleteStart,
+  onDeleteConfirm,
+  onDeleteCancel,
+  onDuplicateSettings,
+  onToggleCompare,
+}: {
+  campaign: Campaign
+  formatDate: (s: string) => string
+  isNew: boolean
+  isSelectedForCompare: boolean
+  renamingId: string | null
+  renameValue: string
+  deletingId: string | null
+  onRenameStart: () => void
+  onRenameChange: (v: string) => void
+  onRenameSubmit: () => void
+  onRenameCancel: () => void
+  onDeleteStart: () => void
+  onDeleteConfirm: () => void
+  onDeleteCancel: () => void
+  onDuplicateSettings: () => void
+  onToggleCompare: () => void
+}) {
+  const filtersObj = ((camp.settings?.filters as Record<string, unknown> | undefined) ?? (camp.settings as Record<string, unknown> | undefined) ?? {})
+  const hasFilters = Object.keys(filtersObj).length > 0
+  const filtersSummary = buildFilterSummary(filtersObj)
+  const offerSummary = buildOfferSummary(camp.stats)
+  const [notes, setNotes] = useState(camp.notes || '')
+  const [savingNotes, setSavingNotes] = useState(false)
+
+  async function saveNotes() {
+    setSavingNotes(true)
+    try {
+      await updateCampaignNotes(camp.id, notes)
+    } finally {
+      setSavingNotes(false)
+    }
+  }
+
+  return (
+    <div
+      className="rounded-xl p-5 transition-all"
+      style={{
+        background: isNew ? 'rgba(16,185,129,0.05)' : '#161616',
+        border: `1px solid ${isNew ? 'rgba(16,185,129,0.3)' : isSelectedForCompare ? '#C9A84C' : 'rgba(201,168,76,0.12)'}`,
+      }}
+    >
+      {/* Top row: name + actions */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          {renamingId === camp.id ? (
+            <div className="flex gap-2">
+              <input
+                type="text"
+                className="input-base text-sm py-1.5 flex-1"
+                value={renameValue}
+                onChange={(e) => onRenameChange(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') onRenameSubmit()
+                  if (e.key === 'Escape') onRenameCancel()
+                }}
+                autoFocus
+                maxLength={80}
+              />
+              <button className="btn-primary text-xs py-1 px-3" onClick={onRenameSubmit}>Save</button>
+              <button className="btn-secondary text-xs py-1 px-3" onClick={onRenameCancel}>Cancel</button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="font-semibold truncate" style={{ color: '#F5F0E8' }}>{camp.name}</h3>
+              {isNew && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
+                  style={{ background: 'rgba(16,185,129,0.15)', color: '#34d399', border: '1px solid rgba(16,185,129,0.3)' }}>
+                  NEW
+                </span>
+              )}
+            </div>
+          )}
+          <p className="text-xs mt-1" style={{ color: '#8A8070' }}>{formatDate(camp.created_at)}</p>
+          <p className="text-xs mt-2" style={{ color: '#C9A84C' }}>{filtersSummary}</p>
+          <p className="text-xs mt-1" style={{ color: '#34d399' }}>{offerSummary}</p>
+        </div>
+
+        {/* Stats */}
+        <div className="flex items-center gap-5 flex-none">
+          {camp.stats.mailing_list_count != null && (
+            <div className="text-center">
+              <p className="font-bold text-sm" style={{ color: '#10b981' }}>
+                {Number(camp.stats.mailing_list_count).toLocaleString()}
+              </p>
+              <p className="text-xs" style={{ color: '#8A8070' }}>mailing</p>
+            </div>
+          )}
+          {camp.stats.matched_count != null && (
+            <div className="text-center">
+              <p className="font-bold text-sm" style={{ color: '#C9A84C' }}>
+                {Number(camp.stats.matched_count).toLocaleString()}
+              </p>
+              <p className="text-xs" style={{ color: '#8A8070' }}>matched</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Bottom row: action buttons */}
+      {renamingId !== camp.id && (
+        <div className="flex items-center gap-2 mt-4 pt-3 flex-wrap" style={{ borderTop: '1px solid rgba(201,168,76,0.12)' }}>
+          {camp.has_output && (
+            <a
+              href={getCampaignDownloadUrl(camp.id)}
+              download
+              className="btn-secondary text-xs no-underline"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              Re-download CSV
+            </a>
+          )}
+
+          {hasFilters && (
+            <button
+              className="btn-secondary text-xs"
+              onClick={onDuplicateSettings}
+              title="Pre-fill Match Targets with this campaign's filter settings"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+              </svg>
+              Duplicate Settings
+            </button>
+          )}
+
+          {hasFilters && (
+            <button
+              className="btn-secondary text-xs"
+              onClick={onDuplicateSettings}
+              title="Load all saved settings and go to Match Targets"
+            >
+              Load Settings
+            </button>
+          )}
+
+          <button
+            className="btn-secondary text-xs"
+            onClick={onToggleCompare}
+            style={isSelectedForCompare ? { borderColor: '#C9A84C', color: '#C9A84C' } : {}}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="18" y1="20" x2="18" y2="10"/>
+              <line x1="12" y1="20" x2="12" y2="4"/>
+              <line x1="6" y1="20" x2="6" y2="14"/>
+            </svg>
+            {isSelectedForCompare ? 'Deselect' : 'Compare'}
+          </button>
+
+          <button
+            className="btn-secondary text-xs"
+            onClick={onRenameStart}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+            Rename
+          </button>
+
+          {deletingId === camp.id ? (
+            <div className="flex items-center gap-1 ml-auto">
+              <span className="text-xs" style={{ color: '#f87171' }}>Delete permanently?</span>
+              <button
+                className="text-xs px-2 py-1 rounded font-medium"
+                style={{ background: 'rgba(239,68,68,0.15)', color: '#f87171', border: '1px solid rgba(239,68,68,0.3)' }}
+                onClick={onDeleteConfirm}
+              >
+                Yes, delete
+              </button>
+              <button className="btn-secondary text-xs py-1 px-2" onClick={onDeleteCancel}>Cancel</button>
+            </div>
+          ) : (
+            <button
+              className="text-xs px-2.5 py-1.5 rounded-lg ml-auto transition-colors"
+              style={{ color: '#8A8070' }}
+              onClick={onDeleteStart}
+              onMouseEnter={(e) => (e.currentTarget.style.color = '#f87171')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = '#8A8070')}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                <path d="M10 11v6"/>
+                <path d="M14 11v6"/>
+                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+              </svg>
+            </button>
+          )}
+        </div>
+      )}
+
+      <div className="mt-3">
+        <textarea
+          className="input-base text-xs min-h-[72px]"
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          onBlur={saveNotes}
+          placeholder="Add notes, e.g. Sent to printer March 15"
+        />
+        {savingNotes && <p className="text-[11px] mt-1" style={{ color: '#8A8070' }}>Saving notes…</p>}
+      </div>
+    </div>
+  )
+}
+
+// ── Compare Card ───────────────────────────────────────────────────────────────
+
+function CompareCard({ campaign: camp, formatDate }: { campaign: Campaign; formatDate: (s: string) => string }) {
+  const filters = camp.settings?.filters as Record<string, unknown> | undefined
+
+  const statRows: { label: string; value: string; color?: string }[] = []
+  if (camp.stats.matched_count != null)
+    statRows.push({ label: 'Matched Parcels', value: Number(camp.stats.matched_count).toLocaleString(), color: '#C9A84C' })
+  if (camp.stats.mailing_list_count != null)
+    statRows.push({ label: 'Mailing List', value: Number(camp.stats.mailing_list_count).toLocaleString(), color: '#10b981' })
+
+  return (
+    <div className="rounded-xl p-4" style={{ background: '#0d1421', border: '1px solid rgba(201,168,76,0.12)' }}>
+      <h3 className="font-semibold mb-1 truncate" style={{ color: '#F5F0E8' }}>{camp.name}</h3>
+      <p className="text-xs mb-4" style={{ color: '#8A8070' }}>{formatDate(camp.created_at)}</p>
+
+      {statRows.length > 0 && (
+        <div className="space-y-2 mb-4">
+          {statRows.map((row) => (
+            <div key={row.label} className="flex justify-between items-center">
+              <span className="text-xs" style={{ color: '#8A8070' }}>{row.label}</span>
+              <span className="text-sm font-bold" style={{ color: row.color ?? '#F5F0E8' }}>{row.value}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {filters && Object.keys(filters).length > 0 && (
+        <div style={{ borderTop: '1px solid rgba(201,168,76,0.12)', paddingTop: '12px' }}>
+          <p className="text-xs font-medium mb-2" style={{ color: '#8A8070' }}>Filter Settings</p>
+          <div className="space-y-1">
+            {Object.entries(filters).slice(0, 8).map(([k, v]) => (
+              v != null && v !== false && (
+                <div key={k} className="flex justify-between items-center">
+                  <span className="text-xs" style={{ color: '#8A8070' }}>
+                    {k.replace(/_/g, ' ')}
+                  </span>
+                  <span className="text-xs font-medium" style={{ color: '#8A8070' }}>
+                    {String(v)}
+                  </span>
+                </div>
+              )
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function buildFilterSummary(filters: Record<string, unknown>): string {
+  const radius = Number(filters.radius_miles ?? 10)
+  const tol = Number(filters.acreage_tolerance_pct ?? 50)
+  const zips = Array.isArray(filters.zip_filter) ? filters.zip_filter.filter(Boolean).join(', ') : 'All'
+  const score = Number(filters.min_match_score ?? 0)
+  return `${radius}mi | ±${tol}% acreage | ZIPs: ${zips} | Score >= ${score}`
+}
+
+function buildOfferSummary(stats: Record<string, unknown>): string {
+  const min = Number(stats.offer_min ?? 0)
+  const max = Number(stats.offer_max ?? 0)
+  const med = Number(stats.offer_median ?? 0)
+  if (!min && !max && !med) {
+    return 'Offers ranging N/A, median N/A'
+  }
+  return `Offers ranging $${Math.round(min).toLocaleString()}-$${Math.round(max).toLocaleString()}, median $${Math.round(med).toLocaleString()}`
+}

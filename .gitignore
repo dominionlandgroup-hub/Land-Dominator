@@ -64,3 +64,6 @@ Thumbs.db
 data-samples/large-datasets/
 campaigns/
 uploads/
+
+# Data files
+*.csv
