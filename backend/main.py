@@ -22,13 +22,20 @@ app = FastAPI(
 )
 
 # ── CORS ──────────────────────────────────────────────────────────────
-origins = os.getenv(
-    "CORS_ORIGINS", "http://localhost:3000,http://localhost:5173"
-).split(",")
+default_origins = (
+    "http://localhost:3000,"
+    "http://localhost:5173,"
+    "https://frontend-production-47175.up.railway.app,"
+    "https://land-parcel-tool-production.up.railway.app"
+)
+origins = os.getenv("CORS_ORIGINS", default_origins).split(",")
+# Also allow all railway.app subdomains
+origins = [o.strip() for o in origins if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=r"https://.*\.up\.railway\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
