@@ -87,23 +87,14 @@ export default function Sidebar() {
   return (
     <aside className="w-64 min-h-screen flex flex-col shrink-0" style={{ background: '#3D1A5C', borderRight: '1px solid #5C2977' }}>
       {/* Logo */}
-      <div className="px-5 py-5" style={{ borderBottom: '1px solid rgba(213,169,64,0.2)' }}>
-        <div className="flex items-center gap-3" style={{ background: '#2A0F42' }}>
-          <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #5C2977 0%, #3D1A55 100%)' }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#D5A940" strokeWidth="2.5">
-              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-              <polyline points="9 22 9 12 15 12 15 22"/>
-            </svg>
-          </div>
-          <div>
-            <div className="text-sm font-semibold leading-tight" style={{ color: '#E8D5F5' }}>Land Specialists</div>
-            <div className="text-xs" style={{ color: '#9B8AAE' }}>Analysis Tool</div>
-          </div>
+      <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(213,169,64,0.2)' }}>
+        <div className="flex items-center justify-center rounded-xl px-3 py-2" style={{ background: '#fff' }}>
+          <img src="/logo.png" alt="Logo" className="h-12 w-auto object-contain" />
         </div>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 p-3 space-y-0.5">
+      <nav className="flex-1 px-3 py-3 space-y-1">
         {NAV_ITEMS.map((item) => {
           const status = getStatus(item)
           const locked = status === 'locked'
@@ -115,7 +106,7 @@ export default function Sidebar() {
               key={item.id}
               onClick={() => !locked && setCurrentPage(item.id)}
               disabled={locked}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-150 relative"
+              className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all duration-150 relative"
               style={{
                 background: active ? 'linear-gradient(90deg, rgba(213,169,64,0.2) 0%, transparent 100%)' : 'transparent',
                 color: locked ? '#5C2977' : active ? '#D5A940' : complete ? '#E8D5F5' : '#E8D5F5',
