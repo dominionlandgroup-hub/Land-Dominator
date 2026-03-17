@@ -14,7 +14,7 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 120_000,
+  timeout: 300_000,
 })
 
 // ─── Upload ────────────────────────────────────────────────────────────────
@@ -62,7 +62,7 @@ export async function fetchCompLocations(
 // ─── Matching ──────────────────────────────────────────────────────────────
 
 export async function runMatch(filters: MatchFilters): Promise<MatchResult> {
-  const { data } = await api.post<MatchResult>('/match/run', filters)
+  const { data } = await api.post<MatchResult>('/match/run', filters, { timeout: 600_000 })
   return data
 }
 
