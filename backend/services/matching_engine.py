@@ -491,8 +491,8 @@ def _is_flood_risk(fema_zone: str, coverage_str: str) -> bool:
 def run_matching(
     comps_df: pd.DataFrame,
     targets_df: pd.DataFrame,
-    radius_miles: float = 10.0,
-    acreage_tolerance_pct: float = 50.0,
+    radius_miles: float = 10.0,          # DEPRECATED — unused. Engine uses 1mi→3mi fallback (FALLBACK_RADII).
+    acreage_tolerance_pct: float = 50.0,  # DEPRECATED — unused. Engine uses acreage bands instead.
     min_match_score: int = 0,
     zip_filter: Optional[List[str]] = None,
     # Smart filters
