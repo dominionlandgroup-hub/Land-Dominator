@@ -24,6 +24,7 @@ export default function MailingList() {
     lastFilters,
   } = useApp()
 
+  const [flagFilter, setFlagFilter] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -85,11 +86,39 @@ export default function MailingList() {
   const fullUrl = getMailingDownloadUrl(matchId, 'mailing-list', 'full')
   const highConfUrl = getMailingDownloadUrl(matchId, 'high-confidence', 'high-confidence')
   const top500Url = getMailingDownloadUrl(matchId, 'top-500', 'top500')
+  const flaggedReviewUrl = getMailingDownloadUrl(matchId, 'flagged-for-review', 'flagged-for-review')
+  const suspectCompsUrl = getMailingDownloadUrl(matchId, 'suspect-comps', 'suspect-comps')
 
   const afterDedup = workingRows.length
+  const HIGH_CONF_EXCLUDED_FLAGS = new Set(['LOW_OFFER_VS_TLP', 'REVIEW_LOW', 'REVIEW_LOW_STALE'])
   const highConfCount = mailingPreview
-    ? workingRows.filter((r) => r.matched_comp_count >= 3).length
+    ? workingRows.filter((r) => r.matched_comp_count >= 3 && !HIGH_CONF_EXCLUDED_FLAGS.has(r.pricing_flag || '')).length
     : 0
+  const FLAGGED_REVIEW_FLAGS = new Set(['LOW_OFFER_VS_TLP', 'REVIEW_LOW', 'REVIEW_LOW_STALE'])
+  const flaggedReviewCount = workingRows.filter((r) => FLAGGED_REVIEW_FLAGS.has(r.pricing_flag || '')).length
+  const FLAGGED_SUSPECT_FLAGS = new Set(['HIGH_OFFER_VS_TLP', 'SUSPECT_COMPS', 'SUSPECT_COMPS_STALE'])
+  const suspectCompsCount = workingRows.filter((r) => FLAGGED_SUSPECT_FLAGS.has(r.pricing_flag || '')).length
+
+  // Pricing flag distribution
+  const FLAG_COLORS: Record<string, string> = {
+    'OK': '#2D7A4F',
+    'STALE_COMPS': '#B8860B',
+    'REVIEW_LOW': '#D5A940',
+    'REVIEW_LOW_STALE': '#C05000',
+    'SUSPECT_COMPS': '#ef4444',
+    'SUSPECT_COMPS_STALE': '#991B1B',
+    'HIGH_OFFER_VS_TLP': '#7B3E99',
+    'LOW_OFFER_VS_TLP': '#C05000',
+    'NO DATA': '#6B5B8A',
+  }
+  const flagCounts = new Map<string, number>()
+  workingRows.forEach((r) => {
+    const flag = r.pricing_flag || 'N/A'
+    flagCounts.set(flag, (flagCounts.get(flag) ?? 0) + 1)
+  })
+  const displayRows = flagFilter
+    ? workingRows.filter((r) => (r.pricing_flag || 'N/A') === flagFilter)
+    : workingRows
 
   const selectedCount = selectedIds.size
   const flaggedRows = workingRows.filter((r, idx) => flaggedIds.has(rowId(r, idx)))
@@ -180,8 +209,8 @@ export default function MailingList() {
       header: 'Confidence',
       sortable: true,
       align: 'center',
-      render: (v) => {
-        const level = getConfidence(v as number)
+      render: (_, row) => {
+        const level = (row as MatchedParcel).confidence || getConfidence((row as MatchedParcel).matched_comp_count)
         return (
           <span className={`conf-${level}`}>
             {level}
@@ -288,6 +317,68 @@ export default function MailingList() {
             {(v as number).toFixed(0)}%
           </span>
         ),
+    },
+    {
+      key: 'acreage_band',
+      header: 'Band',
+      sortable: true,
+      defaultHidden: true,
+      render: (v) => <span className="text-xs" style={{ color: '#6B5B8A' }}>{String(v || '—')}</span>,
+    },
+    {
+      key: 'retail_estimate',
+      header: 'Retail Est.',
+      sortable: true,
+      align: 'right',
+      defaultHidden: true,
+      render: (v) =>
+        v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span>,
+    },
+    {
+      key: 'median_comp_sale_price',
+      header: 'Med. Comp $',
+      align: 'right',
+      defaultHidden: true,
+      render: (v) =>
+        v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span>,
+    },
+    {
+      key: 'median_ppa',
+      header: 'Med. PPA',
+      align: 'right',
+      defaultHidden: true,
+      render: (v) =>
+        v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span>,
+    },
+    {
+      key: 'min_comp_price',
+      header: 'Min Comp $',
+      align: 'right',
+      defaultHidden: true,
+      render: (v) =>
+        v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span>,
+    },
+    {
+      key: 'max_comp_price',
+      header: 'Max Comp $',
+      align: 'right',
+      defaultHidden: true,
+      render: (v) =>
+        v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span>,
+    },
+    {
+      key: 'outliers_removed',
+      header: 'Outliers',
+      align: 'center',
+      defaultHidden: true,
+      render: (v) => <span className="text-xs">{v ?? 0}</span>,
+    },
+    {
+      key: 'tlp_capped',
+      header: 'TLP Cap',
+      align: 'center',
+      defaultHidden: true,
+      render: (v) => <span className="text-xs">{v ? 'Yes' : 'No'}</span>,
     },
   ]
 
@@ -446,10 +537,55 @@ export default function MailingList() {
               />
             </div>
 
+            {/* Pricing Flag Summary */}
+            <div className="card mb-6">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-semibold" style={{ color: '#1A0A2E' }}>
+                  Pricing Flags
+                  {flagFilter && (
+                    <span className="text-xs font-normal ml-2" style={{ color: '#6B5B8A' }}>
+                      Filtering: {flagFilter}
+                    </span>
+                  )}
+                </h2>
+                {flagFilter && (
+                  <button
+                    className="text-xs underline"
+                    style={{ color: '#6B5B8A' }}
+                    onClick={() => setFlagFilter(null)}
+                  >
+                    Clear filter
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {Array.from(flagCounts.entries())
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([flag, count]) => {
+                    const color = FLAG_COLORS[flag] || '#6B5B8A'
+                    const isActive = flagFilter === flag
+                    return (
+                      <button
+                        key={flag}
+                        onClick={() => setFlagFilter(isActive ? null : flag)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer"
+                        style={{
+                          background: isActive ? `${color}20` : '#F8F6FB',
+                          border: `1.5px solid ${isActive ? color : '#E8E0F0'}`,
+                          color: color,
+                        }}
+                      >
+                        {flag}: {count.toLocaleString()}
+                      </button>
+                    )
+                  })}
+              </div>
+            </div>
+
             {/* Export buttons row */}
             <div className="card mb-6">
               <h2 className="text-sm font-semibold mb-4" style={{ color: '#1A0A2E' }}>Export Options</h2>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
                 <ExportOption
                   title="Full List"
                   subtitle={`All ${afterDedup.toLocaleString()} deduplicated records`}
@@ -459,8 +595,8 @@ export default function MailingList() {
                 />
                 <ExportOption
                   title="High Confidence Only"
-                  subtitle={`${highConfCount.toLocaleString()} records with 3+ comp matches`}
-                  badge="3+ COMPS"
+                  subtitle={`${highConfCount.toLocaleString()} records with 3+ comps, no flags`}
+                  badge="CLEAN"
                   badgeColor="#2D7A4F"
                   href={highConfUrl}
                 />
@@ -470,6 +606,20 @@ export default function MailingList() {
                   badge="TOP 500"
                   badgeColor="#D5A940"
                   href={top500Url}
+                />
+                <ExportOption
+                  title="Flagged for Review"
+                  subtitle={`${flaggedReviewCount.toLocaleString()} low offer / floor adjusted`}
+                  badge="REVIEW"
+                  badgeColor="#C05000"
+                  href={flaggedReviewUrl}
+                />
+                <ExportOption
+                  title="Suspect Comps"
+                  subtitle={`${suspectCompsCount.toLocaleString()} capped to 50% of TLP`}
+                  badge="SUSPECT"
+                  badgeColor="#991B1B"
+                  href={suspectCompsUrl}
                 />
               </div>
               {flaggedRows.length > 0 && (
@@ -487,13 +637,13 @@ export default function MailingList() {
                 <h2 className="font-semibold" style={{ color: '#1A0A2E' }}>
                   Ready to Mail{' '}
                   <span className="text-sm font-normal" style={{ color: '#6B5B8A' }}>
-                    ({mailingPreview.total_after_dedup.toLocaleString()} records)
+                    ({displayRows.length.toLocaleString()}{flagFilter ? ` of ${mailingPreview.total_after_dedup.toLocaleString()}` : ''} records)
                   </span>
                 </h2>
               </div>
               <DataTable<MatchedParcel>
                 columns={cols}
-                data={workingRows}
+                data={displayRows}
                 pageSize={50}
                 emptyMessage="No records in mailing list"
                 searchable

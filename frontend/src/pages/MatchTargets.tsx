@@ -159,9 +159,9 @@ export default function MatchTargets() {
       render: (v) => <ScoreBadge score={v as number} />,
     },
     {
-      key: 'matched_comp_count', header: 'Conf.', align: 'center',
-      render: (v) => {
-        const c = getConfidence(v as number)
+      key: 'confidence', header: 'Conf.', align: 'center', sortable: true,
+      render: (_, row) => {
+        const c = row.confidence || getConfidence(row.matched_comp_count)
         return <span className={`conf-${c}`}>{c}</span>
       },
     },
@@ -174,18 +174,61 @@ export default function MatchTargets() {
       render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span>{(v as number).toFixed(2)}</span>,
     },
     {
-      key: 'suggested_offer_mid', header: 'Mid Offer', sortable: true, align: 'right',
+      key: 'acreage_band', header: 'Band', sortable: true, align: 'center',
+      render: (v) => <span className="text-xs" style={{ color: '#6B5B8A' }}>{String(v || '—')}</span>,
+    },
+    {
+      key: 'matched_comp_count', header: 'Comps', sortable: true, align: 'center',
+      render: (v) => <span className="text-xs">{v ?? '—'}</span>,
+    },
+    {
+      key: 'retail_estimate', header: 'Retail Est.', sortable: true, align: 'right',
+      render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : (
+        <span className="text-xs" style={{ color: '#1A0A2E' }}>${Math.round(v as number).toLocaleString()}</span>
+      ),
+      defaultHidden: true,
+    },
+    {
+      key: 'suggested_offer_low', header: 'Offer Low', align: 'right',
+      render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs" style={{ color: '#6B5B8A' }}>${Math.round(v as number).toLocaleString()}</span>,
+    },
+    {
+      key: 'suggested_offer_mid', header: 'Offer Mid', sortable: true, align: 'right',
       render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : (
         <span className="font-semibold" style={{ color: '#2D7A4F', fontWeight: 600 }}>${Math.round(v as number).toLocaleString()}</span>
       ),
     },
     {
-      key: 'suggested_offer_low', header: 'Low', align: 'right', defaultHidden: true,
+      key: 'suggested_offer_high', header: 'Offer High', align: 'right',
       render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs" style={{ color: '#6B5B8A' }}>${Math.round(v as number).toLocaleString()}</span>,
     },
     {
-      key: 'suggested_offer_high', header: 'High', align: 'right', defaultHidden: true,
+      key: 'median_comp_sale_price', header: 'Med. Comp $', align: 'right', defaultHidden: true,
+      render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span>,
+    },
+    {
+      key: 'median_ppa', header: 'Med. PPA', align: 'right', defaultHidden: true,
+      render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span>,
+    },
+    {
+      key: 'min_comp_price', header: 'Min Comp $', align: 'right', defaultHidden: true,
+      render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span>,
+    },
+    {
+      key: 'max_comp_price', header: 'Max Comp $', align: 'right', defaultHidden: true,
+      render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span>,
+    },
+    {
+      key: 'outliers_removed', header: 'Outliers', align: 'center', defaultHidden: true,
+      render: (v) => <span className="text-xs">{v ?? 0}</span>,
+    },
+    {
+      key: 'tlp_estimate', header: 'TLP Est.', align: 'right', defaultHidden: true,
       render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs" style={{ color: '#6B5B8A' }}>${Math.round(v as number).toLocaleString()}</span>,
+    },
+    {
+      key: 'tlp_capped', header: 'TLP Cap', align: 'center', defaultHidden: true,
+      render: (v) => <span className="text-xs">{v ? 'Yes' : 'No'}</span>,
     },
     {
       key: 'flood_zone', header: 'Flood', defaultHidden: true,

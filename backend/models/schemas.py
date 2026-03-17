@@ -105,9 +105,32 @@ class MatchedParcel(BaseModel):
     suggested_offer_low: Optional[float] = None
     suggested_offer_mid: Optional[float] = None
     suggested_offer_high: Optional[float] = None
+    retail_estimate: Optional[float] = None
+    comp_count: int = 0
+    clean_comp_count: int = 0
+    outliers_removed: int = 0
+    median_comp_sale_price: Optional[float] = None
+    median_ppa: Optional[float] = None
+    min_comp_price: Optional[float] = None
+    max_comp_price: Optional[float] = None
+    acreage_band: Optional[str] = None
+    confidence: str = "NO DATA"
     tlp_estimate: Optional[float] = None
+    tlp_capped: bool = False
+    radius_used_miles: Optional[float] = None
+    radius_label: Optional[str] = None
+    proximity_weighted: bool = False
+    pricing_source: Optional[str] = None
+    tlp_fallback_mid: Optional[float] = None
     flood_zone: Optional[str] = None
     buildability_pct: Optional[float] = None
+    pricing_flag: Optional[str] = None
+    comp_avg_age_days: Optional[int] = None
+    comp_oldest_days: Optional[int] = None
+    comp_age_warning: bool = False
+    premium_zip: bool = False
+    nano_buildability_warning: bool = False
+    nano_buildability_pct: Optional[float] = None
 
 
 class MatchResponse(BaseModel):

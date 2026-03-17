@@ -3,7 +3,7 @@ Land Parcel Analysis Tool — FastAPI Backend
 Entry point: registers all routers and configures middleware.
 """
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
@@ -64,6 +64,13 @@ async def root() -> JSONResponse:
             "docs": "/docs",
         }
     )
+
+
+@app.post("/api/test-pricing")
+async def api_test_pricing(request: Request):
+    """Alias for /match/test-pricing — used by QA curl tests."""
+    from routers.matching import test_pricing_endpoint
+    return await test_pricing_endpoint(request)
 
 
 if __name__ == "__main__":

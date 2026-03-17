@@ -104,11 +104,34 @@ export interface MatchedParcel {
   suggested_offer_low: number | null
   suggested_offer_mid: number | null
   suggested_offer_high: number | null
+  retail_estimate: number | null
+  comp_count: number
+  clean_comp_count: number
+  outliers_removed: number
+  median_comp_sale_price: number | null
+  median_ppa: number | null
+  min_comp_price: number | null
+  max_comp_price: number | null
+  acreage_band: string | null
+  confidence: string
   tlp_estimate: number | null
+  tlp_capped: boolean
+  radius_used_miles: number | null
+  radius_label: string | null
+  proximity_weighted: boolean
+  pricing_source: string | null
+  tlp_fallback_mid: number | null
   flood_zone: string | null
   buildability_pct: number | null
   latitude: number | null
   longitude: number | null
+  pricing_flag: string | null
+  comp_avg_age_days: number | null
+  comp_oldest_days: number | null
+  comp_age_warning: boolean
+  premium_zip: boolean
+  nano_buildability_warning: boolean
+  nano_buildability_pct: number | null
 }
 
 export interface MatchResult {
@@ -153,11 +176,19 @@ export type AppPage =
 
 // ─── Confidence ────────────────────────────────────────────────────────────
 
-export type ConfidenceLevel = 'HIGH' | 'MEDIUM' | 'LOW' | 'EST'
+export type ConfidenceLevel = 'HIGH' | 'MEDIUM' | 'LOW' | 'NO DATA' | 'EST'
 
-export function getConfidence(compCount: number): ConfidenceLevel {
-  if (compCount >= 5) return 'HIGH'
-  if (compCount >= 3) return 'MEDIUM'
-  if (compCount >= 1) return 'LOW'
+export function getConfidence(compCountOrLevel: number | string): ConfidenceLevel {
+  // If already a string confidence level, return it
+  if (typeof compCountOrLevel === 'string') {
+    const upper = compCountOrLevel.toUpperCase()
+    if (['HIGH', 'MEDIUM', 'LOW', 'NO DATA', 'EST'].includes(upper))
+      return upper as ConfidenceLevel
+  }
+  // Legacy fallback: numeric comp count
+  const n = Number(compCountOrLevel)
+  if (n >= 5) return 'HIGH'
+  if (n >= 3) return 'MEDIUM'
+  if (n >= 1) return 'LOW'
   return 'EST'
 }

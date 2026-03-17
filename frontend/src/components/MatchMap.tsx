@@ -271,11 +271,14 @@ export default function MatchMap({ targets, comps = [], radiusMiles = 10, onSele
 
   function downloadSelected() {
     if (selectedParcels.length === 0) return
-    const headers = ['APN', 'Owner Name', 'Mail Address', 'City', 'State', 'ZIP', 'Acres', 'Score', 'Confidence', 'Offer Low', 'Offer Mid', 'Offer High']
+    const headers = ['APN', 'Owner Name', 'Mail Address', 'City', 'State', 'ZIP', 'Acres', 'Score', 'Acreage Band', 'Confidence', 'Comp Count', 'Retail Estimate', 'Offer Low', 'Offer Mid', 'Offer High', 'Median Comp Sale Price', 'Median PPA', 'Min Comp Price', 'Max Comp Price', 'Outliers Removed', 'TLP Estimate', 'TLP Capped']
     const rows = selectedParcels.map((p) => [
       p.apn, p.owner_name, p.mail_address, p.mail_city, p.mail_state, p.mail_zip,
-      p.lot_acres ?? '', p.match_score, getConfidence(p.matched_comp_count),
+      p.lot_acres ?? '', p.match_score, p.acreage_band ?? '', p.confidence || getConfidence(p.matched_comp_count),
+      p.matched_comp_count, p.retail_estimate ?? '',
       p.suggested_offer_low ?? '', p.suggested_offer_mid ?? '', p.suggested_offer_high ?? '',
+      p.median_comp_sale_price ?? '', p.median_ppa ?? '', p.min_comp_price ?? '', p.max_comp_price ?? '',
+      p.outliers_removed ?? 0, p.tlp_estimate ?? '', p.tlp_capped ? 'Yes' : 'No',
     ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','))
     const csv = [headers.join(','), ...rows].join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })

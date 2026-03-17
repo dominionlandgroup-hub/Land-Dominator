@@ -26,14 +26,27 @@ OUTPUT_HEADERS = [
     "Parcel City",
     "Lot Acres",
     "Match Score",
-    "Matched Comp Count",
+    "Acreage Band",
+    "Comp Count",
+    "Clean Comp Count",
+    "Outliers Removed",
     "Confidence",
+    "Retail Estimate",
     "Suggested Offer Low",
     "Suggested Offer Mid",
     "Suggested Offer High",
+    "Median Comp Sale Price",
+    "Median PPA",
+    "Min Comp Price",
+    "Max Comp Price",
     "TLP Estimate",
+    "TLP Capped",
+    "Pricing Flag",
+    "Comp Avg Age Days",
+    "Premium ZIP",
     "Flood Zone",
     "Buildability %",
+    "Nano Warning",
 ]
 
 
@@ -87,9 +100,23 @@ async def download_mailing(
     cleaned, _, _ = _deduplicate(raw_results)
 
     # Apply export type filter
+    HIGH_CONF_EXCLUDED_FLAGS = {'LOW_OFFER_VS_TLP', 'REVIEW_LOW', 'REVIEW_LOW_STALE'}
+    FLAGGED_REVIEW_FLAGS = {'LOW_OFFER_VS_TLP', 'REVIEW_LOW', 'REVIEW_LOW_STALE'}
+    FLAGGED_SUSPECT_FLAGS = {'HIGH_OFFER_VS_TLP', 'SUSPECT_COMPS', 'SUSPECT_COMPS_STALE'}
+
     if export_type == "high-confidence":
-        filtered = [p for p in cleaned if p.matched_comp_count >= 3]
+        filtered = [
+            p for p in cleaned
+            if p.matched_comp_count >= 3
+            and getattr(p, 'pricing_flag', None) not in HIGH_CONF_EXCLUDED_FLAGS
+        ]
         suffix = f"high-confidence-{len(filtered)}-records"
+    elif export_type == "flagged-for-review":
+        filtered = [p for p in cleaned if getattr(p, 'pricing_flag', None) in FLAGGED_REVIEW_FLAGS]
+        suffix = f"flagged-for-review-{len(filtered)}-records"
+    elif export_type == "suspect-comps":
+        filtered = [p for p in cleaned if getattr(p, 'pricing_flag', None) in FLAGGED_SUSPECT_FLAGS]
+        suffix = f"suspect-comps-{len(filtered)}-records"
     elif export_type == "top500":
         filtered = sorted(cleaned, key=lambda p: p.match_score, reverse=True)[:500]
         suffix = f"top500-records"
@@ -195,11 +222,29 @@ def _deduplicate(
                 suggested_offer_low=row.get("suggested_offer_low"),
                 suggested_offer_mid=row.get("suggested_offer_mid"),
                 suggested_offer_high=row.get("suggested_offer_high"),
+                retail_estimate=row.get("retail_estimate"),
+                comp_count=row.get("comp_count", 0),
+                clean_comp_count=row.get("clean_comp_count", 0),
+                outliers_removed=row.get("outliers_removed", 0),
+                median_comp_sale_price=row.get("median_comp_sale_price"),
+                median_ppa=row.get("median_ppa"),
+                min_comp_price=row.get("min_comp_price"),
+                max_comp_price=row.get("max_comp_price"),
+                acreage_band=row.get("acreage_band"),
+                confidence=row.get("confidence", "NO DATA"),
                 tlp_estimate=row.get("tlp_estimate"),
+                tlp_capped=row.get("tlp_capped", False),
                 flood_zone=row.get("flood_zone"),
                 buildability_pct=row.get("buildability_pct"),
                 latitude=row.get("latitude"),
                 longitude=row.get("longitude"),
+                pricing_flag=row.get("pricing_flag"),
+                comp_avg_age_days=row.get("comp_avg_age_days"),
+                comp_oldest_days=row.get("comp_oldest_days"),
+                comp_age_warning=row.get("comp_age_warning", False),
+                premium_zip=row.get("premium_zip", False),
+                nano_buildability_warning=row.get("nano_buildability_warning", False),
+                nano_buildability_pct=row.get("nano_buildability_pct"),
             )
         )
 
@@ -224,14 +269,27 @@ def _build_csv(parcels: list[MatchedParcel]) -> bytes:
                 p.parcel_city,
                 p.lot_acres if p.lot_acres is not None else "",
                 p.match_score,
-                p.matched_comp_count,
-                _confidence_label(p.matched_comp_count),
+                p.acreage_band or "",
+                p.comp_count,
+                p.clean_comp_count,
+                p.outliers_removed,
+                p.confidence,
+                _fmt_currency(p.retail_estimate),
                 _fmt_currency(p.suggested_offer_low),
                 _fmt_currency(p.suggested_offer_mid),
                 _fmt_currency(p.suggested_offer_high),
+                _fmt_currency(p.median_comp_sale_price),
+                _fmt_currency(p.median_ppa),
+                _fmt_currency(p.min_comp_price),
+                _fmt_currency(p.max_comp_price),
                 _fmt_currency(p.tlp_estimate),
+                "Yes" if p.tlp_capped else "No",
+                p.pricing_flag or "",
+                p.comp_avg_age_days if p.comp_avg_age_days is not None else "",
+                "Yes" if p.premium_zip else "No",
                 p.flood_zone or "",
                 p.buildability_pct if p.buildability_pct is not None else "",
+                "Yes" if p.nano_buildability_warning else "",
             ]
         )
 

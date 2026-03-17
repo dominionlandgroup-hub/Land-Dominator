@@ -1,15 +1,26 @@
 """
 Matching engine endpoint — runs in a thread pool to avoid blocking the event loop.
+Includes /api/test-pricing for isolated QA verification.
 """
 import asyncio
 import json
 import traceback
 from concurrent.futures import ThreadPoolExecutor
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 
+import numpy as np
+import pandas as pd
+
 from models.schemas import MatchFilters
-from services.matching_engine import run_matching
+from services.matching_engine import (
+    run_matching,
+    get_acreage_band,
+    calculate_offer_price,
+    detect_bulk_sales,
+    identify_premium_zips,
+    FALLBACK_RADII,
+)
 from storage.session_store import get_comps, get_targets, store_match
 
 router = APIRouter(prefix="/match", tags=["match"])
@@ -137,3 +148,96 @@ async def run_match(filters: MatchFilters) -> Response:
         content=content,
         media_type="application/json",
     )
+
+
+@router.post("/test-pricing")
+async def test_pricing_endpoint(request: Request):
+    """
+    Unit test endpoint. Accepts manual comps for isolated pricing verification.
+    Used for QA and client demos. Supports optional distance_miles per comp
+    for proximity-weighted pricing.
+    """
+    body = await request.json()
+    target_acres = float(body.get('target_acres', 0.32))
+    tlp_estimate = body.get('tlp_estimate')
+    target_zip = body.get('target_zip')
+    premium_zips_override = body.get('premium_zips')  # optional list for testing
+    raw_comps = body.get('comps', [])
+
+    if tlp_estimate is not None:
+        tlp_estimate = float(tlp_estimate)
+
+    if not raw_comps:
+        result = calculate_offer_price(target_acres, pd.DataFrame(), tlp_estimate)
+        result['bulk_sales_removed'] = 0
+        band_low, band_high, band_label = get_acreage_band(target_acres)
+        result['acreage_band_range'] = f"{band_low}\u2013{band_high} acres"
+        return result
+
+    comps_df = pd.DataFrame(raw_comps)
+    comps_df = comps_df.rename(columns={
+        'sale_price': 'Current Sale Price',
+        'lot_acres': 'Lot Acres',
+        'sale_date': 'Current Sale Recording Date',
+        'parcel_zip': 'Parcel Zip',
+    })
+    comps_df['Current Sale Price'] = pd.to_numeric(comps_df['Current Sale Price'])
+    comps_df['Lot Acres'] = pd.to_numeric(comps_df['Lot Acres'])
+
+    # Remove invalid data (zero/negative price or acreage)
+    comps_df = comps_df[(comps_df['Current Sale Price'] > 0) & (comps_df['Lot Acres'] > 0)]
+
+    # Check if distances are provided for proximity weighting
+    has_distances = 'distance_miles' in comps_df.columns
+    if has_distances:
+        comps_df['distance_miles'] = pd.to_numeric(comps_df['distance_miles'])
+
+    # Apply smart bulk sale filter (same price + same date)
+    original_count = len(comps_df)
+    comps_df, bulk_removed = detect_bulk_sales(comps_df)
+
+    # Apply acreage band filter
+    band_low, band_high, band_label = get_acreage_band(target_acres)
+    comps_df = comps_df[
+        (comps_df['Lot Acres'] >= band_low) &
+        (comps_df['Lot Acres'] < band_high)
+    ]
+
+    # Apply proximity-based radius filtering if distances provided
+    radius_label = None
+    if has_distances and len(comps_df) > 0:
+        for radius, label in FALLBACK_RADII:
+            trial = comps_df[comps_df['distance_miles'] <= radius]
+            if len(trial) >= 3:
+                comps_df = trial
+                radius_label = label
+                break
+        else:
+            # Use whatever we have at max fallback
+            comps_df = comps_df[comps_df['distance_miles'] <= 3.0]
+            radius_label = '3mi_fallback'
+
+    if len(comps_df) > 0:
+        comps_df['ppa'] = comps_df['Current Sale Price'] / comps_df['Lot Acres']
+
+    # Premium ZIP detection
+    is_premium = False
+    if target_zip and len(comps_df) > 0:
+        t_zip_str = str(target_zip).split('.')[0].strip()
+        if premium_zips_override is not None:
+            # Test mode: use provided premium ZIP list
+            p_zips = [str(z) for z in premium_zips_override]
+        elif 'Parcel Zip' in comps_df.columns and 'ppa' in comps_df.columns:
+            p_zips = identify_premium_zips(comps_df)
+        else:
+            p_zips = []
+        if t_zip_str in p_zips:
+            if 'Parcel Zip' in comps_df.columns:
+                comps_df = comps_df[comps_df['Parcel Zip'].astype(str).str.split('.').str[0].str.strip() == t_zip_str]
+            is_premium = True
+
+    result = calculate_offer_price(target_acres, comps_df, tlp_estimate, band_label, radius_label)
+    result['bulk_sales_removed'] = bulk_removed
+    result['acreage_band_range'] = f"{band_low}\u2013{band_high} acres"
+    result['premium_zip'] = is_premium
+    return result
