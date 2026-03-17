@@ -159,7 +159,7 @@ def calculate_comp_age(matched_comps_df: pd.DataFrame) -> Tuple[Optional[int], O
     if date_col not in matched_comps_df.columns:
         return None, None
 
-    dates = pd.to_datetime(matched_comps_df[date_col], errors='coerce').dropna()
+    dates = pd.to_datetime(matched_comps_df[date_col], format='mixed', dayfirst=False, errors='coerce').dropna()
     if len(dates) == 0:
         return None, None
 
