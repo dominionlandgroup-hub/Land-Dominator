@@ -371,7 +371,7 @@ export default function MailingList() {
       header: 'Outliers',
       align: 'center',
       defaultHidden: true,
-      render: (v) => <span className="text-xs">{v ?? 0}</span>,
+      render: (v) => <span className="text-xs">{String(v ?? 0)}</span>,
     },
     {
       key: 'tlp_capped',

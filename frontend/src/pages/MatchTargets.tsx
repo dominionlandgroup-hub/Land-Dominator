@@ -179,7 +179,7 @@ export default function MatchTargets() {
     },
     {
       key: 'matched_comp_count', header: 'Comps', sortable: true, align: 'center',
-      render: (v) => <span className="text-xs">{v ?? '—'}</span>,
+      render: (v) => <span className="text-xs">{String(v ?? '—')}</span>,
     },
     {
       key: 'retail_estimate', header: 'Retail Est.', sortable: true, align: 'right',
@@ -220,7 +220,7 @@ export default function MatchTargets() {
     },
     {
       key: 'outliers_removed', header: 'Outliers', align: 'center', defaultHidden: true,
-      render: (v) => <span className="text-xs">{v ?? 0}</span>,
+      render: (v) => <span className="text-xs">{String(v ?? 0)}</span>,
     },
     {
       key: 'tlp_estimate', header: 'TLP Est.', align: 'right', defaultHidden: true,

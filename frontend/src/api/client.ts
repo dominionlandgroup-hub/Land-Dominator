@@ -75,7 +75,7 @@ export async function fetchMailingPreview(matchId: string): Promise<MailingPrevi
   return data
 }
 
-export type ExportType = 'full' | 'high-confidence' | 'top500'
+export type ExportType = 'full' | 'high-confidence' | 'top500' | 'flagged-for-review' | 'suspect-comps'
 
 export function getMailingDownloadUrl(
   matchId: string,

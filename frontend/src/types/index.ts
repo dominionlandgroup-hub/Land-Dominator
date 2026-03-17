@@ -36,6 +36,7 @@ export interface DashboardData {
   total_comps: number
   valid_comps: number
   median_price: number | null
+  median_price_per_acre: number | null
   median_acreage: number | null
   available_zips: string[]
   comp_locations: CompLocation[]
