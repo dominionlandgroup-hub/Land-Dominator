@@ -134,7 +134,7 @@ export default function MatchTargets() {
 
   // Active filter chips
   const activeFilters: { label: string; onRemove: () => void }[] = []
-  activeFilters.push({ label: `${radiusMiles} mi radius`, onRemove: () => setRadiusMiles(10) })
+  activeFilters.push({ label: '1–3 mi comp radius', onRemove: () => {} })
   activeFilters.push({ label: `±${acreageTol}% acreage`, onRemove: () => setAcreageTol(50) })
   if (minScore > 0) activeFilters.push({ label: `Score ≥ ${minScore}`, onRemove: () => setMinScore(0) })
   if (zipFilter.length > 0) activeFilters.push({ label: `ZIPs: ${zipFilter.join(', ')}`, onRemove: () => setZipFilter([]) })
@@ -564,7 +564,7 @@ export default function MatchTargets() {
                 <MatchMap
                   targets={matchResult.results}
                   comps={dashboardData?.comp_locations ?? []}
-                  radiusMiles={radiusMiles}
+                  radiusMiles={3}
                 />
               )}
             </div>
