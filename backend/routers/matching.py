@@ -19,7 +19,7 @@ from services.matching_engine import (
     calculate_offer_price,
     detect_bulk_sales,
     identify_premium_zips,
-    FALLBACK_RADII,
+    COMP_SEARCH_STEPS,
 )
 from storage.session_store import get_comps, get_targets, store_match
 
@@ -206,7 +206,7 @@ async def test_pricing_endpoint(request: Request):
     # Apply proximity-based radius filtering if distances provided
     radius_label = None
     if has_distances and len(comps_df) > 0:
-        for radius, label in FALLBACK_RADII:
+        for radius, label in COMP_SEARCH_STEPS:
             trial = comps_df[comps_df['distance_miles'] <= radius]
             if len(trial) >= 3:
                 comps_df = trial
