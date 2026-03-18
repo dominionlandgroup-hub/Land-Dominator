@@ -5,6 +5,7 @@ Includes /api/test-pricing for isolated QA verification.
 import asyncio
 import json
 import traceback
+import gc
 from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
@@ -144,10 +145,15 @@ async def run_match(filters: MatchFilters) -> Response:
             raise HTTPException(status_code=500, detail=f"Serialization Error: {str(e)}")
 
     # Stream pre-serialized JSON — bypasses Pydantic validation on 15k+ records
-    return Response(
+    response = Response(
         content=content,
         media_type="application/json",
     )
+    
+    # Explicit memory cleanup after match completes
+    gc.collect()
+    
+    return response
 
 
 @router.post("/test-pricing")

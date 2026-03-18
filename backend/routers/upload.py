@@ -2,6 +2,7 @@
 Upload endpoints for comps and target CSVs.
 """
 import uuid
+import pandas as pd
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
 
@@ -12,6 +13,35 @@ from storage.session_store import store_comps, store_targets
 router = APIRouter(prefix="/upload", tags=["upload"])
 
 MAX_SIZE_BYTES = 300 * 1024 * 1024  # 300 MB
+
+COMP_COLS_REQUIRED = [
+    'APN', 'Latitude', 'Longitude', 'Lot Acres', 'Parcel Zip',
+    'Current Sale Price', 'Current Sale Recording Date',
+    'Parcel Full Address', 'Parcel City',
+    'Current Sale Buyer 1 Full Name', 'Current Sale Seller 1 Full Name',
+    'FL FEMA Flood Zone', 'Buildability total (%)', 'TLP Estimate'
+]
+
+TARGET_COLS_REQUIRED = [
+    'APN', 'propertyID', 'Latitude', 'Longitude', 'Lot Acres',
+    'Parcel Zip', 'Parcel City', 'Owner Name(s)', 'Owner 1 Full Name',
+    'Mail Full Address', 'Mail City', 'Mail State', 'Mail Zip',
+    'FL FEMA Flood Zone', 'FEMA Flood Coverage', 'Buildability total (%)', 'TLP Estimate',
+    'Vacant Flag', 'Land Locked', 'Road Frontage', 'Land Locked Flag', 'Road Frontage Flag',
+    'Do Not Mail', 'Mail Foreign Address Indicator'
+]
+
+def slim_to_required(df: pd.DataFrame, required_cols: list) -> pd.DataFrame:
+    available = [c for c in required_cols if c in df.columns]
+    return df[available].copy()
+
+def downcast_numerics(df: pd.DataFrame) -> pd.DataFrame:
+    for col in df.select_dtypes(include=['float64']).columns:
+        df[col] = pd.to_numeric(df[col], downcast='float')
+    for col in df.select_dtypes(include=['int64']).columns:
+        df[col] = pd.to_numeric(df[col], downcast='integer')
+    return df
+
 
 
 @router.post("/comps", response_model=UploadResponse)
@@ -28,6 +58,8 @@ async def upload_comps(file: UploadFile = File(...)) -> UploadResponse:
 
     try:
         df, stats = parse_csv(content, is_comps=True)
+        df = slim_to_required(df, COMP_COLS_REQUIRED)
+        df = downcast_numerics(df)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
@@ -58,6 +90,8 @@ async def upload_targets(file: UploadFile = File(...)) -> UploadResponse:
 
     try:
         df, stats = parse_csv(content, is_comps=False)
+        df = slim_to_required(df, TARGET_COLS_REQUIRED)
+        df = downcast_numerics(df)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 

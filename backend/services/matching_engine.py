@@ -648,18 +648,13 @@ def run_matching(
     has_coords = ~(np.isnan(t_lats_raw) | np.isnan(t_lons_raw))
     with_idx = np.where(has_coords)[0]
     without_idx = np.where(~has_coords)[0]
+    
+    # Pre-compute acreage band masks for all comps once
+    band_masks_dict = {}
+    for band_lo, band_hi, band_name in ACREAGE_BANDS:
+        band_masks_dict[band_name] = (comp_acres >= band_lo) & (comp_acres < band_hi)
 
-    # ── 4. Vectorized distance matrix for targets with coords ─────────
-    dist_matrix: Optional[np.ndarray] = None
-    if len(with_idx) > 0:
-        dist_matrix = _haversine_matrix(
-            t_lats_raw[with_idx],
-            t_lons_raw[with_idx],
-            comp_lats,
-            comp_lons,
-        )
-
-    # ── 5. Inner loop — acreage band + radius + new pricing ──────────
+    # Process targets WITHOUT coordinates (no comps matched)
     results: List[Dict[str, Any]] = []
 
     # DEBUG: APNs to trace (set to empty list to disable)
@@ -687,7 +682,7 @@ def run_matching(
         else:
             if has_acres:
                 band_low, band_high, band_label = get_acreage_band(float(target_acres))
-                band_mask = (comp_acres >= band_low) & (comp_acres < band_high)
+                band_mask = band_masks_dict.get(band_label, np.zeros(len(vc), dtype=bool)).copy()
                 if debug:
                     print(f"\n[DEBUG {target_apn}] =========================================", flush=True)
                     print(f"[DEBUG {target_apn}] Target acres: {target_acres}", flush=True)
@@ -880,11 +875,24 @@ def run_matching(
                 results[-1]['nano_buildability_warning'] = True
                 results[-1]['nano_buildability_pct'] = build_val_raw
 
-    # Process targets WITH coordinates (pass distances for proximity-tiered matching)
-    if dist_matrix is not None:
-        for local_i, ti in enumerate(with_idx):
-            row_distances = dist_matrix[local_i]
-            _process_one(ti, row_distances)
+    # Process targets WITH coordinates in chunks to save memory
+    import gc
+    CHUNK_SIZE = 1000
+    for chunk_start in range(0, len(with_idx), CHUNK_SIZE):
+        chunk_idx = with_idx[chunk_start:chunk_start + CHUNK_SIZE]
+        if len(chunk_idx) > 0:
+            dist_chunk = _haversine_matrix(
+                t_lats_raw[chunk_idx],
+                t_lons_raw[chunk_idx],
+                comp_lats,
+                comp_lons,
+            )
+            for local_i, ti in enumerate(chunk_idx):
+                row_distances = dist_chunk[local_i]
+                _process_one(ti, row_distances)
+            
+            del dist_chunk
+            gc.collect()
 
     # Process targets WITHOUT coordinates (no comps matched)
     for ti in without_idx:
