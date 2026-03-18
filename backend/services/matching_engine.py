@@ -2,11 +2,14 @@
 Matching engine: Haversine-based radius filtering + scoring + pricing.
 Fully vectorized numpy throughout — no DataFrame creation inside the inner loop.
 
-Pricing model (client-specified):
+Pricing model (client-approved March 2026):
     Retail Estimate = median(comp sale prices)  — NOT ppa × acres
-    Offer Low  = 40% of retail
-    Offer Mid  = 50% of retail
-    Offer High = 60% of retail
+    Offer Low  = 50% of retail
+    Offer Mid  = 60% of retail
+    Offer High = 70% of retail
+
+Search order: 0.25mi → 0.50mi → 1mi (stop at first step with 1+ comp)
+Minimum 1 comp required for pricing. No TLP cap. No fallback beyond 1 mile.
 
 Data cleaning removes bulk sales, PPA outliers, and data errors.
 Acreage band matching prevents cross-band distortion.
@@ -86,13 +89,15 @@ def _acreage_band_label_vec(acres_arr: np.ndarray) -> np.ndarray:
 # Proximity weighting (client-specified)
 # ─────────────────────────────────────────────
 
-PROXIMITY_TIERS = [
-    (0.0,  0.25, 3),   # within 0.25 miles: weight = 3x
-    (0.25, 0.50, 2),   # 0.25 to 0.50 miles: weight = 2x
-    (0.50, 1.00, 1),   # 0.50 to 1.00 miles: weight = 1x
-]
+# ─────────────────────────────────────────────
+# Comp search order (client-approved)
+# ─────────────────────────────────────────────
 
-FALLBACK_RADII = [(1.0, '1mi'), (3.0, '3mi')]
+COMP_SEARCH_STEPS = [
+    (0.25, '0.25mi'),
+    (0.50, '0.50mi'),
+    (1.00, '1mi'),
+]
 
 
 def get_comp_weight(distance_miles: float) -> int:
@@ -103,6 +108,13 @@ def get_comp_weight(distance_miles: float) -> int:
         return 2
     else:
         return 1
+
+
+PROXIMITY_TIERS = [
+    (0.0,  0.25, 3),   # within 0.25 miles: weight = 3x
+    (0.25, 0.50, 2),   # 0.25 to 0.50 miles: weight = 2x
+    (0.50, 1.00, 1),   # 0.50 to 1.00 miles: weight = 1x
+]
 
 
 def weighted_median(values: np.ndarray, weights: np.ndarray) -> float:
@@ -126,27 +138,15 @@ def get_tier_counts(distances: np.ndarray) -> Dict[str, int]:
 
 
 def get_confidence(n_comps: int, radius_label: Optional[str] = None) -> str:
-    """Get confidence level based on comp count and radius used."""
-    if radius_label is None:
-        # Legacy mode (test endpoint without distances)
-        if n_comps >= 5: return 'HIGH'
-        elif n_comps >= 3: return 'MEDIUM'
-        elif n_comps >= 1: return 'LOW'
-        else: return 'NO DATA'
-    if radius_label == '1mi':
-        if n_comps >= 5: return 'HIGH'
-        elif n_comps >= 3: return 'MEDIUM'
-        elif n_comps >= 1: return 'LOW'
-        else: return 'NO DATA'
-    elif radius_label == '3mi':
-        if n_comps >= 5: return 'MEDIUM'
-        elif n_comps >= 3: return 'LOW'
-        elif n_comps >= 1: return 'LOW'
-        else: return 'NO DATA'
-    else:  # 3mi_fallback or extended radius
-        if n_comps >= 3: return 'LOW'
-        elif n_comps >= 1: return 'LOW'
-        else: return 'NO DATA'
+    """Get confidence level based on comp count (client-approved March 2026)."""
+    if n_comps >= 3:
+        return 'HIGH'
+    elif n_comps == 2:
+        return 'MEDIUM'
+    elif n_comps == 1:
+        return 'LOW'
+    else:
+        return 'NO MATCH'
 
 
 # ─────────────────────────────────────────────
@@ -235,10 +235,7 @@ def clean_comps_for_pricing(df: pd.DataFrame) -> pd.DataFrame:
     # Remove non-market sales
     df = df[df['Current Sale Price'] >= 1000]
 
-    # Remove bulk/developer transactions (same price + same date)
-    df, _ = detect_bulk_sales(df)
-
-    # Remove PPA outliers (IQR method, 3× fence)
+    # Calculate PPA and IQR fence on FULL dataset (before bulk removal)
     if len(df) > 0:
         df['ppa'] = df['Current Sale Price'] / df['Lot Acres']
         Q1 = df['ppa'].quantile(0.25)
@@ -246,14 +243,25 @@ def clean_comps_for_pricing(df: pd.DataFrame) -> pd.DataFrame:
         IQR = Q3 - Q1
         upper_fence = Q3 + 3 * IQR
         lower_fence = max(100, Q1 - 3 * IQR)
+
+        # THEN remove bulk/developer transactions (preserves true IQR distribution)
+        df, _ = detect_bulk_sales(df)
+
+        # Apply pre-calculated fence (from full dataset)
         df = df[(df['ppa'] >= lower_fence) & (df['ppa'] <= upper_fence)]
 
     return df.reset_index(drop=True)
 
 
 # ─────────────────────────────────────────────
-# Pricing function (client-specified formula)
+# Pricing function (client-approved formula)
 # ─────────────────────────────────────────────
+
+# Client-confirmed pricing percentages (March 2026)
+LOW_PCT  = 0.50   # 50% of retail
+MID_PCT  = 0.60   # 60% of retail
+HIGH_PCT = 0.70   # 70% of retail
+
 
 def calculate_offer_price(
     target_acres: float,
@@ -263,18 +271,19 @@ def calculate_offer_price(
     radius_label: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Client-specified pricing model with optional proximity weighting.
+    Client-approved pricing model (March 2026):
 
     Formula:
-        Retail Estimate = weighted_median(comp sale prices) if distances available
-                        = median(comp sale prices)          otherwise
-        Offer Low  = 40% of retail
-        Offer Mid  = 50% of retail
-        Offer High = 60% of retail
+        Single comp: use that price directly as retail
+        Multiple comps: use median(comp sale prices)
+        Offer Low  = 50% of retail
+        Offer Mid  = 60% of retail
+        Offer High = 70% of retail
 
-    Verified against client example:
-        3 comps: $95K, $88K, $102K
-        retail=95000, low=38000, mid=47500, high=57000 ✓
+    Verified against client examples:
+        Williams Mattie P: 1 comp $190K → retail=190000, low=95000, mid=114000, high=133000 ✓
+        Snyder Roy P: 1 comp $77K → retail=77000, low=38500, mid=46200, high=53900 ✓
+        Damien example: 3 comps $95K,$88K,$102K → retail=95000, low=47500, mid=57000, high=66500 ✓
     """
     empty: Dict[str, Any] = {
         'retail_estimate': None,
@@ -289,15 +298,14 @@ def calculate_offer_price(
         'min_comp_price': None,
         'max_comp_price': None,
         'acreage_band': acreage_band_label or 'unknown',
-        'confidence': 'NO DATA',
+        'confidence': 'NO MATCH',
         'tlp_estimate': tlp_estimate,
-        'tlp_capped': False,
         'radius_used_miles': None,
-        'radius_label': radius_label,
+        'radius_label': radius_label or 'NO MATCH',
         'proximity_weighted': False,
         'tier_counts': None,
-        'pricing_source': 'NO DATA',
-        'tlp_fallback_mid': None,
+        'pricing_source': 'NO MATCH',
+        'pricing_flag': 'NO MATCH',
         'comp_avg_age_days': None,
         'comp_oldest_days': None,
         'comp_age_warning': False,
@@ -305,9 +313,7 @@ def calculate_offer_price(
     }
 
     if matched_comps_df is None or len(matched_comps_df) == 0:
-        if tlp_estimate and tlp_estimate > 0:
-            empty['tlp_fallback_mid'] = round(tlp_estimate * 0.30)
-            empty['pricing_source'] = 'TLP_FALLBACK'
+        # No comps within 1 mile — return NO MATCH, no TLP fallback
         return empty
 
     total_before_clean = len(matched_comps_df)
@@ -317,7 +323,7 @@ def calculate_offer_price(
     if 'ppa' not in comps.columns:
         comps['ppa'] = comps['Current Sale Price'] / comps['Lot Acres']
 
-    # Remove outliers from this specific matched set (IQR 3× fence)
+    # Remove outliers from this specific matched set (IQR method) — only if 4+ comps
     outliers_removed = 0
     if len(comps) >= 4:
         Q1 = comps['ppa'].quantile(0.25)
@@ -329,48 +335,44 @@ def calculate_offer_price(
         if len(clean) >= 1:
             comps = clean
 
-    # TLP-anchored comp filter: remove comps > 5× TLP estimate
-    tlp_comps_removed = 0
-    if tlp_estimate and tlp_estimate > 0 and len(comps) > 0:
-        ceiling = tlp_estimate * 5
-        filtered = comps[comps['Current Sale Price'] <= ceiling]
-        tlp_comps_removed = len(comps) - len(filtered)
-        comps = filtered  # TLP fallback handles zero-comp case
-
     if len(comps) == 0:
         result = empty.copy()
         result['comp_count'] = total_before_clean
         result['outliers_removed'] = outliers_removed
-        result['tlp_comps_removed'] = tlp_comps_removed
-        if tlp_estimate and tlp_estimate > 0:
-            result['tlp_fallback_mid'] = round(tlp_estimate * 0.30)
-            result['pricing_source'] = 'TLP_FALLBACK'
         return result
 
     prices = comps['Current Sale Price'].values.astype(np.float64)
     ppas = comps['ppa'].values.astype(np.float64)
 
-    # Core formula: proximity-weighted median or plain median
+    # Core formula: single comp uses that price, multiple uses median
     has_distances = 'distance_miles' in comps.columns
     tier_counts = None
     if has_distances:
         distances = comps['distance_miles'].values.astype(np.float64)
-        weights = np.array([get_comp_weight(d) for d in distances])
-        retail_estimate = weighted_median(prices, weights)
         tier_counts = get_tier_counts(distances)
+
+    # Single comp: use that price directly. Multiple comps: use median.
+    if len(prices) == 1:
+        retail_estimate = float(prices[0])
     else:
-        retail_estimate = float(np.median(prices))
+        if has_distances:
+            distances = comps['distance_miles'].values.astype(np.float64)
+            weights = np.array([get_comp_weight(d) for d in distances])
+            retail_estimate = weighted_median(prices, weights)
+        else:
+            retail_estimate = float(np.median(prices))
 
-    offer_low = round(retail_estimate * 0.40)
-    offer_mid = round(retail_estimate * 0.50)
-    offer_high = round(retail_estimate * 0.60)
+    # Client-confirmed 50/60/70 percentages
+    offer_low = round(retail_estimate * LOW_PCT)
+    offer_mid = round(retail_estimate * MID_PCT)
+    offer_high = round(retail_estimate * HIGH_PCT)
 
-    # Confidence based on comp count and radius
+    # Confidence based on comp count
     n = len(comps)
     confidence = get_confidence(n, radius_label)
 
     # Derive radius_used_miles from radius_label
-    _radius_map = {'1mi': 1.0, '3mi': 3.0, '3mi_fallback': 3.0}
+    _radius_map = {'0.25mi': 0.25, '0.50mi': 0.50, '1mi': 1.0}
     radius_used_miles = _radius_map.get(radius_label) if radius_label else None
 
     result: Dict[str, Any] = {
@@ -388,13 +390,12 @@ def calculate_offer_price(
         'acreage_band': acreage_band_label or 'unknown',
         'confidence': confidence,
         'tlp_estimate': tlp_estimate,
-        'tlp_capped': False,
         'radius_used_miles': radius_used_miles,
         'radius_label': radius_label,
         'proximity_weighted': has_distances,
         'tier_counts': tier_counts,
         'pricing_source': 'COMPS',
-        'tlp_fallback_mid': None,
+        'pricing_flag': 'OK',
         'comp_avg_age_days': None,
         'comp_oldest_days': None,
         'comp_age_warning': False,
@@ -407,39 +408,18 @@ def calculate_offer_price(
     result['comp_oldest_days'] = oldest_age
     result['comp_age_warning'] = avg_age > 730 if avg_age else False
 
-    # TLP investor cap: cap offer_mid at 50% of TLP (investor offer, not full retail)
-    TLP_CAP_PERCENTAGE = 0.50
-    if tlp_estimate and tlp_estimate > 0:
-        tlp_investor_ceiling = tlp_estimate * TLP_CAP_PERCENTAGE
-        if offer_mid > tlp_investor_ceiling:
-            result['offer_mid_uncapped'] = offer_mid
-            result['offer_mid'] = round(tlp_investor_ceiling)
-            result['offer_low'] = round(tlp_estimate * 0.40)
-            result['offer_high'] = round(tlp_estimate * 0.60)
-            result['tlp_capped'] = True
-            if retail_estimate > tlp_estimate * 2:
-                result['pricing_flag'] = 'SUSPECT_COMPS'
-            else:
-                result['pricing_flag'] = 'HIGH_OFFER_VS_TLP'
-
-    # TLP floor: if offer_mid < 25% of TLP, anchor to 30% of TLP
-    # Also flag REVIEW_LOW (25-30%) and SUSPECT_COMPS (retail > 2× TLP)
-    if tlp_estimate and tlp_estimate > 0 and result['offer_mid'] is not None and not result['tlp_capped']:
+    # Set pricing flags based on TLP comparison (informational only, no capping)
+    # TLP is reference only — comps drive pricing as per client instruction
+    if tlp_estimate and tlp_estimate > 0 and result['offer_mid'] is not None:
         tlp_ratio = result['offer_mid'] / tlp_estimate
         if tlp_ratio < 0.25:
             result['pricing_flag'] = 'LOW_OFFER_VS_TLP'
-            result['offer_mid_original'] = result['offer_mid']
-            result['offer_mid'] = round(tlp_estimate * 0.30)
-            result['offer_low'] = round(tlp_estimate * 0.25)
-            result['offer_high'] = round(tlp_estimate * 0.40)
         elif tlp_ratio < 0.30:
             result['pricing_flag'] = 'REVIEW_LOW'
         elif retail_estimate > tlp_estimate * 2:
             result['pricing_flag'] = 'SUSPECT_COMPS'
         else:
             result['pricing_flag'] = 'OK'
-
-    result['tlp_comps_removed'] = tlp_comps_removed
 
     # Upgrade pricing flag when comps are stale (>2 years) — unreliable in any direction
     if result.get('comp_age_warning'):
@@ -448,12 +428,8 @@ def calculate_offer_price(
             result['pricing_flag'] = 'STALE_COMPS'
         elif existing_flag in ('REVIEW_LOW', 'LOW_OFFER_VS_TLP'):
             result['pricing_flag'] = 'REVIEW_LOW_STALE'
-        elif existing_flag in ('HIGH_OFFER_VS_TLP', 'SUSPECT_COMPS'):
+        elif existing_flag == 'SUSPECT_COMPS':
             result['pricing_flag'] = 'SUSPECT_COMPS_STALE'
-
-    # Guarantee correct ordering
-    result['offer_low'] = min(result['offer_low'], result['offer_mid'])
-    result['offer_high'] = max(result['offer_high'], result['offer_mid'])
 
     return result
 
@@ -686,10 +662,19 @@ def run_matching(
     # ── 5. Inner loop — acreage band + radius + new pricing ──────────
     results: List[Dict[str, Any]] = []
 
+    # DEBUG: APNs to trace (set to empty list to disable)
+    DEBUG_APNS = ['237EG02601', '240AB002', '237FB014']
+
     def _process_one(ti: int, row_distances: Optional[np.ndarray]) -> None:
         """Score + price one target using acreage band + proximity-tiered radius + weighted median pricing."""
         target_acres = t_acres_raw[ti]
         has_acres = not (np.isnan(target_acres) or target_acres <= 0)
+
+        # Get APN for debug
+        row = targets.iloc[ti]
+        target_apn = str(row.get("APN", "")).strip()
+        debug = target_apn in DEBUG_APNS
+        is_premium = False  # Initialize here
 
         # Apply acreage band filter
         band_label = 'unknown'
@@ -697,10 +682,25 @@ def run_matching(
 
         if row_distances is None:
             matched_mask = np.zeros(len(vc), dtype=bool)
+            if debug:
+                print(f"[DEBUG {target_apn}] No row_distances - skipping", flush=True)
         else:
             if has_acres:
                 band_low, band_high, band_label = get_acreage_band(float(target_acres))
                 band_mask = (comp_acres >= band_low) & (comp_acres < band_high)
+                if debug:
+                    print(f"\n[DEBUG {target_apn}] =========================================", flush=True)
+                    print(f"[DEBUG {target_apn}] Target acres: {target_acres}", flush=True)
+                    print(f"[DEBUG {target_apn}] Band: {band_label} ({band_low}-{band_high})", flush=True)
+                    print(f"[DEBUG {target_apn}] Total comps: {len(vc)}", flush=True)
+                    print(f"[DEBUG {target_apn}] Comps in band: {band_mask.sum()}", flush=True)
+                    # Show comps in band
+                    band_indices = np.where(band_mask)[0]
+                    for idx in band_indices[:10]:  # First 10
+                        d = row_distances[idx]
+                        p = comp_prices[idx]
+                        a = comp_acres[idx]
+                        print(f"[DEBUG {target_apn}]   Comp idx={idx}: {a:.2f}ac, ${p:,.0f}, dist={d:.2f}mi", flush=True)
             else:
                 band_mask = np.ones(len(vc), dtype=bool)
 
@@ -711,19 +711,33 @@ def run_matching(
                 zip_mask = np.array([str(z).split('.')[0].strip() == t_zip_str for z in comp_zips])
                 band_mask = band_mask & zip_mask
                 is_premium = True
+                if debug:
+                    print(f"[DEBUG {target_apn}] Premium ZIP {t_zip_str}: comps after ZIP filter = {band_mask.sum()}", flush=True)
 
-            # Tiered proximity fallback: 1mi → 3mi → 5mi
+            # Client-approved search order: 0.25mi → 0.50mi → 1mi
+            # Stop at first step with 1+ comp. Never go beyond 1 mile.
             matched_mask = np.zeros(len(vc), dtype=bool)
-            for radius, label in FALLBACK_RADII:
+            radius_label = 'NO MATCH'
+            for radius, label in COMP_SEARCH_STEPS:
                 trial_mask = band_mask & (row_distances <= radius)
-                if trial_mask.sum() >= 3:
+                if debug:
+                    print(f"[DEBUG {target_apn}] Step {label}: {trial_mask.sum()} comps within {radius}mi", flush=True)
+                    if trial_mask.sum() > 0:
+                        trial_indices = np.where(trial_mask)[0]
+                        for idx in trial_indices[:5]:
+                            d = row_distances[idx]
+                            p = comp_prices[idx]
+                            a = comp_acres[idx]
+                            print(f"[DEBUG {target_apn}]   -> Comp: {a:.2f}ac, ${p:,.0f}, dist={d:.2f}mi", flush=True)
+                if trial_mask.sum() >= 1:
                     matched_mask = trial_mask
                     radius_label = label
+                    if debug:
+                        print(f"[DEBUG {target_apn}] SELECTED: {trial_mask.sum()} comps at {label}", flush=True)
                     break
-            else:
-                # Use whatever we have at max fallback radius (3mi)
-                matched_mask = band_mask & (row_distances <= 3.0)
-                radius_label = '3mi_fallback'
+            # If no comps found within 1mi, matched_mask stays empty and radius_label = 'NO MATCH'
+            if debug and radius_label == 'NO MATCH':
+                print(f"[DEBUG {target_apn}] NO MATCH - no comps within 1mi", flush=True)
 
         n_matched = int(matched_mask.sum())
 
@@ -799,6 +813,14 @@ def run_matching(
             radius_label=radius_label,
         )
 
+        if debug:
+            print(f"[DEBUG {target_apn}] PRICING RESULT:", flush=True)
+            print(f"[DEBUG {target_apn}]   comp_count={pricing['comp_count']}, clean_comp_count={pricing['clean_comp_count']}", flush=True)
+            print(f"[DEBUG {target_apn}]   retail=${pricing['retail_estimate']}, mid=${pricing['offer_mid']}", flush=True)
+            print(f"[DEBUG {target_apn}]   radius_label={pricing['radius_label']}", flush=True)
+            print(f"[DEBUG {target_apn}]   min_comp=${pricing['min_comp_price']}, max_comp=${pricing['max_comp_price']}", flush=True)
+            print(f"[DEBUG {target_apn}] =========================================\n", flush=True)
+
         # ── Build result dict ────────────────────────────────────────
         def _s(v: Any) -> str:
             if v is None or v is pd.NA:
@@ -833,14 +855,12 @@ def run_matching(
             "acreage_band": pricing['acreage_band'],
             "confidence": pricing['confidence'],
             "tlp_estimate": tlp_val,
-            "tlp_capped": pricing['tlp_capped'],
             "pricing_flag": pricing.get('pricing_flag'),
             "radius_used_miles": pricing.get('radius_used_miles'),
             "radius_label": pricing.get('radius_label'),
             "proximity_weighted": pricing.get('proximity_weighted', False),
             "tier_counts": pricing.get('tier_counts'),
-            "pricing_source": pricing.get('pricing_source', 'NO DATA'),
-            "tlp_fallback_mid": pricing.get('tlp_fallback_mid'),
+            "pricing_source": pricing.get('pricing_source', 'NO MATCH'),
             "flood_zone": _s(row.get("FL FEMA Flood Zone")) or None,
             "buildability_pct": _f(row.get("Buildability total (%)")),
             "latitude": _f(t_lats_raw[ti]),
