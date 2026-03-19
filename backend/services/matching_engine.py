@@ -100,14 +100,23 @@ COMP_SEARCH_STEPS = [
 ]
 
 
-def get_comp_weight(distance_miles: float) -> int:
-    """Return proximity weight for a comp at given distance."""
-    if distance_miles <= 0.25:
-        return 3
-    elif distance_miles <= 0.50:
-        return 2
-    else:
-        return 1
+def get_comp_weight(distance_miles: float) -> float:
+    """
+    Return proximity weight for a comp at given distance.
+    Uses inverse-distance weighting so closest comps dominate pricing.
+    
+    Examples:
+        0.05mi → weight = 20 (very close comp dominates)
+        0.1mi  → weight = 10
+        0.25mi → weight = 4
+        0.5mi  → weight = 2
+        1.0mi  → weight = 1
+    
+    Minimum distance capped at 0.05mi to prevent infinite weights.
+    """
+    # Cap minimum distance at 0.05mi (~264 feet) to prevent extreme weights
+    capped_distance = max(distance_miles, 0.05)
+    return 1.0 / capped_distance
 
 
 PROXIMITY_TIERS = [
@@ -119,13 +128,38 @@ PROXIMITY_TIERS = [
 
 def weighted_median(values: np.ndarray, weights: np.ndarray) -> float:
     """
-    Calculate weighted median by expanding values by their weights.
-    Comps within 0.25 miles count 3x, 0.5mi count 2x, 1mi+ count 1x.
+    Calculate weighted median using inverse-distance weights.
+    Closest comps have much higher weight, naturally dominating the result.
+    
+    Example with inverse-distance:
+        Comp A: $29,000 at 0.1mi → weight=10
+        Comp B: $45,000 at 0.5mi → weight=2
+        Comp C: $70,000 at 0.9mi → weight=1.1
+        
+        Weighted median heavily favors Comp A's $29,000 price.
     """
-    expanded = []
-    for v, w in zip(values, weights):
-        expanded.extend([v] * int(w))
-    return float(np.median(expanded))
+    if len(values) == 0:
+        return 0.0
+    if len(values) == 1:
+        return float(values[0])
+    
+    # Sort by value
+    sorted_indices = np.argsort(values)
+    sorted_values = values[sorted_indices]
+    sorted_weights = weights[sorted_indices]
+    
+    # Normalize weights to sum to 1
+    total_weight = np.sum(sorted_weights)
+    if total_weight == 0:
+        return float(np.median(values))
+    
+    cumulative_weight = np.cumsum(sorted_weights) / total_weight
+    
+    # Find the value where cumulative weight crosses 0.5
+    median_idx = np.searchsorted(cumulative_weight, 0.5)
+    median_idx = min(median_idx, len(sorted_values) - 1)
+    
+    return float(sorted_values[median_idx])
 
 
 def get_tier_counts(distances: np.ndarray) -> Dict[str, int]:
