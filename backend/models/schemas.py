@@ -131,6 +131,14 @@ class MatchedParcel(BaseModel):
     premium_zip: bool = False
     nano_buildability_warning: bool = False
     nano_buildability_pct: Optional[float] = None
+    # New fields for Damien's requirements
+    parcel_address: Optional[str] = None
+    parcel_state: Optional[str] = None
+    parcel_county: Optional[str] = None
+    same_street_match: bool = False
+    closest_comp_distance: Optional[float] = None
+    road_frontage: Optional[float] = None
+    possible_issue: Optional[str] = None
 
 
 class MatchResponse(BaseModel):

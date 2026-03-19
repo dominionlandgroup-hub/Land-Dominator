@@ -16,36 +16,49 @@ router = APIRouter(prefix="/mailing", tags=["mailing"])
 FOREIGN_STATES = {"AE", "AP", "AS"}
 
 OUTPUT_HEADERS = [
+    # PROPERTY
+    "APN",
+    "Parcel Address",
+    "Parcel City",
+    "Parcel State",
+    "Parcel Zip",
+    "Parcel County",
+    "Latitude",
+    "Longitude",
+    # OWNER
     "Owner Name",
     "Mail Full Address",
     "Mail City",
     "Mail State",
     "Mail Zip",
-    "APN",
-    "Parcel Zip",
-    "Parcel City",
-    "Lot Acres",
-    "Match Score",
-    "Acreage Band",
-    "Comp Count",
-    "Clean Comp Count",
-    "Outliers Removed",
-    "Confidence",
+    # PRICING
     "Retail Estimate",
     "Suggested Offer Low",
     "Suggested Offer Mid",
     "Suggested Offer High",
+    # MATCH DATA
+    "Comp Count",
+    "Clean Comp Count",
+    "Closest Comp Distance (mi)",
+    "Acreage Band",
+    "Same Street Match",
+    # ADDITIONAL
+    "Lot Acres",
+    "Match Score",
+    "Outliers Removed",
+    "Confidence",
     "Median Comp Sale Price",
     "Median PPA",
     "Min Comp Price",
     "Max Comp Price",
     "TLP Estimate",
-    "TLP Capped",
     "Pricing Flag",
     "Comp Avg Age Days",
     "Premium ZIP",
     "Flood Zone",
     "Buildability %",
+    "Road Frontage",
+    "Possible Issue",
     "Nano Warning",
 ]
 
@@ -100,25 +113,40 @@ async def download_mailing(
     cleaned, _, _ = _deduplicate(raw_results)
 
     # Apply export type filter
-    HIGH_CONF_EXCLUDED_FLAGS = {'LOW_OFFER_VS_TLP', 'REVIEW_LOW', 'REVIEW_LOW_STALE'}
-    FLAGGED_REVIEW_FLAGS = {'LOW_OFFER_VS_TLP', 'REVIEW_LOW', 'REVIEW_LOW_STALE'}
-    FLAGGED_SUSPECT_FLAGS = {'HIGH_OFFER_VS_TLP', 'SUSPECT_COMPS', 'SUSPECT_COMPS_STALE'}
+    # Note: With simplified flags (MATCHED/NO_COMPS only), these legacy flag sets are mostly empty
+    HIGH_CONF_EXCLUDED_FLAGS = {'NO_COMPS'}
+    FLAGGED_REVIEW_FLAGS = set()  # No longer used - simplified per Damien's request
+    FLAGGED_SUSPECT_FLAGS = set()  # No longer used - simplified per Damien's request
 
     if export_type == "high-confidence":
         filtered = [
             p for p in cleaned
             if p.matched_comp_count >= 3
-            and getattr(p, 'pricing_flag', None) not in HIGH_CONF_EXCLUDED_FLAGS
+            and getattr(p, 'pricing_flag', None) == 'MATCHED'
         ]
         suffix = f"high-confidence-{len(filtered)}-records"
     elif export_type == "flagged-for-review":
-        filtered = [p for p in cleaned if getattr(p, 'pricing_flag', None) in FLAGGED_REVIEW_FLAGS]
-        suffix = f"flagged-for-review-{len(filtered)}-records"
+        # No longer used - return empty
+        filtered = []
+        suffix = f"flagged-for-review-0-records"
     elif export_type == "suspect-comps":
-        filtered = [p for p in cleaned if getattr(p, 'pricing_flag', None) in FLAGGED_SUSPECT_FLAGS]
-        suffix = f"suspect-comps-{len(filtered)}-records"
+        # No longer used - return empty
+        filtered = []
+        suffix = f"suspect-comps-0-records"
     elif export_type == "top500":
-        filtered = sorted(cleaned, key=lambda p: p.match_score, reverse=True)[:500]
+        # Damien's Top 500 requirements (Point 10):
+        # - MATCHED properties only (no flags, no suspect comps)
+        # - Sort by: 1) Same street matches, 2) Closest distance, 3) Best acreage match
+        matched_only = [p for p in cleaned if getattr(p, 'pricing_flag', None) == 'MATCHED']
+        
+        # Sort: same_street_match DESC, closest_comp_distance ASC, match_score DESC
+        def top500_sort_key(p):
+            same_street = 1 if getattr(p, 'same_street_match', False) else 0
+            distance = getattr(p, 'closest_comp_distance', 999) or 999
+            score = getattr(p, 'match_score', 0) or 0
+            return (-same_street, distance, -score)  # negative for DESC
+        
+        filtered = sorted(matched_only, key=top500_sort_key)[:500]
         suffix = f"top500-records"
     else:
         filtered = cleaned
@@ -216,6 +244,9 @@ def _deduplicate(
                 mail_zip=row.get("mail_zip", ""),
                 parcel_zip=row.get("parcel_zip", ""),
                 parcel_city=row.get("parcel_city", ""),
+                parcel_address=row.get("parcel_address", ""),
+                parcel_state=row.get("parcel_state", "NC"),  # Default to NC for Brunswick County
+                parcel_county=row.get("parcel_county", "Brunswick"),  # Default
                 lot_acres=row.get("lot_acres"),
                 match_score=row.get("match_score", 0),
                 matched_comp_count=row.get("matched_comp_count", 0),
@@ -245,6 +276,10 @@ def _deduplicate(
                 premium_zip=row.get("premium_zip", False),
                 nano_buildability_warning=row.get("nano_buildability_warning", False),
                 nano_buildability_pct=row.get("nano_buildability_pct"),
+                same_street_match=row.get("same_street_match", False),
+                closest_comp_distance=row.get("closest_comp_distance"),
+                road_frontage=row.get("road_frontage"),
+                possible_issue=row.get("possible_issue"),
             )
         )
 
@@ -259,36 +294,49 @@ def _build_csv(parcels: list[MatchedParcel]) -> bytes:
     for p in parcels:
         writer.writerow(
             [
+                # PROPERTY
+                p.apn,
+                p.parcel_address or "",
+                p.parcel_city or "",
+                p.parcel_state or "NC",
+                p.parcel_zip or "",
+                p.parcel_county or "Brunswick",
+                p.latitude if p.latitude is not None else "",
+                p.longitude if p.longitude is not None else "",
+                # OWNER
                 p.owner_name,
                 p.mail_address,
                 p.mail_city,
                 p.mail_state,
                 p.mail_zip,
-                p.apn,
-                p.parcel_zip,
-                p.parcel_city,
-                p.lot_acres if p.lot_acres is not None else "",
-                p.match_score,
-                p.acreage_band or "",
-                p.comp_count,
-                p.clean_comp_count,
-                p.outliers_removed,
-                p.confidence,
+                # PRICING
                 _fmt_currency(p.retail_estimate),
                 _fmt_currency(p.suggested_offer_low),
                 _fmt_currency(p.suggested_offer_mid),
                 _fmt_currency(p.suggested_offer_high),
+                # MATCH DATA
+                p.comp_count,
+                p.clean_comp_count,
+                f"{p.closest_comp_distance:.2f}" if p.closest_comp_distance is not None else "",
+                p.acreage_band or "",
+                "Yes" if p.same_street_match else "No",
+                # ADDITIONAL
+                p.lot_acres if p.lot_acres is not None else "",
+                p.match_score,
+                p.outliers_removed,
+                p.confidence,
                 _fmt_currency(p.median_comp_sale_price),
                 _fmt_currency(p.median_ppa),
                 _fmt_currency(p.min_comp_price),
                 _fmt_currency(p.max_comp_price),
                 _fmt_currency(p.tlp_estimate),
-                "Yes" if p.tlp_capped else "No",
                 p.pricing_flag or "",
                 p.comp_avg_age_days if p.comp_avg_age_days is not None else "",
                 "Yes" if p.premium_zip else "No",
                 p.flood_zone or "",
                 p.buildability_pct if p.buildability_pct is not None else "",
+                p.road_frontage if p.road_frontage is not None else "",
+                p.possible_issue or "",
                 "Yes" if p.nano_buildability_warning else "",
             ]
         )

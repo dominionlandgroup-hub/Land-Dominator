@@ -85,6 +85,71 @@ def _acreage_band_label_vec(acres_arr: np.ndarray) -> np.ndarray:
     return labels
 
 
+def _extract_street_name(address: str) -> str:
+    """
+    Extract street name from a full address for same-street matching.
+    Examples:
+        "123 Oak Street SW" -> "OAK ST"
+        "456 Main Ave NE Supply NC 28462" -> "MAIN AVE"
+        "789 Highway 17 South" -> "HIGHWAY 17"
+    """
+    if not address or not isinstance(address, str):
+        return ""
+    
+    # Normalize
+    addr = address.upper().strip()
+    
+    # Remove common suffixes and directions
+    for suffix in [' NC ', ' SC ', ' VA ', ' GA ', ' FL ']:
+        if suffix in addr:
+            addr = addr.split(suffix)[0]
+    
+    # Remove ZIP codes (5 digits at end)
+    import re
+    addr = re.sub(r'\s+\d{5}(-\d{4})?\s*$', '', addr)
+    
+    # Remove city names (common in area)
+    for city in ['SUPPLY', 'LELAND', 'SOUTHPORT', 'BOLIVIA', 'CALABASH', 
+                 'OCEAN ISLE BEACH', 'SUNSET BEACH', 'OAK ISLAND', 'SHALLOTTE']:
+        addr = addr.replace(city, '')
+    
+    # Split into parts
+    parts = addr.split()
+    if len(parts) < 2:
+        return ""
+    
+    # Remove house number (first part if numeric)
+    if parts[0].isdigit():
+        parts = parts[1:]
+    
+    # Remove apt/unit numbers
+    filtered_parts = []
+    for p in parts:
+        if p in ['APT', 'UNIT', 'STE', 'SUITE', '#']:
+            break
+        filtered_parts.append(p)
+    
+    if not filtered_parts:
+        return ""
+    
+    # Normalize street type abbreviations
+    type_map = {
+        'STREET': 'ST', 'AVENUE': 'AVE', 'DRIVE': 'DR', 'ROAD': 'RD',
+        'LANE': 'LN', 'COURT': 'CT', 'CIRCLE': 'CIR', 'BOULEVARD': 'BLVD',
+        'PLACE': 'PL', 'WAY': 'WAY', 'TERRACE': 'TER', 'TRAIL': 'TRL',
+        'HIGHWAY': 'HWY', 'PARKWAY': 'PKWY'
+    }
+    normalized = []
+    for p in filtered_parts:
+        normalized.append(type_map.get(p, p))
+    
+    # Remove directional suffixes at end (SW, NE, etc)
+    if normalized and normalized[-1] in ['N', 'S', 'E', 'W', 'NE', 'NW', 'SE', 'SW']:
+        normalized = normalized[:-1]
+    
+    return ' '.join(normalized).strip()
+
+
 # ─────────────────────────────────────────────
 # Proximity weighting (client-specified)
 # ─────────────────────────────────────────────
@@ -291,9 +356,9 @@ def clean_comps_for_pricing(df: pd.DataFrame) -> pd.DataFrame:
 # Pricing function (client-approved formula)
 # ─────────────────────────────────────────────
 
-# Client-confirmed pricing percentages (March 2026)
-LOW_PCT  = 0.50   # 50% of retail
-MID_PCT  = 0.60   # 60% of retail
+# Client-confirmed pricing percentages (March 2026 - Updated per Damien's request)
+LOW_PCT  = 0.60   # 60% of retail
+MID_PCT  = 0.65   # 65% of retail
 HIGH_PCT = 0.70   # 70% of retail
 
 
@@ -303,21 +368,20 @@ def calculate_offer_price(
     tlp_estimate: Optional[float] = None,
     acreage_band_label: Optional[str] = None,
     radius_label: Optional[str] = None,
+    same_street_match: bool = False,
 ) -> Dict[str, Any]:
     """
-    Client-approved pricing model (March 2026):
+    Client-approved pricing model (March 2026 - Updated per Damien's request):
 
     Formula:
         Single comp: use that price directly as retail
         Multiple comps: use median(comp sale prices)
-        Offer Low  = 50% of retail
-        Offer Mid  = 60% of retail
+        Offer Low  = 60% of retail
+        Offer Mid  = 65% of retail
         Offer High = 70% of retail
 
-    Verified against client examples:
-        Williams Mattie P: 1 comp $190K → retail=190000, low=95000, mid=114000, high=133000 ✓
-        Snyder Roy P: 1 comp $77K → retail=77000, low=38500, mid=46200, high=53900 ✓
-        Damien example: 3 comps $95K,$88K,$102K → retail=95000, low=47500, mid=57000, high=66500 ✓
+    No TLP involvement - comps only.
+    Simplified flags: MATCHED or NO_COMPS only.
     """
     empty: Dict[str, Any] = {
         'retail_estimate': None,
@@ -332,22 +396,24 @@ def calculate_offer_price(
         'min_comp_price': None,
         'max_comp_price': None,
         'acreage_band': acreage_band_label or 'unknown',
-        'confidence': 'NO MATCH',
+        'confidence': 'NO_COMPS',
         'tlp_estimate': tlp_estimate,
         'radius_used_miles': None,
-        'radius_label': radius_label or 'NO MATCH',
+        'radius_label': radius_label or 'NO_COMPS',
         'proximity_weighted': False,
         'tier_counts': None,
-        'pricing_source': 'NO MATCH',
-        'pricing_flag': 'NO MATCH',
+        'pricing_source': 'NO_COMPS',
+        'pricing_flag': 'NO_COMPS',
         'comp_avg_age_days': None,
         'comp_oldest_days': None,
         'comp_age_warning': False,
         'premium_zip': False,
+        'same_street_match': False,
+        'closest_comp_distance': None,
     }
 
     if matched_comps_df is None or len(matched_comps_df) == 0:
-        # No comps within 1 mile — return NO MATCH, no TLP fallback
+        # No comps within 1 mile — return NO_COMPS, no TLP fallback
         return empty
 
     total_before_clean = len(matched_comps_df)
@@ -357,8 +423,17 @@ def calculate_offer_price(
     if 'ppa' not in comps.columns:
         comps['ppa'] = comps['Current Sale Price'] / comps['Lot Acres']
 
-    # Remove outliers from this specific matched set (IQR method) — only if 4+ comps
+    # ═══ OUTLIER REMOVAL (Damien requirement #5) ═══
+    # Remove extreme outliers: comps >2× median price are excluded
+    # This catches waterfront/premium lots mixed with standard lots
     outliers_removed = 0
+    if len(comps) >= 2:
+        median_price = comps['Current Sale Price'].median()
+        outlier_threshold = median_price * 2.5  # 2.5× median = outlier
+        outlier_mask = comps['Current Sale Price'] > outlier_threshold
+        outliers_removed = outlier_mask.sum()
+        if outliers_removed > 0 and len(comps) - outliers_removed >= 1:
+            comps = comps[~outlier_mask]
     if len(comps) >= 4:
         Q1 = comps['ppa'].quantile(0.25)
         Q3 = comps['ppa'].quantile(0.75)
@@ -396,7 +471,7 @@ def calculate_offer_price(
         else:
             retail_estimate = float(np.median(prices))
 
-    # Client-confirmed 50/60/70 percentages
+    # Client-confirmed 60/65/70 percentages (updated March 2026)
     offer_low = round(retail_estimate * LOW_PCT)
     offer_mid = round(retail_estimate * MID_PCT)
     offer_high = round(retail_estimate * HIGH_PCT)
@@ -405,8 +480,13 @@ def calculate_offer_price(
     n = len(comps)
     confidence = get_confidence(n, radius_label)
 
+    # Get closest comp distance
+    closest_comp_distance = None
+    if has_distances:
+        closest_comp_distance = float(np.min(distances))
+
     # Derive radius_used_miles from radius_label
-    _radius_map = {'0.25mi': 0.25, '0.50mi': 0.50, '1mi': 1.0}
+    _radius_map = {'0.25mi': 0.25, '0.50mi': 0.50, '1mi': 1.0, 'same_street': 0.0}
     radius_used_miles = _radius_map.get(radius_label) if radius_label else None
 
     result: Dict[str, Any] = {
@@ -429,11 +509,13 @@ def calculate_offer_price(
         'proximity_weighted': has_distances,
         'tier_counts': tier_counts,
         'pricing_source': 'COMPS',
-        'pricing_flag': 'OK',
+        'pricing_flag': 'MATCHED',  # Simplified: MATCHED or NO_COMPS only
         'comp_avg_age_days': None,
         'comp_oldest_days': None,
         'comp_age_warning': False,
         'premium_zip': False,
+        'same_street_match': same_street_match,
+        'closest_comp_distance': closest_comp_distance,
     }
 
     # Calculate comp age
@@ -442,28 +524,10 @@ def calculate_offer_price(
     result['comp_oldest_days'] = oldest_age
     result['comp_age_warning'] = avg_age > 730 if avg_age else False
 
-    # Set pricing flags based on TLP comparison (informational only, no capping)
-    # TLP is reference only — comps drive pricing as per client instruction
-    if tlp_estimate and tlp_estimate > 0 and result['offer_mid'] is not None:
-        tlp_ratio = result['offer_mid'] / tlp_estimate
-        if tlp_ratio < 0.25:
-            result['pricing_flag'] = 'LOW_OFFER_VS_TLP'
-        elif tlp_ratio < 0.30:
-            result['pricing_flag'] = 'REVIEW_LOW'
-        elif retail_estimate > tlp_estimate * 2:
-            result['pricing_flag'] = 'SUSPECT_COMPS'
-        else:
-            result['pricing_flag'] = 'OK'
-
-    # Upgrade pricing flag when comps are stale (>2 years) — unreliable in any direction
-    if result.get('comp_age_warning'):
-        existing_flag = result.get('pricing_flag', 'OK')
-        if existing_flag == 'OK':
-            result['pricing_flag'] = 'STALE_COMPS'
-        elif existing_flag in ('REVIEW_LOW', 'LOW_OFFER_VS_TLP'):
-            result['pricing_flag'] = 'REVIEW_LOW_STALE'
-        elif existing_flag == 'SUSPECT_COMPS':
-            result['pricing_flag'] = 'SUSPECT_COMPS_STALE'
+    # Simplified pricing flags per Damien's requirement (March 2026):
+    # Only MATCHED or NO_COMPS. No TLP-based flags.
+    # Stale comps just get a warning flag, not a separate bucket.
+    result['pricing_flag'] = 'MATCHED'
 
     return result
 
@@ -501,7 +565,7 @@ def _is_flood_risk(fema_zone: str, coverage_str: str) -> bool:
 def run_matching(
     comps_df: pd.DataFrame,
     targets_df: pd.DataFrame,
-    radius_miles: float = 10.0,          # DEPRECATED — unused. Engine uses 1mi→3mi fallback (FALLBACK_RADII).
+    radius_miles: float = 10.0,          # DEPRECATED — unused. Engine uses 1mi max.
     acreage_tolerance_pct: float = 50.0,  # DEPRECATED — unused. Engine uses acreage bands instead.
     min_match_score: int = 0,
     zip_filter: Optional[List[str]] = None,
@@ -516,15 +580,28 @@ def run_matching(
     exclude_land_locked: bool = False,
     require_tlp_estimate: bool = False,
     price_ceiling: Optional[float] = None,
+    # New filters per Damien (March 2026)
+    exclude_with_buildings: bool = True,  # Exclude if Building Sq Ft > 0
+    min_road_frontage: float = 50.0,      # Minimum 50ft road frontage
 ) -> Dict[str, Any]:
     """
     Run the full matching pipeline with cleaned comps and acreage band pricing.
     Uses median(comp sale prices) formula — NOT ppa × acres.
+    
+    Updated March 2026 per Damien:
+    - Simplified flags: MATCHED or NO_COMPS only
+    - Pricing: 60/65/70
+    - Same-street priority
+    - Exclude buildings (sqft > 0)
+    - Min 50ft road frontage
     """
     warnings: List[str] = []
+    filter_counts = {}  # Track counts at each filter step
 
     # ── 1. Clean comps (removes bulk sales, outliers, data errors) ───
     raw_comp_count = len(comps_df)
+    filter_counts['total_comps'] = raw_comp_count
+    
     vc = comps_df[
         (comps_df["Current Sale Price"].notna())
         & (comps_df["Current Sale Price"] > 0)
@@ -559,6 +636,11 @@ def run_matching(
     comp_ppa = vc["ppa"].values.astype(np.float64)
     comp_zips = vc["Parcel Zip"].astype(str).values if "Parcel Zip" in vc.columns else np.full(len(vc), "")
     comp_band_labels = _acreage_band_label_vec(comp_acres)
+
+    # Extract street names from comp addresses for same-street matching
+    comp_streets = np.array([""] * len(vc), dtype=object)
+    if "Parcel Full Address" in vc.columns:
+        comp_streets = vc["Parcel Full Address"].fillna("").astype(str).apply(_extract_street_name).values
 
     # Build acreage band bounds arrays for vectorized filtering
     comp_band_lows = np.zeros(len(vc), dtype=np.float64)
@@ -633,19 +715,57 @@ def run_matching(
         targets = targets[(build_col >= min_buildability)]
 
     # Vacant only filter
+    # Per Damien: Do NOT exclude missing data automatically
+    # Keep records where Vacant Flag is YES, Y, 1, TRUE, or missing/unknown
     if vacant_only and "Vacant Flag" in targets.columns:
         vf = targets["Vacant Flag"].fillna("").astype(str).str.strip().str.lower()
-        targets = targets[(vf != "") & (vf != "nan") & (vf != "none")]
+        # Keep: yes, y, 1, true, OR any empty/null/nan/none (missing data = don't exclude)
+        vacant_mask = (vf == "yes") | (vf == "y") | (vf == "1") | (vf == "true") | \
+                      (vf == "") | (vf == "nan") | (vf == "none")
+        targets = targets[vacant_mask]
+    filter_counts['after_vacant_filter'] = len(targets)
 
     # Road frontage required
+    # Per Damien: Do NOT exclude missing data automatically - only exclude explicit 0 or negative
     if require_road_frontage and "Road Frontage" in targets.columns:
         rf = pd.to_numeric(targets["Road Frontage"], errors="coerce")
-        targets = targets[rf.notna() & (rf > 0)]
+        targets = targets[rf.isna() | (rf > 0)]  # Keep NULL/unknown frontage
+    filter_counts['after_require_frontage'] = len(targets)
 
     # Exclude land locked
     if exclude_land_locked and "Land Locked" in targets.columns:
         ll = targets["Land Locked"].fillna("").astype(str).str.strip().str.lower()
-        targets = targets[(ll == "") | (ll == "0") | (ll == "nan") | (ll == "none")]
+        targets = targets[(ll == "") | (ll == "0") | (ll == "nan") | (ll == "none") | (ll == "no")]
+    filter_counts['after_landlocked'] = len(targets)
+
+    # ═══ NEW FILTERS per Damien (March 2026) ═══
+    
+    # Exclude properties with buildings (Building Sq Ft > 0)
+    if exclude_with_buildings:
+        building_col = None
+        for col_name in ["Building Sq Ft", "Building Area", "Building Sqft", "Bldg Area"]:
+            if col_name in targets.columns:
+                building_col = col_name
+                break
+        if building_col:
+            bldg_sqft = pd.to_numeric(targets[building_col], errors="coerce").fillna(0)
+            before_bldg = len(targets)
+            targets = targets[bldg_sqft <= 0]
+            after_bldg = len(targets)
+            if before_bldg > after_bldg:
+                warnings.append(f"Excluded {before_bldg - after_bldg} properties with buildings (sqft > 0)")
+    filter_counts['after_building_filter'] = len(targets)
+
+    # Minimum road frontage (default 50ft)
+    if min_road_frontage > 0 and "Road Frontage" in targets.columns:
+        rf = pd.to_numeric(targets["Road Frontage"], errors="coerce")
+        before_rf = len(targets)
+        # Keep records with frontage >= min OR missing frontage (don't exclude unknowns)
+        targets = targets[rf.isna() | (rf >= min_road_frontage)]
+        after_rf = len(targets)
+        if before_rf > after_rf:
+            warnings.append(f"Excluded {before_rf - after_rf} properties with <{min_road_frontage}ft road frontage")
+    filter_counts['after_frontage_filter'] = len(targets)
 
     # Require TLP Estimate
     if require_tlp_estimate and "TLP Estimate" in targets.columns:
@@ -659,6 +779,10 @@ def run_matching(
 
     targets = targets.reset_index(drop=True)
     total_targets = len(targets)
+    filter_counts['final_targets'] = total_targets
+
+    # Add filter counts to warnings for debugging
+    warnings.append(f"Filter counts: {filter_counts}")
 
     if len(vc) == 0 or total_targets == 0:
         return {
@@ -667,6 +791,7 @@ def run_matching(
             "matched_count": 0,
             "results": [],
             "warnings": warnings,
+            "filter_counts": filter_counts,
         }
 
     # ── 3. Pre-extract target numpy arrays ───────────────────────────
@@ -678,6 +803,11 @@ def run_matching(
         targets.get("Buildability total (%)", pd.Series(dtype=float)), errors="coerce"
     ).values if "Buildability total (%)" in targets.columns else np.full(total_targets, np.nan)
     t_flood = targets["FEMA Flood Coverage"].astype(str).values if "FEMA Flood Coverage" in targets.columns else np.full(total_targets, "")
+
+    # Extract street names for same-street matching
+    t_streets = np.array([""] * total_targets, dtype=object)
+    if "Parcel Full Address" in targets.columns:
+        t_streets = targets["Parcel Full Address"].fillna("").astype(str).apply(_extract_street_name).values
 
     has_coords = ~(np.isnan(t_lats_raw) | np.isnan(t_lons_raw))
     with_idx = np.where(has_coords)[0]
@@ -695,7 +825,7 @@ def run_matching(
     DEBUG_APNS = ['237EG02601', '240AB002', '237FB014']
 
     def _process_one(ti: int, row_distances: Optional[np.ndarray]) -> None:
-        """Score + price one target using acreage band + proximity-tiered radius + weighted median pricing."""
+        """Score + price one target using same-street priority + acreage band + proximity-tiered radius."""
         target_acres = t_acres_raw[ti]
         has_acres = not (np.isnan(target_acres) or target_acres <= 0)
 
@@ -743,30 +873,49 @@ def run_matching(
                 if debug:
                     print(f"[DEBUG {target_apn}] Premium ZIP {t_zip_str}: comps after ZIP filter = {band_mask.sum()}", flush=True)
 
-            # Client-approved search order: 0.25mi → 0.50mi → 1mi
-            # Stop at first step with 1+ comp. Never go beyond 1 mile.
+            # ═══ DAMIEN PRIORITY ORDER (March 2026) ═══
+            # 1) SAME STREET FIRST - if comp on same street exists, use it (1 comp is enough)
+            # 2) CLOSEST DISTANCE - search 0.25mi → 0.50mi → 1mi
+            # 3) Never go beyond 1 mile
+            
             matched_mask = np.zeros(len(vc), dtype=bool)
-            radius_label = 'NO MATCH'
-            for radius, label in COMP_SEARCH_STEPS:
-                trial_mask = band_mask & (row_distances <= radius)
-                if debug:
-                    print(f"[DEBUG {target_apn}] Step {label}: {trial_mask.sum()} comps within {radius}mi", flush=True)
-                    if trial_mask.sum() > 0:
-                        trial_indices = np.where(trial_mask)[0]
-                        for idx in trial_indices[:5]:
-                            d = row_distances[idx]
-                            p = comp_prices[idx]
-                            a = comp_acres[idx]
-                            print(f"[DEBUG {target_apn}]   -> Comp: {a:.2f}ac, ${p:,.0f}, dist={d:.2f}mi", flush=True)
-                if trial_mask.sum() >= 1:
-                    matched_mask = trial_mask
-                    radius_label = label
+            radius_label = 'NO_COMPS'
+            same_street_found = False
+            
+            # Step 1: Check for same-street comps first
+            target_street = t_streets[ti]
+            if target_street and len(target_street) > 2:
+                street_mask = band_mask & np.array([s == target_street for s in comp_streets])
+                if street_mask.sum() >= 1:
+                    matched_mask = street_mask
+                    radius_label = 'same_street'
+                    same_street_found = True
                     if debug:
-                        print(f"[DEBUG {target_apn}] SELECTED: {trial_mask.sum()} comps at {label}", flush=True)
-                    break
-            # If no comps found within 1mi, matched_mask stays empty and radius_label = 'NO MATCH'
-            if debug and radius_label == 'NO MATCH':
-                print(f"[DEBUG {target_apn}] NO MATCH - no comps within 1mi", flush=True)
+                        print(f"[DEBUG {target_apn}] SAME STREET MATCH: {street_mask.sum()} comps on '{target_street}'", flush=True)
+            
+            # Step 2: If no same-street match, use distance-based search
+            if not same_street_found:
+                for radius, label in COMP_SEARCH_STEPS:
+                    trial_mask = band_mask & (row_distances <= radius)
+                    if debug:
+                        print(f"[DEBUG {target_apn}] Step {label}: {trial_mask.sum()} comps within {radius}mi", flush=True)
+                        if trial_mask.sum() > 0:
+                            trial_indices = np.where(trial_mask)[0]
+                            for idx in trial_indices[:5]:
+                                d = row_distances[idx]
+                                p = comp_prices[idx]
+                                a = comp_acres[idx]
+                                print(f"[DEBUG {target_apn}]   -> Comp: {a:.2f}ac, ${p:,.0f}, dist={d:.2f}mi", flush=True)
+                    if trial_mask.sum() >= 1:
+                        matched_mask = trial_mask
+                        radius_label = label
+                        if debug:
+                            print(f"[DEBUG {target_apn}] SELECTED: {trial_mask.sum()} comps at {label}", flush=True)
+                        break
+            
+            # If no comps found within 1mi, matched_mask stays empty
+            if debug and radius_label == 'NO_COMPS':
+                print(f"[DEBUG {target_apn}] NO_COMPS - no comps within 1mi", flush=True)
 
         n_matched = int(matched_mask.sum())
 
@@ -840,6 +989,7 @@ def run_matching(
             tlp_estimate=tlp_val,
             acreage_band_label=band_label,
             radius_label=radius_label,
+            same_street_match=(radius_label == 'same_street'),
         )
 
         if debug:
@@ -867,6 +1017,7 @@ def run_matching(
             "mail_zip": _s(row.get("Mail Zip")),
             "parcel_zip": _s(t_zip),
             "parcel_city": _s(row.get("Parcel City")),
+            "parcel_address": _s(row.get("Parcel Full Address")),  # Added for export
             "lot_acres": float(target_acres) if has_acres else None,
             "match_score": score,
             "matched_comp_count": pricing['clean_comp_count'],
@@ -889,7 +1040,7 @@ def run_matching(
             "radius_label": pricing.get('radius_label'),
             "proximity_weighted": pricing.get('proximity_weighted', False),
             "tier_counts": pricing.get('tier_counts'),
-            "pricing_source": pricing.get('pricing_source', 'NO MATCH'),
+            "pricing_source": pricing.get('pricing_source', 'NO_COMPS'),
             "flood_zone": _s(row.get("FL FEMA Flood Zone")) or None,
             "buildability_pct": _f(row.get("Buildability total (%)")),
             "latitude": _f(t_lats_raw[ti]),
@@ -898,8 +1049,13 @@ def run_matching(
             "comp_oldest_days": pricing.get('comp_oldest_days'),
             "comp_age_warning": pricing.get('comp_age_warning', False),
             "premium_zip": is_premium if row_distances is not None else False,
+            "same_street_match": pricing.get('same_street_match', False),
+            "closest_comp_distance": pricing.get('closest_comp_distance'),
             "nano_buildability_warning": False,
             "nano_buildability_pct": None,
+            # Road frontage for POSSIBLE_ISSUE detection
+            "road_frontage": _f(row.get("Road Frontage")),
+            "possible_issue": "YES" if (_f(row.get("Road Frontage")) or 999) < min_road_frontage else "NO",
         })
 
         # Nano buildability warning
@@ -940,4 +1096,5 @@ def run_matching(
         "matched_count": len(results),
         "results": results,
         "warnings": warnings,
+        "filter_counts": filter_counts,
     }
