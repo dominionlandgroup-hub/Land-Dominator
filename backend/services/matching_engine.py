@@ -583,6 +583,7 @@ def run_matching(
     # New filters per Damien (March 2026)
     exclude_with_buildings: bool = True,  # Exclude if Building Sq Ft > 0
     min_road_frontage: float = 50.0,      # Minimum 50ft road frontage
+    max_retail_price: float = 200000.0,   # Price ceiling - exclude premium/waterfront ($200K default)
 ) -> Dict[str, Any]:
     """
     Run the full matching pipeline with cleaned comps and acreage band pricing.
@@ -1064,6 +1065,13 @@ def run_matching(
             if build_val_raw is not None and build_val_raw < 50:
                 results[-1]['nano_buildability_warning'] = True
                 results[-1]['nano_buildability_pct'] = build_val_raw
+
+        # ═══ PRICE CEILING (Damien March 2026) ═══
+        # If retail > ceiling, mark as NO_COMPS (premium/waterfront exclusion)
+        if max_retail_price and results[-1].get('retail_estimate'):
+            if results[-1]['retail_estimate'] > max_retail_price:
+                results[-1]['pricing_flag'] = 'NO_COMPS'
+                results[-1]['pricing_source'] = 'PRICE_CEILING'
 
     # Process targets WITH coordinates in chunks to save memory
     import gc

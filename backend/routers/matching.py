@@ -84,6 +84,9 @@ async def run_match(filters: MatchFilters) -> Response:
                 exclude_land_locked=exclude_land_locked,
                 require_tlp_estimate=require_tlp_estimate,
                 price_ceiling=filters.price_ceiling,
+                exclude_with_buildings=getattr(filters, 'exclude_with_buildings', True),
+                min_road_frontage=getattr(filters, 'min_road_frontage', 50.0),
+                max_retail_price=getattr(filters, 'max_retail_price', 200000.0),
             ),
         )
     except Exception:

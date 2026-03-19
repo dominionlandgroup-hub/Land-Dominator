@@ -86,6 +86,11 @@ class MatchFilters(BaseModel):
     require_tlp: bool = False
     require_tlp_estimate: bool = False
     price_ceiling: Optional[float] = None
+    # New filters (Damien March 2026)
+    exclude_with_buildings: bool = True     # Exclude if Building Sq Ft > 0
+    min_road_frontage: float = 50.0         # Minimum 50ft road frontage
+    max_retail_price: float = 200000.0      # Price ceiling ($200K default) - filters premium/waterfront
+    debug_apn: Optional[str] = None         # APN to debug
 
 
 class MatchedParcel(BaseModel):
