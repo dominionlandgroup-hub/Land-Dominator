@@ -1,10 +1,9 @@
 [build]
 builder = "nixpacks"
-buildCommand = "cd backend && pip install -r requirements.txt"
-watchPatterns = ["backend/**"]
+buildCommand = "pip install -r requirements.txt"
 
 [deploy]
-startCommand = "cd backend && python -u main.py"
+startCommand = "python -u main.py"
 healthcheckPath = "/health"
 healthcheckTimeout = 100
 

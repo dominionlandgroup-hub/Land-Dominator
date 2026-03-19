@@ -29,6 +29,10 @@ const DEFAULT_FILTERS: Omit<MatchFilters, 'session_id' | 'target_session_id'> = 
   require_tlp: false,
   require_tlp_estimate: false,
   price_ceiling: null,
+  // Damien's auto-filters (March 2026) - always enabled by default
+  exclude_with_buildings: true,      // Exclude properties with buildings
+  min_road_frontage: 50.0,           // Minimum 50ft road frontage
+  max_retail_price: 200000,          // $200K ceiling to exclude premium/waterfront
 }
 
 export default function MatchTargets() {
@@ -113,6 +117,10 @@ export default function MatchTargets() {
       require_tlp: requireTlp,
       require_tlp_estimate: requireTlp,
       price_ceiling: priceCeiling ? parseFloat(priceCeiling) : null,
+      // Damien's auto-filters (March 2026) - always enabled
+      exclude_with_buildings: true,      // Exclude properties with buildings
+      min_road_frontage: 50.0,           // Minimum 50ft road frontage
+      max_retail_price: 200000,          // $200K ceiling filters premium/waterfront
     }
 
     try {

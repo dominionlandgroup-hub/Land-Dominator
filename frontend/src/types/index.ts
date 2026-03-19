@@ -86,6 +86,10 @@ export interface MatchFilters {
   require_tlp: boolean
   require_tlp_estimate: boolean
   price_ceiling: number | null
+  // Damien's requirements (March 2026)
+  exclude_with_buildings: boolean     // Exclude if Building Sq Ft > 0 (default: true)
+  min_road_frontage: number           // Minimum 50ft road frontage (default: 50.0)
+  max_retail_price: number            // Price ceiling $200K - filters premium/waterfront (default: 200000)
 }
 
 export type MatchFiltersPartial = Partial<MatchFilters>
@@ -99,6 +103,9 @@ export interface MatchedParcel {
   mail_zip: string
   parcel_zip: string
   parcel_city: string
+  parcel_address: string | null        // Added for export
+  parcel_state: string | null          // Added for export
+  parcel_county: string | null         // Added for export
   lot_acres: number | null
   match_score: number
   matched_comp_count: number
@@ -133,6 +140,11 @@ export interface MatchedParcel {
   premium_zip: boolean
   nano_buildability_warning: boolean
   nano_buildability_pct: number | null
+  // Damien's new fields (March 2026)
+  same_street_match: boolean           // True if comp found on same street
+  closest_comp_distance: number | null // Distance to closest comp in miles
+  road_frontage: number | null         // Road frontage in feet
+  possible_issue: string | null        // "YES" if <50ft frontage, "NO" otherwise
 }
 
 export interface MatchResult {

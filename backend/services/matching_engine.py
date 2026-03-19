@@ -823,7 +823,7 @@ def run_matching(
     results: List[Dict[str, Any]] = []
 
     # DEBUG: APNs to trace (set to empty list to disable)
-    DEBUG_APNS = ['237EG02601', '240AB002', '237FB014']
+    DEBUG_APNS = []
 
     def _process_one(ti: int, row_distances: Optional[np.ndarray]) -> None:
         """Score + price one target using same-street priority + acreage band + proximity-tiered radius."""
