@@ -7,6 +7,11 @@ export interface UploadStats {
   columns_found: string[]
   missing_columns: string[]
   preview: Record<string, unknown>[]
+  valid_sale_prices?: number
+  format_detected?: string
+  message?: string
+  message_severity?: 'success' | 'info' | 'warning' | 'error'
+  mapped_columns?: string[]
 }
 
 // ─── Dashboard ─────────────────────────────────────────────────────────────
@@ -86,6 +91,10 @@ export interface MatchFilters {
   require_tlp: boolean
   require_tlp_estimate: boolean
   price_ceiling: number | null
+  // Damien's requirements (March 2026)
+  exclude_with_buildings: boolean     // Exclude if Building Sq Ft > 0 (default: true)
+  min_road_frontage: number           // Minimum 50ft road frontage (default: 50.0)
+  max_retail_price: number | null     // Max retail price filter - applies to matched parcels only (default: null = no ceiling)
 }
 
 export type MatchFiltersPartial = Partial<MatchFilters>
@@ -93,12 +102,17 @@ export type MatchFiltersPartial = Partial<MatchFilters>
 export interface MatchedParcel {
   apn: string
   owner_name: string
+  owner_first_name: string | null
+  owner_last_name: string | null
   mail_address: string
   mail_city: string
   mail_state: string
   mail_zip: string
   parcel_zip: string
   parcel_city: string
+  parcel_address: string | null        // Added for export
+  parcel_state: string | null          // Added for export
+  parcel_county: string | null         // Added for export
   lot_acres: number | null
   match_score: number
   matched_comp_count: number
@@ -127,12 +141,19 @@ export interface MatchedParcel {
   latitude: number | null
   longitude: number | null
   pricing_flag: string | null
+  no_match_reason: string | null
+  cross_county_match: boolean
   comp_avg_age_days: number | null
   comp_oldest_days: number | null
   comp_age_warning: boolean
   premium_zip: boolean
   nano_buildability_warning: boolean
   nano_buildability_pct: number | null
+  // Damien's new fields (March 2026)
+  same_street_match: boolean           // True if comp found on same street
+  closest_comp_distance: number | null // Distance to closest comp in miles
+  road_frontage: number | null         // Road frontage in feet
+  possible_issue: string | null        // "YES" if <50ft frontage, "NO" otherwise
 }
 
 export interface MatchResult {

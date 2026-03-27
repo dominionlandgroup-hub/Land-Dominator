@@ -84,6 +84,9 @@ async def run_match(filters: MatchFilters) -> Response:
                 exclude_land_locked=exclude_land_locked,
                 require_tlp_estimate=require_tlp_estimate,
                 price_ceiling=filters.price_ceiling,
+                exclude_with_buildings=getattr(filters, 'exclude_with_buildings', True),
+                min_road_frontage=getattr(filters, 'min_road_frontage', 50.0),
+                max_retail_price=getattr(filters, 'max_retail_price', None),  # None = no ceiling
             ),
         )
     except Exception:
@@ -219,9 +222,8 @@ async def test_pricing_endpoint(request: Request):
                 radius_label = label
                 break
         else:
-            # Use whatever we have at max fallback
-            comps_df = comps_df[comps_df['distance_miles'] <= 3.0]
-            radius_label = '3mi_fallback'
+            comps_df = comps_df[comps_df['distance_miles'] <= 1.0]
+            radius_label = '1mi' if len(comps_df) > 0 else None
 
     if len(comps_df) > 0:
         comps_df['ppa'] = comps_df['Current Sale Price'] / comps_df['Lot Acres']
@@ -243,7 +245,7 @@ async def test_pricing_endpoint(request: Request):
             is_premium = True
 
     result = calculate_offer_price(target_acres, comps_df, tlp_estimate, band_label, radius_label)
-    result['bulk_sales_removed'] = bulk_removed
+    result['bulk_sales_removed'] = int(bulk_removed)
     result['acreage_band_range'] = f"{band_low}\u2013{band_high} acres"
     result['premium_zip'] = is_premium
     return result

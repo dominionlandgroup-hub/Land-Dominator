@@ -102,8 +102,8 @@ export default function UploadComps() {
               <StatCard label="Columns Detected" value={compsStats.columns_found.length.toString()} accent="#8B4DB8" />
             </div>
 
-            {/* Missing columns warning */}
-            {compsStats.missing_columns.length > 0 && (
+            {/* Missing columns warning/info */}
+            {compsStats.missing_columns.length > 0 && compsStats.format_detected !== 'MLS' && (
               <div className="rounded-xl px-5 py-4 mb-6" style={{ background: 'rgba(213,169,64,0.06)', border: '1px solid rgba(213,169,64,0.2)' }}>
                 <p className="font-semibold text-sm mb-2" style={{ color: '#8B6A00' }}>
                   ⚠ Missing expected columns ({compsStats.missing_columns.length})
@@ -119,6 +119,30 @@ export default function UploadComps() {
                     </code>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {compsStats.format_detected === 'MLS' && compsStats.message && (
+              <div className="rounded-xl px-5 py-4 mb-6" style={{ background: 'rgba(45,122,79,0.06)', border: '1px solid rgba(45,122,79,0.2)' }}>
+                <p className="font-semibold text-sm mb-2" style={{ color: '#2D7A4F' }}>
+                  ✅ ℹ️ MLS format detected
+                </p>
+                <p className="text-sm mb-2" style={{ color: '#1A4A2E' }}>
+                  {compsStats.message}
+                </p>
+                {!!compsStats.mapped_columns?.length && (
+                  <div className="flex flex-wrap gap-2">
+                    {compsStats.mapped_columns.map((mapping) => (
+                      <code
+                        key={mapping}
+                        className="text-xs px-2 py-0.5 rounded"
+                        style={{ background: 'rgba(45,122,79,0.1)', color: '#2D7A4F' }}
+                      >
+                        {mapping}
+                      </code>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 

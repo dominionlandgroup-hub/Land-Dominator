@@ -29,6 +29,9 @@ const DEFAULT_FILTERS: Omit<MatchFilters, 'session_id' | 'target_session_id'> = 
   require_tlp: false,
   require_tlp_estimate: false,
   price_ceiling: null,
+  exclude_with_buildings: true,
+  min_road_frontage: 50.0,
+  max_retail_price: null, // NO CEILING - disabled, user can set if needed
 }
 
 export default function MatchTargets() {
@@ -97,22 +100,25 @@ export default function MatchTargets() {
       session_id: compsStats.session_id,
       target_session_id: targetStats.session_id,
       radius_miles: 10, // unused by engine — kept for API compat
-      acreage_tolerance_pct: acreageTol,
-      min_match_score: minScore,
+      acreage_tolerance_pct: Number(acreageTol),
+      min_match_score: Math.floor(Number(minScore)),
       zip_filter: zipFilter,
       flood_zone_filter: floodZoneFilter,
       min_acreage: minAcreage ? parseFloat(minAcreage) : null,
       max_acreage: maxAcreage ? parseFloat(maxAcreage) : null,
       exclude_flood: floodZoneFilter === 'exclude' || excludeFlood,
       only_flood: floodZoneFilter === 'only' || onlyFlood,
-      min_buildability: useBuildability ? minBuildability : null,
-      vacant_only: vacantOnly,
-      require_road_frontage: requireRoadFrontage,
-      exclude_landlocked: excludeLandLocked,
-      exclude_land_locked: excludeLandLocked,
-      require_tlp: requireTlp,
-      require_tlp_estimate: requireTlp,
+      min_buildability: useBuildability ? Number(minBuildability) : null,
+      vacant_only: Boolean(vacantOnly),
+      require_road_frontage: Boolean(requireRoadFrontage),
+      exclude_landlocked: Boolean(excludeLandLocked),
+      exclude_land_locked: Boolean(excludeLandLocked),
+      require_tlp: Boolean(requireTlp),
+      require_tlp_estimate: Boolean(requireTlp),
       price_ceiling: priceCeiling ? parseFloat(priceCeiling) : null,
+      exclude_with_buildings: true,
+      min_road_frontage: 50.0,
+      max_retail_price: priceCeiling ? parseFloat(priceCeiling) : null, // null = no ceiling
     }
 
     try {
@@ -147,7 +153,7 @@ export default function MatchTargets() {
   if (requireRoadFrontage) activeFilters.push({ label: 'Road frontage', onRemove: () => setRequireRoadFrontage(false) })
   if (excludeLandLocked) activeFilters.push({ label: 'Not land locked', onRemove: () => setExcludeLandLocked(false) })
   if (requireTlp) activeFilters.push({ label: 'TLP required', onRemove: () => setRequireTlp(false) })
-  if (priceCeiling) activeFilters.push({ label: `TLP <= $${Number(priceCeiling).toLocaleString()}`, onRemove: () => setPriceCeiling('') })
+  if (priceCeiling) activeFilters.push({ label: `Max Retail ≤ $${Number(priceCeiling).toLocaleString()}`, onRemove: () => setPriceCeiling('') })
 
   if (!compsStats) {
     return <WelcomeScreen contextualMessage="Upload your comps first to enable matching." />
@@ -167,6 +173,9 @@ export default function MatchTargets() {
     },
     { key: 'apn', header: 'APN', sortable: true, render: (v) => <span className="font-mono text-xs">{String(v || '—')}</span> },
     { key: 'owner_name', header: 'Owner', render: (v) => <span className="max-w-[160px] block truncate text-xs" title={String(v)}>{String(v || '—')}</span> },
+    { key: 'owner_first_name', header: 'First Name', defaultHidden: true, render: (v) => <span className="text-xs">{String(v || '—')}</span> },
+    { key: 'owner_last_name', header: 'Last Name', defaultHidden: true, render: (v) => <span className="text-xs">{String(v || '—')}</span> },
+    { key: 'parcel_address', header: 'Parcel Address', defaultHidden: true, render: (v) => <span className="max-w-[160px] block truncate text-xs" title={String(v)}>{String(v || '—')}</span> },
     { key: 'parcel_zip', header: 'ZIP', sortable: true },
     { key: 'parcel_city', header: 'City', defaultHidden: true },
     {
@@ -411,16 +420,17 @@ export default function MatchTargets() {
                   <ToggleOption label="Require TLP estimate" checked={requireTlp} onChange={setRequireTlp} />
                 </div>
                 <div className="mt-3 max-w-xs">
-                  <label className="text-xs block mb-1" style={{ color: '#6B5B8A' }}>Price ceiling (TLP Estimate)</label>
+                  <label className="text-xs block mb-1" style={{ color: '#6B5B8A' }}>Max Retail Price (optional)</label>
                   <input
                     type="number"
                     min="0"
                     step="1000"
-                    placeholder="e.g. 120000"
+                    placeholder="No ceiling (leave blank)"
                     className="input-base text-xs py-2"
                     value={priceCeiling}
                     onChange={(e) => setPriceCeiling(e.target.value)}
                   />
+                  <p className="text-xs mt-1" style={{ color: '#9B8AAE' }}>Excludes parcels with retail estimate above this value</p>
                 </div>
               </div>
             </div>

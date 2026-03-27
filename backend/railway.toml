@@ -1,14 +1,7 @@
 [build]
-builder = "nixpacks"
-buildCommand = "cd backend && pip install -r requirements.txt"
-watchPatterns = ["backend/**"]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "cd backend && python -u main.py"
 healthcheckPath = "/health"
 healthcheckTimeout = 100
-
-[variables]
-PYTHONMALLOC = "malloc"
-MALLOC_TRIM_THRESHOLD_ = "100000"
-PYTHONUNBUFFERED = "1"

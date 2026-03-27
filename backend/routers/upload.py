@@ -2,9 +2,10 @@
 Upload endpoints for comps and target CSVs.
 """
 import uuid
+from typing import Tuple, List
+
 import pandas as pd
 from fastapi import APIRouter, UploadFile, File, HTTPException
-from fastapi.responses import JSONResponse
 
 from models.schemas import UploadResponse
 from services.csv_parser import parse_csv
@@ -43,6 +44,51 @@ def downcast_numerics(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def detect_and_normalize_comps(df: pd.DataFrame) -> Tuple[pd.DataFrame, str, str, str, List[str]]:
+    is_mls = 'Close Price' in df.columns or 'Approximate Acres' in df.columns
+
+    if is_mls:
+        mapped_pairs: List[str] = []
+        if 'Close Price' in df.columns:
+            df['Current Sale Price'] = pd.to_numeric(
+                df['Close Price'].astype(str)
+                .str.replace('$', '', regex=False)
+                .str.replace(',', '', regex=False)
+                .str.strip(),
+                errors='coerce'
+            )
+            mapped_pairs.append('Close Price → Current Sale Price')
+        elif 'List Price' in df.columns:
+            df['Current Sale Price'] = pd.to_numeric(df['List Price'], errors='coerce')
+            mapped_pairs.append('List Price → Current Sale Price')
+
+        col_map = {
+            'Approximate Acres': 'Lot Acres',
+            'Geocodio Latitude': 'Latitude',
+            'Geocodio Longitude': 'Longitude',
+            'Postal Code': 'Parcel Zip',
+            'Address': 'Parcel Full Address',
+            'Close Date': 'Current Sale Recording Date',
+            'City': 'Parcel City',
+        }
+        for src, dst in col_map.items():
+            if src in df.columns and dst not in df.columns:
+                df[dst] = df[src]
+                mapped_pairs.append(f'{src} → {dst}')
+
+        df['APN'] = 'MLS-' + df.index.astype(str)
+        mapped_pairs.append('Generated APN → APN')
+        df['_file_format'] = 'MLS'
+        msg = (
+            f"MLS format detected — {len(mapped_pairs)} columns auto-mapped from MLS fields "
+            f"({', '.join(mapped_pairs)})."
+        )
+        return df, 'MLS', msg, 'info', mapped_pairs
+
+    df['_file_format'] = 'LandPortal'
+    return df, 'LandPortal', "Land Portal format detected.", 'success', []
+
+
 
 @router.post("/comps", response_model=UploadResponse)
 async def upload_comps(file: UploadFile = File(...)) -> UploadResponse:
@@ -58,13 +104,21 @@ async def upload_comps(file: UploadFile = File(...)) -> UploadResponse:
 
     try:
         df, stats = parse_csv(content, is_comps=True)
-        df = slim_to_required(df, COMP_COLS_REQUIRED)
+        df, detected_format, format_message, message_severity, mapped_columns = detect_and_normalize_comps(df)
+        required_cols = COMP_COLS_REQUIRED.copy()
+        if "_file_format" not in required_cols:
+            required_cols.append("_file_format")
+        df = slim_to_required(df, required_cols)
         df = downcast_numerics(df)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
     session_id = str(uuid.uuid4())
     store_comps(session_id, df)
+
+    valid_sale_prices = 0
+    if "Current Sale Price" in df.columns:
+        valid_sale_prices = int(pd.to_numeric(df["Current Sale Price"], errors="coerce").gt(0).sum())
 
     return UploadResponse(
         session_id=session_id,
@@ -73,6 +127,11 @@ async def upload_comps(file: UploadFile = File(...)) -> UploadResponse:
         columns_found=stats["columns_found"],
         missing_columns=stats["missing_columns"],
         preview=stats["preview"],
+        valid_sale_prices=valid_sale_prices,
+        format_detected=detected_format,
+        message=format_message,
+        message_severity=message_severity,
+        mapped_columns=mapped_columns,
     )
 
 
