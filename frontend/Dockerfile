@@ -2,14 +2,14 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files from frontend directory (build context is repo root)
-COPY frontend/package.json frontend/package-lock.json* ./
+# Copy package files
+COPY package.json package-lock.json* ./
 
 # Install dependencies
 RUN npm ci
 
-# Copy source code from frontend directory
-COPY frontend/ .
+# Copy source code
+COPY . .
 
 # Build with API URL env var
 ARG VITE_API_URL

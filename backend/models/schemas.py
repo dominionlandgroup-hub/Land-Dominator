@@ -12,6 +12,11 @@ class UploadResponse(BaseModel):
     columns_found: List[str]
     missing_columns: List[str]
     preview: List[Dict[str, Any]]
+    valid_sale_prices: Optional[int] = None
+    format_detected: Optional[str] = None
+    message: Optional[str] = None
+    message_severity: Optional[str] = None
+    mapped_columns: Optional[List[str]] = None
 
 
 class ZipStats(BaseModel):
@@ -87,15 +92,17 @@ class MatchFilters(BaseModel):
     require_tlp_estimate: bool = False
     price_ceiling: Optional[float] = None
     # New filters (Damien March 2026)
-    exclude_with_buildings: bool = True     # Exclude if Building Sq Ft > 0
-    min_road_frontage: float = 50.0         # Minimum 50ft road frontage
-    max_retail_price: float = 200000.0      # Price ceiling ($200K default) - filters premium/waterfront
+    exclude_with_buildings: Optional[bool] = True     # Exclude if Building Sq Ft > 0
+    min_road_frontage: Optional[float] = 50.0         # Minimum 50ft road frontage
+    max_retail_price: Optional[float] = None  # Max retail price ceiling (None = disabled, filters matched parcels only)
     debug_apn: Optional[str] = None         # APN to debug
 
 
 class MatchedParcel(BaseModel):
     apn: str
     owner_name: str
+    owner_first_name: Optional[str] = None
+    owner_last_name: Optional[str] = None
     mail_address: str
     mail_city: str
     mail_state: str
@@ -130,6 +137,8 @@ class MatchedParcel(BaseModel):
     flood_zone: Optional[str] = None
     buildability_pct: Optional[float] = None
     pricing_flag: Optional[str] = None
+    no_match_reason: Optional[str] = None
+    cross_county_match: bool = False
     comp_avg_age_days: Optional[int] = None
     comp_oldest_days: Optional[int] = None
     comp_age_warning: bool = False

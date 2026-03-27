@@ -7,6 +7,11 @@ export interface UploadStats {
   columns_found: string[]
   missing_columns: string[]
   preview: Record<string, unknown>[]
+  valid_sale_prices?: number
+  format_detected?: string
+  message?: string
+  message_severity?: 'success' | 'info' | 'warning' | 'error'
+  mapped_columns?: string[]
 }
 
 // ─── Dashboard ─────────────────────────────────────────────────────────────
@@ -89,7 +94,7 @@ export interface MatchFilters {
   // Damien's requirements (March 2026)
   exclude_with_buildings: boolean     // Exclude if Building Sq Ft > 0 (default: true)
   min_road_frontage: number           // Minimum 50ft road frontage (default: 50.0)
-  max_retail_price: number            // Price ceiling $200K - filters premium/waterfront (default: 200000)
+  max_retail_price: number | null     // Max retail price filter - applies to matched parcels only (default: null = no ceiling)
 }
 
 export type MatchFiltersPartial = Partial<MatchFilters>
@@ -97,6 +102,8 @@ export type MatchFiltersPartial = Partial<MatchFilters>
 export interface MatchedParcel {
   apn: string
   owner_name: string
+  owner_first_name: string | null
+  owner_last_name: string | null
   mail_address: string
   mail_city: string
   mail_state: string
@@ -134,6 +141,8 @@ export interface MatchedParcel {
   latitude: number | null
   longitude: number | null
   pricing_flag: string | null
+  no_match_reason: string | null
+  cross_county_match: boolean
   comp_avg_age_days: number | null
   comp_oldest_days: number | null
   comp_age_warning: boolean

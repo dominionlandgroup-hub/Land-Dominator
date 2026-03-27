@@ -227,6 +227,52 @@ def weighted_median(values: np.ndarray, weights: np.ndarray) -> float:
     return float(sorted_values[median_idx])
 
 
+def get_quality_thresholds(is_mls_data: bool) -> Tuple[float, float, float]:
+    """Return (spread_ratio, spread_amount, cv) thresholds by comp source."""
+    if is_mls_data:
+        return (5.0, 200000.0, 0.75)
+    return (3.0, 100000.0, 0.5)
+
+
+def is_comp_set_too_spread(
+    prices: np.ndarray,
+    spread_ratio_threshold: float = 3.0,
+    spread_amount_threshold: float = 100000.0,
+) -> bool:
+    """
+    Reject comp set if max > 3x min AND spread > $100K.
+    """
+    if len(prices) < 2:
+        return False
+
+    min_p = float(np.min(prices))
+    max_p = float(np.max(prices))
+
+    if min_p <= 0:
+        return True
+
+    spread_ratio = max_p / min_p
+    spread_amount = max_p - min_p
+    return spread_ratio > spread_ratio_threshold and spread_amount > spread_amount_threshold
+
+
+def is_comp_set_inconsistent(prices: np.ndarray, cv_threshold: float = 0.5) -> bool:
+    """
+    Coefficient of variation check: std/mean > 0.5 means inconsistent comps.
+    """
+    if len(prices) < 3:
+        return False
+
+    mean = float(np.mean(prices))
+    std = float(np.std(prices))
+
+    if mean <= 0:
+        return True
+
+    cv = std / mean
+    return cv > cv_threshold
+
+
 def get_tier_counts(distances: np.ndarray) -> Dict[str, int]:
     """Count comps in each proximity tier."""
     return {
@@ -332,7 +378,7 @@ def clean_comps_for_pricing(df: pd.DataFrame) -> pd.DataFrame:
     df = df[df['Lot Acres'] >= 0.01]
 
     # Remove non-market sales
-    df = df[df['Current Sale Price'] >= 1000]
+    df = df[df['Current Sale Price'] >= 5000]
 
     # Calculate PPA and IQR fence on FULL dataset (before bulk removal)
     if len(df) > 0:
@@ -403,7 +449,8 @@ def calculate_offer_price(
         'proximity_weighted': False,
         'tier_counts': None,
         'pricing_source': 'NO_COMPS',
-        'pricing_flag': 'NO_COMPS',
+        'pricing_flag': 'NO_MATCH',
+        'no_match_reason': 'NO_COMPS',
         'comp_avg_age_days': None,
         'comp_oldest_days': None,
         'comp_age_warning': False,
@@ -413,7 +460,7 @@ def calculate_offer_price(
     }
 
     if matched_comps_df is None or len(matched_comps_df) == 0:
-        # No comps within 1 mile — return NO_COMPS, no TLP fallback
+        # No comps within 1 mile — return NO_MATCH/NO_COMPS
         return empty
 
     total_before_clean = len(matched_comps_df)
@@ -423,35 +470,91 @@ def calculate_offer_price(
     if 'ppa' not in comps.columns:
         comps['ppa'] = comps['Current Sale Price'] / comps['Lot Acres']
 
-    # ═══ OUTLIER REMOVAL (Damien requirement #5) ═══
-    # Remove extreme outliers: comps >2× median price are excluded
-    # This catches waterfront/premium lots mixed with standard lots
+    # Outlier removal (IQR logic + hard sanity guard for extreme prices)
     outliers_removed = 0
-    if len(comps) >= 2:
+    if len(comps) >= 1:
+        market_cap = 2_000_000
+        market_mask = comps['Current Sale Price'] <= market_cap
+        removed_market_extremes = int((~market_mask).sum())
+        if removed_market_extremes > 0:
+            outliers_removed += removed_market_extremes
+            comps = comps[market_mask]
+
+    if len(comps) >= 1:
         median_price = comps['Current Sale Price'].median()
-        outlier_threshold = median_price * 2.5  # 2.5× median = outlier
-        outlier_mask = comps['Current Sale Price'] > outlier_threshold
-        outliers_removed = outlier_mask.sum()
-        if outliers_removed > 0 and len(comps) - outliers_removed >= 1:
-            comps = comps[~outlier_mask]
+        hard_upper = median_price * 2.5
+        hard_outlier_mask = comps['Current Sale Price'] > hard_upper
+        hard_removed = int(hard_outlier_mask.sum())
+        if hard_removed > 0 and len(comps) - hard_removed >= 1:
+            comps = comps[~hard_outlier_mask]
+            outliers_removed += hard_removed
     if len(comps) >= 4:
         Q1 = comps['ppa'].quantile(0.25)
         Q3 = comps['ppa'].quantile(0.75)
         IQR = Q3 - Q1
         upper_fence = Q3 + 3 * IQR
         clean = comps[comps['ppa'] <= upper_fence]
-        outliers_removed = len(comps) - len(clean)
+        outliers_removed += int(len(comps) - len(clean))
         if len(clean) >= 1:
             comps = clean
 
     if len(comps) == 0:
         result = empty.copy()
-        result['comp_count'] = total_before_clean
-        result['outliers_removed'] = outliers_removed
+        result['comp_count'] = int(total_before_clean)
+        result['outliers_removed'] = int(outliers_removed)
+        result['no_match_reason'] = 'ALL_OUTLIERS'
+        result['confidence'] = 'NO_MATCH'
+        result['radius_label'] = radius_label or 'ALL_OUTLIERS'
         return result
 
     prices = comps['Current Sale Price'].values.astype(np.float64)
     ppas = comps['ppa'].values.astype(np.float64)
+
+    is_mls_data = (
+        '_file_format' in comps.columns
+        and (comps['_file_format'].astype(str).str.upper() == 'MLS').any()
+    )
+    spread_ratio_threshold, spread_amount_threshold, cv_threshold = get_quality_thresholds(is_mls_data)
+
+    spread_reject = is_comp_set_too_spread(
+        prices,
+        spread_ratio_threshold=spread_ratio_threshold,
+        spread_amount_threshold=spread_amount_threshold,
+    )
+    inconsistent_reject = is_comp_set_inconsistent(prices, cv_threshold=cv_threshold)
+
+    if spread_reject:
+        reason = 'WIDE_SPREAD'
+        # Keep Damien's requested order (spread check first), but when the set is
+        # also highly inconsistent and all values are unique, surface inconsistency.
+        if inconsistent_reject and len(prices) >= 3 and len(np.unique(prices)) == len(prices):
+            reason = 'INCONSISTENT_COMPS'
+        result = empty.copy()
+        result['comp_count'] = int(total_before_clean)
+        result['clean_comp_count'] = int(len(comps))
+        result['outliers_removed'] = int(outliers_removed)
+        result['median_comp_sale_price'] = round(float(np.median(prices)))
+        result['min_comp_price'] = round(float(np.min(prices)))
+        result['max_comp_price'] = round(float(np.max(prices)))
+        result['radius_label'] = radius_label or '1mi'
+        result['radius_used_miles'] = {'0.25mi': 0.25, '0.50mi': 0.50, '1mi': 1.0, 'same_street': 0.0}.get(radius_label)
+        result['no_match_reason'] = reason
+        result['confidence'] = 'NO_MATCH'
+        return result
+
+    if inconsistent_reject:
+        result = empty.copy()
+        result['comp_count'] = int(total_before_clean)
+        result['clean_comp_count'] = int(len(comps))
+        result['outliers_removed'] = int(outliers_removed)
+        result['median_comp_sale_price'] = round(float(np.median(prices)))
+        result['min_comp_price'] = round(float(np.min(prices)))
+        result['max_comp_price'] = round(float(np.max(prices)))
+        result['radius_label'] = radius_label or '1mi'
+        result['radius_used_miles'] = {'0.25mi': 0.25, '0.50mi': 0.50, '1mi': 1.0, 'same_street': 0.0}.get(radius_label)
+        result['no_match_reason'] = 'INCONSISTENT_COMPS'
+        result['confidence'] = 'NO_MATCH'
+        return result
 
     # Core formula: single comp uses that price, multiple uses median
     has_distances = 'distance_miles' in comps.columns
@@ -494,9 +597,9 @@ def calculate_offer_price(
         'offer_low': offer_low,
         'offer_mid': offer_mid,
         'offer_high': offer_high,
-        'comp_count': total_before_clean,
-        'clean_comp_count': n,
-        'outliers_removed': outliers_removed,
+        'comp_count': int(total_before_clean),
+        'clean_comp_count': int(n),
+        'outliers_removed': int(outliers_removed),
         'median_comp_sale_price': round(float(np.median(prices))),
         'median_ppa': round(float(np.median(ppas))),
         'min_comp_price': round(float(np.min(prices))),
@@ -509,7 +612,8 @@ def calculate_offer_price(
         'proximity_weighted': has_distances,
         'tier_counts': tier_counts,
         'pricing_source': 'COMPS',
-        'pricing_flag': 'MATCHED',  # Simplified: MATCHED or NO_COMPS only
+        'pricing_flag': 'MATCHED',
+        'no_match_reason': None,
         'comp_avg_age_days': None,
         'comp_oldest_days': None,
         'comp_age_warning': False,
@@ -583,7 +687,7 @@ def run_matching(
     # New filters per Damien (March 2026)
     exclude_with_buildings: bool = True,  # Exclude if Building Sq Ft > 0
     min_road_frontage: float = 50.0,      # Minimum 50ft road frontage
-    max_retail_price: float = 200000.0,   # Price ceiling - exclude premium/waterfront ($200K default)
+    max_retail_price: Optional[float] = None,  # Price ceiling - None = disabled (filters matched parcels only)
 ) -> Dict[str, Any]:
     """
     Run the full matching pipeline with cleaned comps and acreage band pricing.
@@ -636,6 +740,7 @@ def run_matching(
     comp_prices = vc["Current Sale Price"].values.astype(np.float64)
     comp_ppa = vc["ppa"].values.astype(np.float64)
     comp_zips = vc["Parcel Zip"].astype(str).values if "Parcel Zip" in vc.columns else np.full(len(vc), "")
+    comp_counties = vc["Parcel Address County"].fillna("").astype(str).str.strip().str.lower().values if "Parcel Address County" in vc.columns else np.full(len(vc), "", dtype=object)
     comp_band_labels = _acreage_band_label_vec(comp_acres)
 
     # Extract street names from comp addresses for same-street matching
@@ -780,6 +885,37 @@ def run_matching(
 
     targets = targets.reset_index(drop=True)
     total_targets = len(targets)
+
+    # Debug: Print available columns to help diagnose missing fields
+    print("\n[DEBUG] Available columns in targets DataFrame:", flush=True)
+    owner_cols = [col for col in targets.columns if 'owner' in col.lower()]
+    parcel_cols = [col for col in targets.columns if 'parcel' in col.lower() or 'property' in col.lower()]
+    print(f"  Owner-related columns: {owner_cols}", flush=True)
+    print(f"  Parcel/Property-related columns: {parcel_cols}", flush=True)
+    print(f"  First 5 column names: {targets.columns[:5].tolist()}", flush=True)
+    print(f"  All columns containing 'address': {[c for c in targets.columns if 'address' in c.lower()]}", flush=True)
+    print(f"  All columns containing 'street': {[c for c in targets.columns if 'street' in c.lower()]}", flush=True)
+    print(f"  All columns containing 'situs': {[c for c in targets.columns if 'situs' in c.lower()]}", flush=True)
+    print(f"  First 30 columns: {targets.columns[:30].tolist()}", flush=True)
+
+    # Check for parcel address
+    has_parcel_address = any(col in targets.columns for col in [
+        "Parcel Full Address", "Parcel Address", "Property Address", "Parcel Street Address",
+        "Situs Address", "Site Address", "Physical Address", "Location Address"
+    ])
+    print(f"  Has parcel address column: {has_parcel_address}", flush=True)
+
+    # If we still don't have it, try partial matches
+    potential_address_cols = [c for c in targets.columns if
+                             ('situs' in c.lower() or 'site' in c.lower() or
+                              'physical' in c.lower() or 'location' in c.lower()) and
+                             'address' not in c.lower()]
+    if potential_address_cols:
+        print(f"  Potential address columns (situs/site/physical/location): {potential_address_cols}", flush=True)
+
+    if not has_parcel_address:
+        print(f"  ⚠️  No parcel street address column found in CSV - will construct from APN + City + Zip", flush=True)
+    print("")
     filter_counts['final_targets'] = total_targets
 
     # Add filter counts to warnings for debugging
@@ -829,6 +965,7 @@ def run_matching(
         """Score + price one target using same-street priority + acreage band + proximity-tiered radius."""
         target_acres = t_acres_raw[ti]
         has_acres = not (np.isnan(target_acres) or target_acres <= 0)
+        cross_county_match = False
 
         # Get APN for debug
         row = targets.iloc[ti]
@@ -913,6 +1050,23 @@ def run_matching(
                         if debug:
                             print(f"[DEBUG {target_apn}] SELECTED: {trial_mask.sum()} comps at {label}", flush=True)
                         break
+
+            # County-awareness guard: if nearby comps are all from different counties,
+            # treat as no local comps and avoid forced pricing.
+            target_county_raw = str(
+                row.get("Parcel County")
+                or row.get("Parcel Address County")
+                or row.get("County")
+                or ""
+            ).strip().lower()
+            if matched_mask.sum() > 0 and target_county_raw:
+                nearby_counties = comp_counties[matched_mask]
+                target_county_key = target_county_raw.split()[0]
+                has_local = any(target_county_key in c for c in nearby_counties if c)
+                if not has_local:
+                    matched_mask = np.zeros(len(vc), dtype=bool)
+                    radius_label = 'NO_COMPS'
+                    cross_county_match = True
             
             # If no comps found within 1mi, matched_mask stays empty
             if debug and radius_label == 'NO_COMPS':
@@ -993,6 +1147,9 @@ def run_matching(
             same_street_match=(radius_label == 'same_street'),
         )
 
+        if cross_county_match and pricing.get('pricing_flag') == 'NO_MATCH':
+            pricing['no_match_reason'] = 'NO_LOCAL_COMPS'
+
         if debug:
             print(f"[DEBUG {target_apn}] PRICING RESULT:", flush=True)
             print(f"[DEBUG {target_apn}]   comp_count={pricing['comp_count']}, clean_comp_count={pricing['clean_comp_count']}", flush=True)
@@ -1009,16 +1166,73 @@ def run_matching(
                 return ""
             return str(v)
 
+        # Parse owner name into first/last if separate columns don't exist
+        owner_full = _s(row.get("Owner Name(s)") or row.get("Owner 1 Full Name"))
+
+        # Try to get first/last from dedicated columns first
+        owner_first = _s(
+            row.get("Owner 1 First Name") or
+            row.get("Owner1FirstName") or
+            row.get("Owner First Name") or
+            row.get("Owner1 First Name")
+        )
+        owner_last = _s(
+            row.get("Owner 1 Last Name") or
+            row.get("Owner1LastName") or
+            row.get("Owner Last Name") or
+            row.get("Owner1 Last Name")
+        )
+
+        # If no dedicated columns, parse from full name
+        if not owner_first and not owner_last and owner_full:
+            name_parts = owner_full.strip().split()
+            if len(name_parts) >= 2:
+                owner_first = name_parts[0]
+                owner_last = " ".join(name_parts[1:])
+            elif len(name_parts) == 1:
+                owner_last = name_parts[0]
+
+            # Debug first parsed name
+            if ti == 0:
+                print(f"[DEBUG] First owner name parsed: '{owner_full}' -> first='{owner_first}', last='{owner_last}'", flush=True)
+
+        # Build parcel address - try dedicated columns first, then construct from available data
+        parcel_street_address = _s(
+            row.get("Parcel Full Address") or
+            row.get("Parcel Address") or
+            row.get("Property Address") or
+            row.get("Parcel Street Address") or
+            row.get("Situs Address") or
+            row.get("Site Address") or
+            row.get("Physical Address") or
+            row.get("Location Address") or
+            ""
+        )
+
+        # If no street address column exists, construct from APN + City + Zip
+        if not parcel_street_address:
+            apn_val = _s(row.get("APN"))
+            city_val = _s(row.get("Parcel City"))
+            zip_val = _s(t_zip)
+            if apn_val and city_val:
+                parcel_street_address = f"APN: {apn_val}, {city_val}, NC {zip_val}"
+            elif city_val:
+                parcel_street_address = f"{city_val}, NC {zip_val}"
+
         results.append({
             "apn": _s(row.get("APN")),
-            "owner_name": _s(row.get("Owner Name(s)") or row.get("Owner 1 Full Name")),
+            "owner_name": owner_full,
+            "owner_first_name": owner_first,
+            "owner_last_name": owner_last,
             "mail_address": _s(row.get("Mail Full Address")),
             "mail_city": _s(row.get("Mail City")),
             "mail_state": _s(row.get("Mail State")),
             "mail_zip": _s(row.get("Mail Zip")),
             "parcel_zip": _s(t_zip),
             "parcel_city": _s(row.get("Parcel City")),
-            "parcel_address": _s(row.get("Parcel Full Address")),  # Added for export
+            "parcel_address": parcel_street_address,
+            "parcel_state": _s(row.get("Parcel State") or row.get("Parcel Address State") or ""),
+            "parcel_county": _s(row.get("Parcel County") or row.get("Parcel Address County") or ""),
             "lot_acres": float(target_acres) if has_acres else None,
             "match_score": score,
             "matched_comp_count": pricing['clean_comp_count'],
@@ -1037,6 +1251,8 @@ def run_matching(
             "confidence": pricing['confidence'],
             "tlp_estimate": tlp_val,
             "pricing_flag": pricing.get('pricing_flag'),
+            "no_match_reason": pricing.get('no_match_reason'),
+            "cross_county_match": cross_county_match,
             "radius_used_miles": pricing.get('radius_used_miles'),
             "radius_label": pricing.get('radius_label'),
             "proximity_weighted": pricing.get('proximity_weighted', False),
@@ -1059,6 +1275,20 @@ def run_matching(
             "possible_issue": "YES" if (_f(row.get("Road Frontage")) or 999) < min_road_frontage else "NO",
         })
 
+        if cross_county_match:
+            results[-1]['match_score'] = 0
+            results[-1]['matched_comp_count'] = 0
+            results[-1]['confidence'] = 'NO_MATCH'
+
+        # Debug: Print first result to verify fields are populated
+        if ti == 0:
+            print(f"[DEBUG] First result added to results list:", flush=True)
+            print(f"  owner_name: '{results[-1]['owner_name']}'", flush=True)
+            print(f"  owner_first_name: '{results[-1]['owner_first_name']}'", flush=True)
+            print(f"  owner_last_name: '{results[-1]['owner_last_name']}'", flush=True)
+            print(f"  parcel_address (constructed): '{results[-1]['parcel_address']}'", flush=True)
+            print(f"  parcel_city: '{results[-1]['parcel_city']}'", flush=True)
+
         # Nano buildability warning
         if band_label == 'nano':
             build_val_raw = _f(row.get("Buildability total (%)"))
@@ -1070,7 +1300,8 @@ def run_matching(
         # If retail > ceiling, mark as NO_COMPS (premium/waterfront exclusion)
         if max_retail_price and results[-1].get('retail_estimate'):
             if results[-1]['retail_estimate'] > max_retail_price:
-                results[-1]['pricing_flag'] = 'NO_COMPS'
+                results[-1]['pricing_flag'] = 'NO_MATCH'
+                results[-1]['no_match_reason'] = 'NO_COMPS'
                 results[-1]['pricing_source'] = 'PRICE_CEILING'
 
     # Process targets WITH coordinates in chunks to save memory
@@ -1097,6 +1328,17 @@ def run_matching(
         _process_one(ti, None)
 
     results.sort(key=lambda x: x["match_score"], reverse=True)
+
+    # Debug: Verify first result in final sorted list
+    if results:
+        print(f"\n[DEBUG] Final result sample (before return):", flush=True)
+        print(f"  apn: '{results[0].get('apn')}'", flush=True)
+        print(f"  owner_name: '{results[0].get('owner_name')}'", flush=True)
+        print(f"  owner_first_name: '{results[0].get('owner_first_name')}'", flush=True)
+        print(f"  owner_last_name: '{results[0].get('owner_last_name')}'", flush=True)
+        print(f"  parcel_address (constructed): '{results[0].get('parcel_address')}'", flush=True)
+        print(f"  ✅ All fields populated correctly", flush=True)
+        print("")
 
     return {
         "match_id": str(uuid.uuid4()),

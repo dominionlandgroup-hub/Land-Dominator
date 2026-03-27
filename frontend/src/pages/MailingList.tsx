@@ -228,6 +228,33 @@ export default function MailingList() {
       ),
     },
     {
+      key: 'owner_first_name',
+      header: 'First Name',
+      render: (v) => (
+        <span className="max-w-[120px] block truncate text-xs" title={String(v)}>
+          {String(v || '—')}
+        </span>
+      ),
+    },
+    {
+      key: 'owner_last_name',
+      header: 'Last Name',
+      render: (v) => (
+        <span className="max-w-[120px] block truncate text-xs" title={String(v)}>
+          {String(v || '—')}
+        </span>
+      ),
+    },
+    {
+      key: 'parcel_address',
+      header: 'Parcel Address',
+      render: (v) => (
+        <span className="max-w-[180px] block truncate text-xs" title={String(v)}>
+          {String(v || '—')}
+        </span>
+      ),
+    },
+    {
       key: 'mail_address',
       header: 'Mail Address',
       render: (v) => (
@@ -647,7 +674,7 @@ export default function MailingList() {
                 pageSize={50}
                 emptyMessage="No records in mailing list"
                 searchable
-                searchKeys={['owner_name', 'mail_address', 'mail_city', 'parcel_zip', 'apn']}
+                searchKeys={['owner_name', 'owner_first_name', 'owner_last_name', 'mail_address', 'parcel_address', 'mail_city', 'parcel_zip', 'apn']}
               />
             </div>
 
@@ -722,7 +749,7 @@ function rowId(r: MatchedParcel, idx: number): string {
 }
 
 function downloadRows(rows: MatchedParcel[], suffix: string) {
-  const headers = ['Owner Name', 'Mail Address', 'Mail City', 'Mail State', 'Mail Zip', 'APN', 'Parcel Zip', 'Lot Acres', 'Match Score', 'Offer Mid']
+  const headers = ['Owner Name', 'Mail Address', 'Mail City', 'Mail State', 'Mail Zip', 'APN', 'Parcel Zip', 'Lot Acres', 'Match Score', 'Offer Mid', 'Pricing Flag', 'No Match Reason']
   const body = rows.map((r) => [
     r.owner_name,
     r.mail_address,
@@ -734,6 +761,8 @@ function downloadRows(rows: MatchedParcel[], suffix: string) {
     r.lot_acres ?? '',
     r.match_score,
     r.suggested_offer_mid ?? '',
+    r.pricing_flag ?? '',
+    r.no_match_reason ?? '',
   ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','))
   const csv = [headers.join(','), ...body].join('\n')
   const blob = new Blob([csv], { type: 'text/csv' })

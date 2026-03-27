@@ -62,15 +62,15 @@ export default function Dashboard() {
 
   // Chart data
   const volumeData = (dashboardData?.zip_stats ?? []).map((z) => ({
-    zip: z.zip_code,
-    sales: z.sales_count,
+    zip: String(z.zip_code),
+    sales: Number(z.sales_count),
   }))
 
   const ppaData = (dashboardData?.zip_stats ?? [])
     .filter((z) => z.median_price_per_acre != null)
     .sort((a, b) => (b.median_price_per_acre ?? 0) - (a.median_price_per_acre ?? 0))
     .map((z) => ({
-      zip: z.zip_code,
+      zip: String(z.zip_code),
       ppa: Math.round(z.median_price_per_acre ?? 0),
     }))
 
@@ -130,12 +130,10 @@ export default function Dashboard() {
     },
   ]
 
-  const tooltipStyle = {
-    contentStyle: { background: '#3D1A5C', border: '1px solid rgba(213,169,64,0.3)', borderRadius: 8, fontSize: 12 },
-    labelStyle: { color: '#FFFFFF', fontWeight: 600 },
-    itemStyle: { color: '#E8D5F5' },
-    cursor: { fill: 'rgba(92,41,119,0.06)' },
-  }
+  const tooltipContentStyle = { background: '#3D1A5C', border: '1px solid rgba(213,169,64,0.3)', borderRadius: 8, fontSize: 12 }
+  const tooltipLabelStyle = { color: '#FFFFFF', fontWeight: 600 }
+  const tooltipItemStyle = { color: '#E8D5F5' }
+  const tooltipCursor = { fill: 'rgba(92,41,119,0.06)' }
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -293,7 +291,13 @@ export default function Dashboard() {
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(92,41,119,0.06)" vertical={false} />
                     <XAxis dataKey="zip" tick={{ fill: '#6B5B8A', fontSize: 11 }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fill: '#6B5B8A', fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <Tooltip {...tooltipStyle} formatter={(v: number) => [v.toLocaleString(), 'Sales']} />
+                    <Tooltip
+                      contentStyle={tooltipContentStyle}
+                      labelStyle={tooltipLabelStyle}
+                      itemStyle={tooltipItemStyle}
+                      cursor={tooltipCursor}
+                      formatter={(v: number) => [v.toLocaleString(), 'Sales']}
+                    />
                     <Bar dataKey="sales" radius={[4, 4, 0, 0]}>
                       {volumeData.map((_, i) => (
                         <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
@@ -317,7 +321,10 @@ export default function Dashboard() {
                       axisLine={false} tickLine={false}
                     />
                     <Tooltip
-                      {...tooltipStyle}
+                      contentStyle={tooltipContentStyle}
+                      labelStyle={tooltipLabelStyle}
+                      itemStyle={tooltipItemStyle}
+                      cursor={tooltipCursor}
                       formatter={(v: number) => [`$${v.toLocaleString()}/ac`, 'Median $/Acre']}
                     />
                     <Bar dataKey="ppa" radius={[4, 4, 0, 0]}>
