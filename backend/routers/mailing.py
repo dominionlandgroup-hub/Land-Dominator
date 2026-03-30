@@ -27,6 +27,8 @@ OUTPUT_HEADERS = [
     "Longitude",
     # OWNER
     "Owner Name",
+    "Owner First Name",
+    "Owner Last Name",
     "Mail Full Address",
     "Mail City",
     "Mail State",
@@ -53,6 +55,8 @@ OUTPUT_HEADERS = [
     "Max Comp Price",
     "TLP Estimate",
     "Pricing Flag",
+    "No Match Reason",
+    "Cross County Match",
     "Comp Avg Age Days",
     "Premium ZIP",
     "Flood Zone",
@@ -60,6 +64,16 @@ OUTPUT_HEADERS = [
     "Road Frontage",
     "Possible Issue",
     "Nano Warning",
+    # Comp 1 transparency
+    "Comp 1 Address",
+    "Comp 1 Sale Price",
+    "Comp 1 Sale Date",
+    "Comp 1 Acreage",
+    "Comp 1 Distance (mi)",
+    "Comp 1 $/Acre",
+    "Comp 1 Same Street",
+    # Pricing sanity
+    "Pricing Sanity Flag",
 ]
 
 
@@ -80,7 +94,24 @@ async def preview_mailing(
     raw_results = match_data["results"]
     total_before = len(raw_results)
 
+    # Debug: Check first raw result
+    if raw_results:
+        print(f"\n[MAILING DEBUG] First raw result from match_data:", flush=True)
+        print(f"  owner_name: '{raw_results[0].get('owner_name')}'", flush=True)
+        print(f"  owner_first_name: '{raw_results[0].get('owner_first_name')}'", flush=True)
+        print(f"  owner_last_name: '{raw_results[0].get('owner_last_name')}'", flush=True)
+        print(f"  parcel_address: '{raw_results[0].get('parcel_address')}'", flush=True)
+
     cleaned, n_foreign, n_dnm = _deduplicate(raw_results)
+
+    # Debug: Check first cleaned result after dedup
+    if cleaned:
+        print(f"\n[MAILING DEBUG] First cleaned result after dedup:", flush=True)
+        print(f"  owner_name: '{cleaned[0].owner_name}'", flush=True)
+        print(f"  owner_first_name: '{cleaned[0].owner_first_name}'", flush=True)
+        print(f"  owner_last_name: '{cleaned[0].owner_last_name}'", flush=True)
+        print(f"  parcel_address: '{cleaned[0].parcel_address}'", flush=True)
+        print("")
 
     return MailingPreviewResponse(
         match_id=match_id,
@@ -238,6 +269,8 @@ def _deduplicate(
             MatchedParcel(
                 apn=row.get("apn", ""),
                 owner_name=row.get("owner_name", ""),
+                owner_first_name=row.get("owner_first_name", ""),
+                owner_last_name=row.get("owner_last_name", ""),
                 mail_address=row.get("mail_address", ""),
                 mail_city=row.get("mail_city", ""),
                 mail_state=row.get("mail_state", ""),
@@ -245,8 +278,8 @@ def _deduplicate(
                 parcel_zip=row.get("parcel_zip", ""),
                 parcel_city=row.get("parcel_city", ""),
                 parcel_address=row.get("parcel_address", ""),
-                parcel_state=row.get("parcel_state", "NC"),  # Default to NC for Brunswick County
-                parcel_county=row.get("parcel_county", "Brunswick"),  # Default
+                parcel_state=row.get("parcel_state", ""),
+                parcel_county=row.get("parcel_county", ""),
                 lot_acres=row.get("lot_acres"),
                 match_score=row.get("match_score", 0),
                 matched_comp_count=row.get("matched_comp_count", 0),
@@ -270,6 +303,8 @@ def _deduplicate(
                 latitude=row.get("latitude"),
                 longitude=row.get("longitude"),
                 pricing_flag=row.get("pricing_flag"),
+                no_match_reason=row.get("no_match_reason"),
+                cross_county_match=row.get("cross_county_match", False),
                 comp_avg_age_days=row.get("comp_avg_age_days"),
                 comp_oldest_days=row.get("comp_oldest_days"),
                 comp_age_warning=row.get("comp_age_warning", False),
@@ -280,6 +315,15 @@ def _deduplicate(
                 closest_comp_distance=row.get("closest_comp_distance"),
                 road_frontage=row.get("road_frontage"),
                 possible_issue=row.get("possible_issue"),
+                comp_1_apn=row.get("comp_1_apn"),
+                comp_1_address=row.get("comp_1_address"),
+                comp_1_price=row.get("comp_1_price"),
+                comp_1_acres=row.get("comp_1_acres"),
+                comp_1_date=row.get("comp_1_date"),
+                comp_1_distance=row.get("comp_1_distance"),
+                comp_1_ppa=row.get("comp_1_ppa"),
+                comp_1_same_street=row.get("comp_1_same_street", False),
+                pricing_sanity_flag=row.get("pricing_sanity_flag"),
             )
         )
 
@@ -298,13 +342,15 @@ def _build_csv(parcels: list[MatchedParcel]) -> bytes:
                 p.apn,
                 p.parcel_address or "",
                 p.parcel_city or "",
-                p.parcel_state or "NC",
+                p.parcel_state or "",
                 p.parcel_zip or "",
-                p.parcel_county or "Brunswick",
+                p.parcel_county or "",
                 p.latitude if p.latitude is not None else "",
                 p.longitude if p.longitude is not None else "",
                 # OWNER
                 p.owner_name,
+                p.owner_first_name or "",
+                p.owner_last_name or "",
                 p.mail_address,
                 p.mail_city,
                 p.mail_state,
@@ -331,6 +377,8 @@ def _build_csv(parcels: list[MatchedParcel]) -> bytes:
                 _fmt_currency(p.max_comp_price),
                 _fmt_currency(p.tlp_estimate),
                 p.pricing_flag or "",
+                p.no_match_reason or "",
+                "Yes" if p.cross_county_match else "No",
                 p.comp_avg_age_days if p.comp_avg_age_days is not None else "",
                 "Yes" if p.premium_zip else "No",
                 p.flood_zone or "",
@@ -338,6 +386,16 @@ def _build_csv(parcels: list[MatchedParcel]) -> bytes:
                 p.road_frontage if p.road_frontage is not None else "",
                 p.possible_issue or "",
                 "Yes" if p.nano_buildability_warning else "",
+                # Comp 1 transparency
+                p.comp_1_address or "",
+                _fmt_currency(p.comp_1_price),
+                p.comp_1_date or "",
+                f"{p.comp_1_acres:.2f}" if p.comp_1_acres is not None else "",
+                f"{p.comp_1_distance:.2f}" if p.comp_1_distance is not None else "",
+                _fmt_currency(p.comp_1_ppa),
+                "Yes" if p.comp_1_same_street else "No",
+                # Pricing sanity
+                p.pricing_sanity_flag or "",
             ]
         )
 

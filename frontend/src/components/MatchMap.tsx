@@ -18,7 +18,7 @@ interface Props {
   onSelectionChange?: (selected: MatchedParcel[]) => void
 }
 
-export default function MatchMap({ targets, comps = [], radiusMiles = 10, onSelectionChange }: Props) {
+export default function MatchMap({ targets, comps = [], radiusMiles = 1, onSelectionChange }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
   const scoreLayersRef = useRef<Record<number, any>>({})

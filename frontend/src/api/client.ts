@@ -75,7 +75,7 @@ export async function fetchMailingPreview(matchId: string): Promise<MailingPrevi
   return data
 }
 
-export type ExportType = 'full' | 'high-confidence' | 'top500' | 'flagged-for-review' | 'suspect-comps'
+export type ExportType = 'full' | 'matched' | 'high-confidence' | 'top500' | 'flagged-for-review' | 'suspect-comps'
 
 export function getMailingDownloadUrl(
   matchId: string,
@@ -84,6 +84,14 @@ export function getMailingDownloadUrl(
 ): string {
   const name = encodeURIComponent(campaignName ?? 'mailing-list')
   return `${API_BASE_URL}/mailing/download?match_id=${matchId}&campaign_name=${name}&export_type=${exportType}`
+}
+
+export function getMatchedLeadsDownloadUrl(
+  matchId: string,
+  campaignName?: string
+): string {
+  const name = encodeURIComponent(campaignName ?? 'matched-leads')
+  return `${API_BASE_URL}/mailing/export/matched?match_id=${matchId}&campaign_name=${name}`
 }
 
 // ─── Campaigns ─────────────────────────────────────────────────────────────

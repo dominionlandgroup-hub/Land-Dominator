@@ -68,7 +68,8 @@ class DashboardResponse(BaseModel):
 class MatchFilters(BaseModel):
     session_id: str
     target_session_id: str
-    radius_miles: float = 10.0
+    # Hard max: 1 mile (1609m). Engine ignores larger values and never searches beyond 1 mile.
+    radius_miles: float = 1.0
     acreage_tolerance_pct: float = 50.0
     min_match_score: int = 0
     zip_filter: Optional[List[str]] = None
@@ -96,6 +97,9 @@ class MatchFilters(BaseModel):
 class MatchedParcel(BaseModel):
     apn: str
     owner_name: str
+    owner_first_name: str = ""
+    owner_last_name: str = ""
+    owner_corp_indicator: str = ""
     mail_address: str
     mail_city: str
     mail_state: str
@@ -130,6 +134,8 @@ class MatchedParcel(BaseModel):
     flood_zone: Optional[str] = None
     buildability_pct: Optional[float] = None
     pricing_flag: Optional[str] = None
+    no_match_reason: Optional[str] = None
+    cross_county_match: bool = False
     comp_avg_age_days: Optional[int] = None
     comp_oldest_days: Optional[int] = None
     comp_age_warning: bool = False
@@ -144,6 +150,17 @@ class MatchedParcel(BaseModel):
     closest_comp_distance: Optional[float] = None
     road_frontage: Optional[float] = None
     possible_issue: Optional[str] = None
+    # Comp transparency fields
+    comp_1_apn: Optional[str] = None
+    comp_1_address: Optional[str] = None
+    comp_1_price: Optional[float] = None
+    comp_1_acres: Optional[float] = None
+    comp_1_date: Optional[str] = None
+    comp_1_distance: Optional[float] = None
+    comp_1_ppa: Optional[float] = None
+    comp_1_same_street: bool = False
+    # Pricing sanity flag (TLP comparison)
+    pricing_sanity_flag: Optional[str] = None
 
 
 class MatchResponse(BaseModel):

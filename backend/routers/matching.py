@@ -217,14 +217,15 @@ async def test_pricing_endpoint(request: Request):
     if has_distances and len(comps_df) > 0:
         for radius, label in COMP_SEARCH_STEPS:
             trial = comps_df[comps_df['distance_miles'] <= radius]
-            if len(trial) >= 3:
+            # FIX 1: strict comp-radius steps (>=1 comp stops the search)
+            if len(trial) >= 1:
                 comps_df = trial
                 radius_label = label
                 break
         else:
-            # Use whatever we have at max fallback
-            comps_df = comps_df[comps_df['distance_miles'] <= 3.0]
-            radius_label = '3mi_fallback'
+            # FIX 1: Step 4 — no comps within 1 mile => NO_COMPS
+            comps_df = comps_df[0:0]
+            radius_label = 'NO_COMPS'
 
     if len(comps_df) > 0:
         comps_df['ppa'] = comps_df['Current Sale Price'] / comps_df['Lot Acres']

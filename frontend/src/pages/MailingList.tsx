@@ -6,6 +6,7 @@ import { useApp } from '../context/AppContext'
 import {
   fetchMailingPreview,
   getMailingDownloadUrl,
+  getMatchedLeadsDownloadUrl,
   createCampaign,
 } from '../api/client'
 import type { Column } from '../components/DataTable'
@@ -84,21 +85,15 @@ export default function MailingList() {
 
   const matchId = matchResult.match_id
   const fullUrl = getMailingDownloadUrl(matchId, 'mailing-list', 'full')
+  const matchedUrl = getMatchedLeadsDownloadUrl(matchId, 'matched-leads-mailing-list')
   const highConfUrl = getMailingDownloadUrl(matchId, 'high-confidence', 'high-confidence')
   const top500Url = getMailingDownloadUrl(matchId, 'top-500', 'top500')
-  const flaggedReviewUrl = getMailingDownloadUrl(matchId, 'flagged-for-review', 'flagged-for-review')
-  const suspectCompsUrl = getMailingDownloadUrl(matchId, 'suspect-comps', 'suspect-comps')
 
   const afterDedup = workingRows.length
   const HIGH_CONF_EXCLUDED_FLAGS = new Set(['LOW_OFFER_VS_TLP', 'REVIEW_LOW', 'REVIEW_LOW_STALE'])
   const highConfCount = mailingPreview
     ? workingRows.filter((r) => r.matched_comp_count >= 3 && !HIGH_CONF_EXCLUDED_FLAGS.has(r.pricing_flag || '')).length
     : 0
-  const FLAGGED_REVIEW_FLAGS = new Set(['LOW_OFFER_VS_TLP', 'REVIEW_LOW', 'REVIEW_LOW_STALE'])
-  const flaggedReviewCount = workingRows.filter((r) => FLAGGED_REVIEW_FLAGS.has(r.pricing_flag || '')).length
-  const FLAGGED_SUSPECT_FLAGS = new Set(['HIGH_OFFER_VS_TLP', 'SUSPECT_COMPS', 'SUSPECT_COMPS_STALE'])
-  const suspectCompsCount = workingRows.filter((r) => FLAGGED_SUSPECT_FLAGS.has(r.pricing_flag || '')).length
-
   // Pricing flag distribution
   const FLAG_COLORS: Record<string, string> = {
     'OK': '#2D7A4F',
@@ -409,18 +404,18 @@ export default function MailingList() {
           {mailingPreview && (
             <>
               <a
-                href={highConfUrl}
+                href={matchedUrl}
                 download
                 className="btn-secondary text-sm no-underline"
-                style={{ borderColor: '#D5A940', color: '#D5A940' }}
-                title="Download parcels with 3+ matching comps"
+                style={{ borderColor: '#2D7A4F', color: '#2D7A4F' }}
+                title="Download all matched leads with pricing"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                   <polyline points="7 10 12 15 17 10"/>
                   <line x1="12" y1="15" x2="12" y2="3"/>
                 </svg>
-                High Confidence ({highConfCount.toLocaleString()})
+                Download Matched Leads
               </a>
               <a
                 href={top500Url}
@@ -435,6 +430,20 @@ export default function MailingList() {
                   <line x1="12" y1="15" x2="12" y2="3"/>
                 </svg>
                 Top 500
+              </a>
+              <a
+                href={highConfUrl}
+                download
+                className="btn-secondary text-sm no-underline"
+                style={{ borderColor: '#D5A940', color: '#D5A940' }}
+                title="Download parcels with 3+ matching comps"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/>
+                  <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                High Confidence ({highConfCount.toLocaleString()})
               </a>
               <a
                 href={fullUrl}
@@ -585,20 +594,13 @@ export default function MailingList() {
             {/* Export buttons row */}
             <div className="card mb-6">
               <h2 className="text-sm font-semibold mb-4" style={{ color: '#1A0A2E' }}>Export Options</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                 <ExportOption
-                  title="Full List"
-                  subtitle={`All ${afterDedup.toLocaleString()} deduplicated records`}
-                  badge="ALL"
-                  badgeColor="#D5A940"
-                  href={fullUrl}
-                />
-                <ExportOption
-                  title="High Confidence Only"
-                  subtitle={`${highConfCount.toLocaleString()} records with 3+ comps, no flags`}
-                  badge="CLEAN"
+                  title="Download Matched Leads"
+                  subtitle="All MATCHED records with non-empty retail estimate"
+                  badge="MATCHED"
                   badgeColor="#2D7A4F"
-                  href={highConfUrl}
+                  href={matchedUrl}
                 />
                 <ExportOption
                   title="Top 500 Records"
@@ -608,18 +610,18 @@ export default function MailingList() {
                   href={top500Url}
                 />
                 <ExportOption
-                  title="Flagged for Review"
-                  subtitle={`${flaggedReviewCount.toLocaleString()} low offer / floor adjusted`}
-                  badge="REVIEW"
-                  badgeColor="#C05000"
-                  href={flaggedReviewUrl}
+                  title="High Confidence Only"
+                  subtitle={`${highConfCount.toLocaleString()} records with 3+ comps, no flags`}
+                  badge="CLEAN"
+                  badgeColor="#2D7A4F"
+                  href={highConfUrl}
                 />
                 <ExportOption
-                  title="Suspect Comps"
-                  subtitle={`${suspectCompsCount.toLocaleString()} capped to 50% of TLP`}
-                  badge="SUSPECT"
-                  badgeColor="#991B1B"
-                  href={suspectCompsUrl}
+                  title="Full List"
+                  subtitle={`All ${afterDedup.toLocaleString()} deduplicated records`}
+                  badge="ALL"
+                  badgeColor="#D5A940"
+                  href={fullUrl}
                 />
               </div>
               {flaggedRows.length > 0 && (

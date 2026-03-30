@@ -4,7 +4,7 @@ import DataTable from '../components/DataTable'
 import LoadingSpinner from '../components/LoadingSpinner'
 import LoadingOverlay from '../components/LoadingOverlay'
 import { useApp } from '../context/AppContext'
-import { uploadTargets, runMatch } from '../api/client'
+import { uploadTargets, runMatch, getMailingDownloadUrl, getMatchedLeadsDownloadUrl } from '../api/client'
 import type { Column } from '../components/DataTable'
 import type { MatchedParcel, MatchFilters } from '../types'
 import { getConfidence } from '../types'
@@ -12,7 +12,7 @@ import MatchMap from '../components/MatchMap'
 import WelcomeScreen from './WelcomeScreen'
 
 const DEFAULT_FILTERS: Omit<MatchFilters, 'session_id' | 'target_session_id'> = {
-  radius_miles: 10,
+  radius_miles: 1,
   acreage_tolerance_pct: 50,
   min_match_score: 0,
   zip_filter: [],
@@ -56,8 +56,8 @@ export default function MatchTargets() {
 
   // Filter state — pre-fill from lastFilters if available (from "Duplicate Settings")
   const init = lastFilters ?? DEFAULT_FILTERS
-  // radius_miles removed — engine always uses 1mi→3mi proximity fallback
-  const [acreageTol, setAcreageTol] = useState<number>(Number(init.acreage_tolerance_pct ?? 50))
+  // radius_miles is fixed to the engine's hard maximum (max 1 mile)
+  const acreageTol = 50
   const [minScore, setMinScore] = useState<number>(Number(init.min_match_score ?? 0))
   const [zipFilter, setZipFilter] = useState<string[]>((init.zip_filter as string[]) ?? [])
   const [minAcreage, setMinAcreage] = useState<string>(init.min_acreage != null ? String(init.min_acreage) : '')
@@ -100,7 +100,7 @@ export default function MatchTargets() {
     const filters: MatchFilters = {
       session_id: compsStats.session_id,
       target_session_id: targetStats.session_id,
-      radius_miles: 10, // unused by engine — kept for API compat
+      radius_miles: 1, // engine hard max (kept for API compat)
       acreage_tolerance_pct: acreageTol,
       min_match_score: minScore,
       zip_filter: zipFilter,
@@ -141,9 +141,9 @@ export default function MatchTargets() {
   }
 
   // Active filter chips
-  const activeFilters: { label: string; onRemove: () => void }[] = []
-  activeFilters.push({ label: '1–3 mi comp radius', onRemove: () => {} })
-  activeFilters.push({ label: `±${acreageTol}% acreage`, onRemove: () => setAcreageTol(50) })
+  const activeFilters: { label: string; onRemove?: () => void }[] = []
+  activeFilters.push({ label: 'Max 1 mi radius' })
+  activeFilters.push({ label: 'Fixed acreage bands' })
   if (minScore > 0) activeFilters.push({ label: `Score ≥ ${minScore}`, onRemove: () => setMinScore(0) })
   if (zipFilter.length > 0) activeFilters.push({ label: `ZIPs: ${zipFilter.join(', ')}`, onRemove: () => setZipFilter([]) })
   if (minAcreage) activeFilters.push({ label: `Min ${minAcreage} ac`, onRemove: () => setMinAcreage('') })
@@ -175,8 +175,46 @@ export default function MatchTargets() {
     },
     { key: 'apn', header: 'APN', sortable: true, render: (v) => <span className="font-mono text-xs">{String(v || '—')}</span> },
     { key: 'owner_name', header: 'Owner', render: (v) => <span className="max-w-[160px] block truncate text-xs" title={String(v)}>{String(v || '—')}</span> },
+    {
+      key: 'owner_first_name',
+      header: 'Owner First Name',
+      defaultHidden: true,
+      render: (v) => <span className="text-xs">{String(v || '—')}</span>,
+    },
+    {
+      key: 'owner_last_name',
+      header: 'Owner Last Name',
+      defaultHidden: true,
+      render: (v) => <span className="text-xs">{String(v || '—')}</span>,
+    },
     { key: 'parcel_zip', header: 'ZIP', sortable: true },
     { key: 'parcel_city', header: 'City', defaultHidden: true },
+    {
+      key: 'parcel_address',
+      header: 'Parcel Address',
+      defaultHidden: true,
+      render: (v) => (
+        <span className="max-w-[220px] block truncate text-xs" title={String(v || '')}>
+          {String(v || '—')}
+        </span>
+      ),
+    },
+    { key: 'parcel_state', header: 'Parcel State', defaultHidden: true, render: (v) => <span className="text-xs">{String(v || '—')}</span> },
+    { key: 'parcel_county', header: 'Parcel County', defaultHidden: true, render: (v) => <span className="text-xs">{String(v || '—')}</span> },
+    {
+      key: 'latitude',
+      header: 'Latitude',
+      defaultHidden: true,
+      align: 'right',
+      render: (v) => (v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">{(v as number).toFixed(5)}</span>),
+    },
+    {
+      key: 'longitude',
+      header: 'Longitude',
+      defaultHidden: true,
+      align: 'right',
+      render: (v) => (v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">{(v as number).toFixed(5)}</span>),
+    },
     {
       key: 'lot_acres', header: 'Acres', sortable: true, align: 'right',
       render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span>{(v as number).toFixed(2)}</span>,
@@ -188,6 +226,22 @@ export default function MatchTargets() {
     {
       key: 'matched_comp_count', header: 'Comps', sortable: true, align: 'center',
       render: (v) => <span className="text-xs">{String(v ?? '—')}</span>,
+    },
+    {
+      key: 'comp_count',
+      header: 'Comp Count',
+      sortable: true,
+      align: 'center',
+      defaultHidden: true,
+      render: (v) => <span className="text-xs">{String(v ?? '—')}</span>,
+    },
+    {
+      key: 'closest_comp_distance',
+      header: 'Distance to Closest Comp',
+      sortable: true,
+      align: 'right',
+      defaultHidden: true,
+      render: (v) => (v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">{(v as number).toFixed(2)}</span>),
     },
     {
       key: 'retail_estimate', header: 'Retail Est.', sortable: true, align: 'right',
@@ -306,18 +360,24 @@ export default function MatchTargets() {
           <div className="card">
             <h2 className="font-semibold mb-4" style={{ color: '#1A0A2E' }}>Matching Parameters</h2>
             <div className="space-y-4">
-              {/* Comp radius is fixed at 1mi→3mi fallback — not user-adjustable */}
+              {/* Comp radius is fixed at max 1 mile — not user-adjustable */}
               <div className="rounded-lg px-3 py-2" style={{ backgroundColor: '#F3EEFA', border: '1px solid #E0D4F0' }}>
                 <div className="flex justify-between text-sm">
                   <span style={{ color: '#6B5B8A' }}>Comp Radius</span>
-                  <span className="font-medium" style={{ color: '#5C2977' }}>1 mi → 3 mi fallback</span>
+                  <span className="font-medium" style={{ color: '#5C2977' }}>Max 1 mi radius</span>
                 </div>
                 <p className="text-xs mt-1" style={{ color: '#9B8AAE' }}>
-                  Comps within 1 mile are used first. Falls back to 3 miles if fewer than 3 comps found.
+                  Comps within 1 mile are used. No fallback beyond 1 mile.
                 </p>
               </div>
-              <SliderRow label="Acreage Tolerance" value={acreageTol} onChange={setAcreageTol} min={5} max={200} step={5} display={`±${acreageTol}%`} />
-              <SliderRow label="Min Match Score" value={minScore} onChange={setMinScore} min={0} max={5} step={1} display={`${minScore} / 5`} />
+              <div className="rounded-lg px-3 py-2" style={{ backgroundColor: '#F3EEFA', border: '1px solid #E0D4F0' }}>
+                <div className="text-sm" style={{ color: '#5C2977' }}>
+                  Acreage matching uses fixed bands: Micro (0–0.5 ac) · Small (0.5–2 ac) · Medium (2–10 ac) · Large (10–50 ac) · XL (50+ ac)
+                </div>
+              </div>
+              <div title="Only include parcels with a match score at or above this threshold (0 = include all, 5 = highest quality only)">
+                <SliderRow label="Min Match Score" value={minScore} onChange={setMinScore} min={0} max={5} step={1} display={`${minScore} / 5`} />
+              </div>
             </div>
           </div>
         </div>
@@ -442,7 +502,9 @@ export default function MatchTargets() {
             {activeFilters.map((f, i) => (
               <span key={i} className="filter-chip">
                 {f.label}
-                <button onClick={f.onRemove} className="hover:text-red-400 transition-colors ml-0.5">×</button>
+                {f.onRemove && (
+                  <button onClick={f.onRemove} className="hover:text-red-400 transition-colors ml-0.5">×</button>
+                )}
               </span>
             ))}
           </div>
@@ -512,6 +574,24 @@ export default function MatchTargets() {
 
         {matchResult && (
           <>
+            {(() => {
+              const matchId = matchResult.match_id
+              const matchedUrl = getMatchedLeadsDownloadUrl(matchId, 'matched-leads')
+              const top500Url = getMailingDownloadUrl(matchId, 'top-500', 'top500')
+              const highConfUrl = getMailingDownloadUrl(matchId, 'high-confidence', 'high-confidence')
+              const fullUrl = getMailingDownloadUrl(matchId, 'full-list', 'full')
+              return (
+                <div className="card mb-6">
+                  <h2 className="font-semibold mb-4" style={{ color: '#1A0A2E' }}>Download Results</h2>
+                  <div className="flex flex-wrap gap-2">
+                    <a href={matchedUrl} download className="btn-secondary text-sm no-underline">Download Matched Leads</a>
+                    <a href={top500Url} download className="btn-secondary text-sm no-underline">Top 500</a>
+                    <a href={highConfUrl} download className="btn-secondary text-sm no-underline">High Confidence Only</a>
+                    <a href={fullUrl} download className="btn-secondary text-sm no-underline">Full List</a>
+                  </div>
+                </div>
+              )
+            })()}
             {/* Results summary */}
             <div className="grid grid-cols-3 gap-4 mb-6">
               <ResultCard label="Total Targets" value={matchResult.total_targets.toLocaleString()} accent="#5C2977" />
@@ -572,7 +652,7 @@ export default function MatchTargets() {
                 <MatchMap
                   targets={matchResult.results}
                   comps={dashboardData?.comp_locations ?? []}
-                  radiusMiles={3}
+                  radiusMiles={1}
                 />
               )}
             </div>

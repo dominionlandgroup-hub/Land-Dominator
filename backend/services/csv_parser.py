@@ -4,6 +4,7 @@ CSV parsing and validation for Land Portal exports.
 import pandas as pd
 from io import BytesIO
 from typing import Tuple, Dict, Any, List
+import re
 
 REQUIRED_COLS = [
     "APN",
@@ -18,6 +19,48 @@ REQUIRED_COLS = [
     "Mail State",
     "Mail Zip",
 ]
+
+# Case-insensitive column aliases mapped to canonical internal names.
+_COLUMN_ALIASES = {
+    # Parcel ZIP aliases
+    "zip": "Parcel Zip",
+    "zip code": "Parcel Zip",
+    "situs zip": "Parcel Zip",
+    "postal code": "Parcel Zip",
+    "parcel zip": "Parcel Zip",
+    # Mail ZIP aliases
+    "mailing zip": "Mail Zip",
+    "mail zip": "Mail Zip",
+    # Owner name aliases
+    "owner name": "Owner Name(s)",
+    "owner": "Owner Name(s)",
+    "ownername": "Owner Name(s)",
+    "owner full name": "Owner Name(s)",
+    "owner 1 full name": "Owner 1 Full Name",
+}
+
+
+def _normalize_key(name: str) -> str:
+    """Lowercase and collapse separators for robust alias matching."""
+    return re.sub(r"[\s\-_]+", " ", str(name).strip().lower())
+
+
+def _canonicalize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Rename variant CSV headers to canonical internal column names."""
+    rename_map: Dict[str, str] = {}
+    seen_targets = set(df.columns)
+    for col in df.columns:
+        key = _normalize_key(col)
+        target = _COLUMN_ALIASES.get(key)
+        if target and target != col:
+            # Do not overwrite if canonical already exists in file.
+            if target in seen_targets:
+                continue
+            rename_map[col] = target
+            seen_targets.add(target)
+    if rename_map:
+        df = df.rename(columns=rename_map)
+    return df
 
 NUMERIC_COLS = [
     "Lot Acres",
@@ -92,8 +135,9 @@ def parse_csv(
     if df is None:
         raise ValueError("Could not decode CSV — try saving as UTF-8.")
 
-    # Strip leading/trailing whitespace from column names
+    # Strip leading/trailing whitespace from column names and normalize aliases.
     df.columns = [c.strip() for c in df.columns]
+    df = _canonicalize_columns(df)
 
     # Identify missing required columns
     missing: List[str] = [c for c in REQUIRED_COLS if c not in df.columns]
