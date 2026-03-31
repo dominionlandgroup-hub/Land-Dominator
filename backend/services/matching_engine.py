@@ -1289,30 +1289,28 @@ def run_matching(
                 # Calculate acreage similarity ratio for each comp (0.0 to 1.0)
                 acreage_ratios = np.minimum(matched_comp_acres, target_acres) / np.maximum(matched_comp_acres, target_acres)
 
-                if matched_mask.sum() == 1:
-                    # Single comp: hard filter — must be within 55% acreage similarity
-                    if acreage_ratios[0] < 0.55:
-                        if debug:
-                            print(
-                                f"[DEBUG {target_apn}] ACREAGE FILTER: single comp {matched_comp_acres[0]:.2f}ac "
-                                f"vs target {target_acres:.2f}ac (ratio {acreage_ratios[0]:.2f} < 0.55) → NO_COMPS",
-                                flush=True,
-                            )
-                        matched_mask = np.zeros(len(vc), dtype=bool)
-                        radius_label = 'NO_COMPS'
-                elif matched_mask.sum() >= 2:
-                    # Multiple comps: prefer comps with better acreage similarity
-                    # Remove comps with very poor similarity (< 0.30) if better ones exist
-                    good_similarity = acreage_ratios >= 0.30
-                    if good_similarity.sum() >= 1 and good_similarity.sum() < len(acreage_ratios):
-                        new_mask = np.zeros(len(vc), dtype=bool)
-                        new_mask[matched_idx[good_similarity]] = True
-                        matched_mask = new_mask
-                        if debug:
-                            print(
-                                f"[DEBUG {target_apn}] ACREAGE RANKING: kept {good_similarity.sum()}/{len(acreage_ratios)} comps with ratio >= 0.30",
-                                flush=True,
-                            )
+                # Filter out comps with poor acreage similarity (< 0.75)
+                good_similarity = acreage_ratios >= 0.75
+                if good_similarity.sum() == 0:
+                    # No comps with adequate acreage match → NO_COMPS
+                    if debug:
+                        print(
+                            f"[DEBUG {target_apn}] ACREAGE FILTER: all {len(acreage_ratios)} comps fail "
+                            f"0.75 similarity threshold (best: {acreage_ratios.max():.2f}) → NO_COMPS",
+                            flush=True,
+                        )
+                    matched_mask = np.zeros(len(vc), dtype=bool)
+                    radius_label = 'NO_COMPS'
+                elif good_similarity.sum() < len(acreage_ratios):
+                    # Some comps fail — keep only the good ones
+                    new_mask = np.zeros(len(vc), dtype=bool)
+                    new_mask[matched_idx[good_similarity]] = True
+                    matched_mask = new_mask
+                    if debug:
+                        print(
+                            f"[DEBUG {target_apn}] ACREAGE FILTER: kept {good_similarity.sum()}/{len(acreage_ratios)} comps with ratio >= 0.75",
+                            flush=True,
+                        )
 
             # ── Single-comp PPA sanity check ──
             # When only 1-2 comps are found, check if their PPA is reasonable
