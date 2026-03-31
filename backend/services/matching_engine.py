@@ -401,28 +401,37 @@ def remove_outliers_zip_level(comps_df: pd.DataFrame) -> pd.DataFrame:
     for zip_code, group in comps_df.groupby(zip_col):
         ppa = group['_ppa'].dropna()
 
+        if len(ppa) == 0:
+            kept_indices.extend(group.index.tolist())
+            continue
+
+        median_ppa = ppa.median()
+
         if len(ppa) < 4:
-            if len(ppa) == 0:
-                kept_indices.extend(group.index.tolist())
-                continue
-            threshold = ppa.median() * 3.0
+            upper_threshold = median_ppa * 3.0
         else:
             Q1, Q3 = ppa.quantile(0.25), ppa.quantile(0.75)
             IQR = Q3 - Q1
-            threshold = Q3 + 1.5 * IQR
+            upper_threshold = Q3 + 1.5 * IQR
 
-        kept = group[group['_ppa'] <= threshold]
-        removed = group[group['_ppa'] > threshold]
+        # Lower bound: comps with PPA < 15% of ZIP median are likely
+        # distressed/non-arm's-length sales (tax liens, foreclosures, etc.)
+        lower_threshold = median_ppa * 0.15 if median_ppa > 0 else 0
+
+        kept = group[(group['_ppa'] <= upper_threshold) & (group['_ppa'] >= lower_threshold)]
+        removed = group[(group['_ppa'] > upper_threshold) | (group['_ppa'] < lower_threshold)]
 
         kept_indices.extend(kept.index.tolist())
         for _, row in removed.iterrows():
+            is_low = row.get('_ppa', 0) < lower_threshold
             removal_log.append({
                 'zip': zip_code,
                 'apn': row.get('APN', ''),
                 'price': row.get('Current Sale Price', 0),
                 'acres': row.get('Lot Acres', 0),
                 'ppa': row.get('_ppa', 0),
-                'threshold': threshold,
+                'threshold': lower_threshold if is_low else upper_threshold,
+                'reason': 'DISTRESSED' if is_low else 'PREMIUM',
             })
 
     # For comps with missing ZIP, check against county-wide median threshold
@@ -447,9 +456,12 @@ def remove_outliers_zip_level(comps_df: pd.DataFrame) -> pd.DataFrame:
 
     result = comps_df.loc[comps_df.index.isin(kept_indices)].drop(columns=['_ppa'], errors='ignore')
     n_removed = len(comps_df) - len(result)
-    print(f"ZIP-level outlier removal: {n_removed} comps removed as premium/outliers")
+    n_premium = sum(1 for r in removal_log if r.get('reason', 'PREMIUM') == 'PREMIUM')
+    n_distressed = sum(1 for r in removal_log if r.get('reason') == 'DISTRESSED')
+    print(f"ZIP-level outlier removal: {n_removed} comps removed ({n_premium} premium, {n_distressed} distressed)")
     for r in removal_log[:10]:
-        print(f"  ZIP {r['zip']} | APN:{r['apn']} | ${r['price']:,.0f} | {r['acres']}ac | ${r['ppa']:,.0f}/ac | threshold ${r['threshold']:,.0f}/ac")
+        reason = r.get('reason', 'PREMIUM')
+        print(f"  [{reason}] ZIP {r['zip']} | APN:{r['apn']} | ${r['price']:,.0f} | {r['acres']}ac | ${r['ppa']:,.0f}/ac | threshold ${r['threshold']:,.0f}/ac")
 
     return result
 

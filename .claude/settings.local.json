@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(railway up:*)",
+      "Bash(railway service:*)",
+      "Bash(curl -s https://land-parcel-tool-production.up.railway.app/health)",
+      "Bash(ls -la *.toml backend/*.toml backend/requirements.txt Procfile)",
+      "Bash(railway status:*)",
+      "Bash(railway variables:*)",
+      "Bash(ls -la Dockerfile*)"
+    ]
+  }
+}

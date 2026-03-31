@@ -1,0 +1,435 @@
+STEP 5 — Normalization/Handoff Call Chain
+upload endpoint -> parse_csv() -> session store -> run_matching()
+Handoff verification done below from parse_csv output into run_matching input.
+=== COMP DATAFRAME ENTERING MATCHING ENGINE ===
+Shape: (4996, 227)
+Columns: ['propertyID', 'APN', 'Lot Acres', 'Lot Sq Ft', 'Owner Name(s)', 'Mail Names', 'Owner 1 Full Name', 'Owner 1 First Name', 'Owner 1 Middle Name', 'Owner 1 Last Name', 'Owner 1 Suffix', 'Owner 1 Corp Indicator', 'Owner 2 Full Name', 'Owner 2 First Name', 'Owner 2 Middle Name', 'Owner 2 Last Name', 'Owner 2 Suffix', 'Owner 2 Corp Indicator', 'Mail Full Address', 'Mail City', 'Mail State', 'Mail Zip', 'Mail County', 'Mail Carrier Code', 'Do Not Mail', 'Mail Care Of', 'Mail Foreign Address Indicator', 'Parcel Full Address', 'Parcel City', 'Parcel State', 'Parcel County', 'Parcel Zip', 'Parcel FIPS', 'Parcel Carrier Code', 'Latitude', 'Longitude', 'Hyperlink', 'Calc Acreage', 'Land Use', 'Land Locked', 'Road Frontage', 'Wetlands Coverage', 'FEMA Flood Coverage', 'Slope AVG', 'Buildability total (%)', 'Buildability area (acres)', 'Flat slope (0-.5%)', 'Minimal Slope (.5-5%)', 'Moderate Slope (5-10%)', 'Heavy Slope (10-15%)', 'Extreme Slope (15%+)', 'Elevation AVG', 'Elevation Min', 'Elevation Max', 'Slope Min', 'Slope Max', 'APN Alt', 'APN Alt Ind', 'Zoning', 'Census Tract', 'Census Block', 'Mobile Home Ind', 'Time Share Code', 'School District', 'MLS ID', 'MLS Status', 'MLS Description', 'MLS Price', 'MLS Bedrooms', 'MLS sqft', 'MLS Parcel Acreage', 'Total Assessed Value', 'Land Assessed Value', 'Improvement Assessed Value', 'Total Market Value', 'Land Market Value', 'Improvement Market Value', 'Tax amt', 'Tax Year', 'Tax Delinquent Year', 'Market Year', 'Assessed Year', 'Tax Jurisdictions', 'School/Tax District 1', 'School/Tax District 2', 'School/Tax District 3', 'Building Area', 'Bldg Area Ind', 'Building Sq Ft', 'Living Area', 'Ground Floor Area', 'Gross Area', 'Taxable Area', 'Attic Area', 'Attic Unfinished Area', 'Attic Finished Area', 'Basement Area', 'Basement Unfinished Area', 'Basement Finished Area', 'Garage Area', 'Garage Unfinished Area', 'Garage Finished Area', 'Year Built', 'Effective Year Built', 'Bedrooms', 'Total Rooms', 'Total Baths', 'Full Baths', 'Partial Baths', 'Bath Plumbing', 'Amenities', 'Air Conditioning', 'Basement', 'Bldg Class', 'Bldg Condition', 'Const Type', 'Deck Ind', 'Exterior Walls', 'Interior Walls', 'Fireplaces', 'Floor Cover', 'Garage Type', 'Heating Type', 'Heat Fuel', 'Loc Influence', 'Parking Spaces', 'Driveway', 'Other Rooms', 'Patio', 'Pool', 'Porch', 'Bldg Quality', 'Roof Cover', 'Roof Type', 'Sewer Type', 'Stories Nbr', 'Style', 'Nbr of Units', 'Nbr of Bldgs', 'Nbr of Comm Units', 'Topography', 'Watercode', 'Lot Code', 'Lots Nbr', 'Land Lot', 'Block', 'Section', 'District', 'Legal Unit', 'Municipality', 'Subdivision Name', 'Subdivision Phase Nbr', 'Subdivision Tract Nbr', 'Meridian', 'Assessors Map Ref', 'Legal Description', 'Current Sale Transaction ID', 'Current Sale Doc Nbr', 'Current Sale Book', 'Current Sale Page', 'Current Sale Recording Date', 'Current Sale Contract Date', 'Current Sale Doc Type', 'Current Sale Price', 'Current Sale Price Code', 'Current Sale Buyer 1 Full Name', 'Current Sale Buyer 2 Full Name', 'Current Sale Seller 1 Full Name', 'Current Sale Seller 2 Full Name', 'Concurrent Mtg 1 Doc Nbr', 'Concurrent Mtg 1 Book', 'Concurrent Mtg 1 Page', 'Concurrent Mtg 1 Recording Date', 'Concurrent Mtg 1 Loan Amt', 'Concurrent Mtg 1 Lender', 'Concurrent Mtg 1 Term', 'Concurrent Mtg 1 Interest Rate', 'Concurrent Mtg 1 Loan Due Date', 'Mtg 1 Doc', 'Mtg 1 Fyn Type', 'Concurrent Mtg 2 Doc Nbr', 'Concurrent Mtg 2 Book', 'Concurrent Mtg 2 Page', 'Concurrent Mtg 2 Recording Date', 'Concurrent Mtg 2 Loan Amt', 'Concurrent Mtg 2 Lender', 'Concurrent Mtg 2 Term', 'Concurrent Mtg 2 Interest Rate', 'Concurrent Mtg 2 Loan Due Date', 'Mtg 2 Doc', 'Mtg 2 Fyn Type', 'Prev Sale Transaction ID', 'Prev Sale Doc Nbr', 'Prev Sale Book', 'Prev Sale Page', 'Prev Sale Recording Date', 'Prev Sale Contract Date', 'Prev Sale Document Type', 'Prev Sales Price', 'Prev Sale Price Code', 'Prev Sale Buyer 1 Full Name', 'Prev Sale Buyer 2 Full Name', 'Prev Sale Seller 1 Full Name', 'Prev Sale Seller 2 Full Name', 'Prev Mtg 1 Doc Nbr', 'Prev Mtg 1 Book', 'Prev Mtg 1 Page', 'Prev Mtg 1 Recording Date', 'Prev Mtg 1 Loan Amt', 'Prev Mtg 1 Lender', 'Prev Mtg 1 Term', 'Prev Mtg 1 Interest Rate', 'Prev Mtg 1 Loan Due Date', 'Prev Mtg 1 Loan Type', 'Prev Mtg 1 Financing Type', 'Vacant Flag', 'Vacant Flag Date', 'FL Community Name', 'FL Community Nbr', 'FL FEMA Map Nbr', 'FL FIRM ID', 'FL Panel Nbr', 'FL Inside SFHA', 'FL FEMA Flood Zone', 'FL FEMA Map Date', 'TLP Estimate', '_file_format']
+'Current Sale Price' present: True
+Valid sale prices: 709
+Sample prices: [20000.0, 45000.0, 45000.0, 52500.0, 75000.0]
+Lat/lon present: True
+Valid lat/lon rows: 4996
+Normalization post-check: True True True True
+
+[DEBUG] Available columns in targets DataFrame:
+  Owner-related columns: ['Owner Name(s)', 'Owner 1 Full Name', 'Owner 1 First Name', 'Owner 1 Middle Name', 'Owner 1 Last Name', 'Owner 1 Suffix', 'Owner 1 Corp Indicator', 'Owner 2 Full Name', 'Owner 2 First Name', 'Owner 2 Middle Name', 'Owner 2 Last Name', 'Owner 2 Suffix', 'Owner 2 Corp Indicator']
+  Parcel/Property-related columns: ['propertyID', 'Parcel Full Address', 'Parcel City', 'Parcel State', 'Parcel County', 'Parcel Zip', 'Parcel FIPS', 'Parcel Carrier Code', 'MLS Parcel Acreage']
+  First 5 column names: ['propertyID', 'APN', 'Lot Acres', 'Lot Sq Ft', 'Owner Name(s)']
+  All columns containing 'address': ['Mail Full Address', 'Mail Foreign Address Indicator', 'Parcel Full Address']
+  All columns containing 'street': []
+  All columns containing 'situs': []
+  First 30 columns: ['propertyID', 'APN', 'Lot Acres', 'Lot Sq Ft', 'Owner Name(s)', 'Mail Names', 'Owner 1 Full Name', 'Owner 1 First Name', 'Owner 1 Middle Name', 'Owner 1 Last Name', 'Owner 1 Suffix', 'Owner 1 Corp Indicator', 'Owner 2 Full Name', 'Owner 2 First Name', 'Owner 2 Middle Name', 'Owner 2 Last Name', 'Owner 2 Suffix', 'Owner 2 Corp Indicator', 'Mail Full Address', 'Mail City', 'Mail State', 'Mail Zip', 'Mail County', 'Mail Carrier Code', 'Do Not Mail', 'Mail Care Of', 'Mail Foreign Address Indicator', 'Parcel Full Address', 'Parcel City', 'Parcel State']
+  Has parcel address column: True
+
+[DEBUG] First owner name parsed: 'Venture Homes Coastal Carolina Llc' -> first='Venture', last='Homes Coastal Carolina Llc'
+[DEBUG] First result added to results list:
+  owner_name: 'Venture Homes Coastal Carolina Llc'
+  owner_first_name: 'Venture'
+  owner_last_name: 'Homes Coastal Carolina Llc'
+  parcel_address (constructed): '989 Copas Rd Sw'
+  parcel_city: 'Shallotte'
+
+[DEBUG] Final result sample (before return):
+  apn: '230KC063'
+  owner_name: 'Hobbs Carol P'
+  owner_first_name: 'Carol'
+  owner_last_name: 'Hobbs'
+  parcel_address (constructed): '2004 Healing Water Ln Sw'
+  OK: All fields populated correctly
+
+
+=== TEST DIAGNOSTIC (bug combo) ===
+Solds file: Brunswick Sold NEW TEST.csv | Rows: 4996 | Valid comps: 564 | Format: land_portal
+Targets file: NC_Brunswick_Targets Test Data.csv | Rows: 5593
+
+=== TARGET 214JA009 ===
+  Acreage: 0.32 | Band: micro
+  Lat: 33.94541895 | Lon: -78.37224107
+  Comps in same band: 483
+  Comps within 0.25mi: 2
+  Comps within 0.50mi: 3
+  Comps within 1.00mi: 11
+  Comps selected: 2
+  Status assigned: MATCHED
+  Retail estimate: 42000
+  Score: 3
+
+=== TARGET 1130001935 ===
+  Acreage: 0.996 | Band: small
+  Lat: 34.10181695 | Lon: -78.05475222
+  Comps in same band: 81
+  Comps within 0.25mi: 0
+  Comps within 0.50mi: 0
+  Comps within 1.00mi: 0
+  Comps selected: 0
+  Status assigned: NO_COMPS
+  Retail estimate: None
+  Score: 0
+
+=== TARGET 142BA058 ===
+  Acreage: 0.37 | Band: micro
+  Lat: 34.06248121 | Lon: -78.045842
+  Comps in same band: 483
+  Comps within 0.25mi: 1
+  Comps within 0.50mi: 3
+  Comps within 1.00mi: 18
+  Comps selected: 1
+  Status assigned: MATCHED
+  Retail estimate: 20000
+  Score: 3
+
+MATCH RESULTS:
+  MATCHED: 3821 (68.37%)
+  NO_COMPS: 1768 (31.63%)
+  Total: 5589
+
+SCORE DISTRIBUTION:
+  Score 5: 883
+  Score 4: 519
+  Score 3: 1409
+  Score 2: 687
+  Score 1: 323
+  Score 0: 1768
+
+PRICING SANITY CHECK:
+  MATCHED records with retail_estimate = 0 or None: 0
+  MATCHED records with valid retail_estimate: 3821
+  Sample 3 MATCHED records:
+    230KC063 | 0.28 | micro | 70000 | 45500 | 1 | 0.015234841435834678 | 5 | LOW
+    233BA080 | 0.34 | micro | 62500 | 40625 | 1 | 0.179781506867983 | 5 | LOW
+    232DB029 | 0.5 | small | 29000 | 18850 | 2 | 0.0628631892641306 | 5 | MEDIUM
+  Sample 3 NO_COMPS records:
+    1130001935 | Status=NO_COMPS | Retail=None | Score=0
+    071KD006 | Status=NO_COMPS | Retail=None | Score=0
+    071KB006 | Status=NO_COMPS | Retail=None | Score=0
+
+PASS/FAIL:
+  Match rate realistic (not 0% or 100%): PASS
+  All MATCHED have retail > 0: PASS
+  All NO_COMPS have retail = None: PASS
+  Score distribution varies: PASS
+  No crashes: PASS
+
+=== FINAL STATUS COUNTS ===
+{'MATCHED': 3821, 'NO_COMPS': 1768, 'EDGE_CASE': 0}
+Any MATCHED with retail=0 or None: 0
+
+[DEBUG] Available columns in targets DataFrame:
+  Owner-related columns: ['Owner Name(s)', 'Owner 1 Full Name', 'Owner 1 First Name', 'Owner 1 Middle Name', 'Owner 1 Last Name', 'Owner 1 Suffix', 'Owner 1 Corp Indicator', 'Owner 2 Full Name', 'Owner 2 First Name', 'Owner 2 Middle Name', 'Owner 2 Last Name', 'Owner 2 Suffix', 'Owner 2 Corp Indicator']
+  Parcel/Property-related columns: ['propertyID', 'Parcel Full Address', 'Parcel City', 'Parcel State', 'Parcel County', 'Parcel Zip', 'Parcel FIPS', 'Parcel Carrier Code', 'MLS Parcel Acreage']
+  First 5 column names: ['propertyID', 'APN', 'Lot Acres', 'Lot Sq Ft', 'Owner Name(s)']
+  All columns containing 'address': ['Mail Full Address', 'Mail Foreign Address Indicator', 'Parcel Full Address']
+  All columns containing 'street': []
+  All columns containing 'situs': []
+  First 30 columns: ['propertyID', 'APN', 'Lot Acres', 'Lot Sq Ft', 'Owner Name(s)', 'Mail Names', 'Owner 1 Full Name', 'Owner 1 First Name', 'Owner 1 Middle Name', 'Owner 1 Last Name', 'Owner 1 Suffix', 'Owner 1 Corp Indicator', 'Owner 2 Full Name', 'Owner 2 First Name', 'Owner 2 Middle Name', 'Owner 2 Last Name', 'Owner 2 Suffix', 'Owner 2 Corp Indicator', 'Mail Full Address', 'Mail City', 'Mail State', 'Mail Zip', 'Mail County', 'Mail Carrier Code', 'Do Not Mail', 'Mail Care Of', 'Mail Foreign Address Indicator', 'Parcel Full Address', 'Parcel City', 'Parcel State']
+  Has parcel address column: True
+
+[DEBUG] First owner name parsed: 'Venture Homes Coastal Carolina Llc' -> first='Venture', last='Homes Coastal Carolina Llc'
+[DEBUG] First result added to results list:
+  owner_name: 'Venture Homes Coastal Carolina Llc'
+  owner_first_name: 'Venture'
+  owner_last_name: 'Homes Coastal Carolina Llc'
+  parcel_address (constructed): '989 Copas Rd Sw'
+  parcel_city: 'Shallotte'
+
+[DEBUG] Final result sample (before return):
+  apn: '230KC063'
+  owner_name: 'Hobbs Carol P'
+  owner_first_name: 'Carol'
+  owner_last_name: 'Hobbs'
+  parcel_address (constructed): '2004 Healing Water Ln Sw'
+  OK: All fields populated correctly
+
+
+=== TEST A — Brunswick County baseline ===
+Solds file: Brunswick Sold NEW TEST.csv | Rows: 4996 | Valid comps: 564 | Format: land_portal
+Targets file: NC_Brunswick_Targets Test Data.csv | Rows: 5593
+
+=== TARGET 214JA009 ===
+  Acreage: 0.32 | Band: micro
+  Lat: 33.94541895 | Lon: -78.37224107
+  Comps in same band: 483
+  Comps within 0.25mi: 2
+  Comps within 0.50mi: 3
+  Comps within 1.00mi: 11
+  Comps selected: 2
+  Status assigned: MATCHED
+  Retail estimate: 42000
+  Score: 3
+
+=== TARGET 1130001935 ===
+  Acreage: 0.996 | Band: small
+  Lat: 34.10181695 | Lon: -78.05475222
+  Comps in same band: 81
+  Comps within 0.25mi: 0
+  Comps within 0.50mi: 0
+  Comps within 1.00mi: 0
+  Comps selected: 0
+  Status assigned: NO_COMPS
+  Retail estimate: None
+  Score: 0
+
+=== TARGET 142BA058 ===
+  Acreage: 0.37 | Band: micro
+  Lat: 34.06248121 | Lon: -78.045842
+  Comps in same band: 483
+  Comps within 0.25mi: 1
+  Comps within 0.50mi: 3
+  Comps within 1.00mi: 18
+  Comps selected: 1
+  Status assigned: MATCHED
+  Retail estimate: 20000
+  Score: 3
+
+MATCH RESULTS:
+  MATCHED: 3821 (68.37%)
+  NO_COMPS: 1768 (31.63%)
+  Total: 5589
+
+SCORE DISTRIBUTION:
+  Score 5: 883
+  Score 4: 519
+  Score 3: 1409
+  Score 2: 687
+  Score 1: 323
+  Score 0: 1768
+
+PRICING SANITY CHECK:
+  MATCHED records with retail_estimate = 0 or None: 0
+  MATCHED records with valid retail_estimate: 3821
+  Sample 3 MATCHED records:
+    230KC063 | 0.28 | micro | 70000 | 45500 | 1 | 0.015234841435834678 | 5 | LOW
+    233BA080 | 0.34 | micro | 62500 | 40625 | 1 | 0.179781506867983 | 5 | LOW
+    232DB029 | 0.5 | small | 29000 | 18850 | 2 | 0.0628631892641306 | 5 | MEDIUM
+  Sample 3 NO_COMPS records:
+    1130001935 | Status=NO_COMPS | Retail=None | Score=0
+    071KD006 | Status=NO_COMPS | Retail=None | Score=0
+    071KB006 | Status=NO_COMPS | Retail=None | Score=0
+
+PASS/FAIL:
+  Match rate realistic (not 0% or 100%): PASS
+  All MATCHED have retail > 0: PASS
+  All NO_COMPS have retail = None: PASS
+  Score distribution varies: PASS
+  No crashes: PASS
+
+=== FINAL STATUS COUNTS ===
+{'MATCHED': 3821, 'NO_COMPS': 1768, 'EDGE_CASE': 0}
+Any MATCHED with retail=0 or None: 0
+
+[DEBUG] Available columns in targets DataFrame:
+  Owner-related columns: ['Owner Name(s)', 'Owner 1 Full Name', 'Owner 1 First Name', 'Owner 1 Middle Name', 'Owner 1 Last Name', 'Owner 1 Suffix', 'Owner 1 Corp Indicator', 'Owner 2 Full Name', 'Owner 2 First Name', 'Owner 2 Middle Name', 'Owner 2 Last Name', 'Owner 2 Suffix', 'Owner 2 Corp Indicator']
+  Parcel/Property-related columns: ['propertyID', 'Parcel Full Address', 'Parcel City', 'Parcel State', 'Parcel County', 'Parcel Zip', 'Parcel FIPS', 'Parcel Carrier Code', 'MLS Parcel Acreage']
+  First 5 column names: ['propertyID', 'APN', 'Lot Acres', 'Lot Sq Ft', 'Owner Name(s)']
+  All columns containing 'address': ['Mail Full Address', 'Mail Foreign Address Indicator', 'Parcel Full Address']
+  All columns containing 'street': []
+  All columns containing 'situs': []
+  First 30 columns: ['propertyID', 'APN', 'Lot Acres', 'Lot Sq Ft', 'Owner Name(s)', 'Mail Names', 'Owner 1 Full Name', 'Owner 1 First Name', 'Owner 1 Middle Name', 'Owner 1 Last Name', 'Owner 1 Suffix', 'Owner 1 Corp Indicator', 'Owner 2 Full Name', 'Owner 2 First Name', 'Owner 2 Middle Name', 'Owner 2 Last Name', 'Owner 2 Suffix', 'Owner 2 Corp Indicator', 'Mail Full Address', 'Mail City', 'Mail State', 'Mail Zip', 'Mail County', 'Mail Carrier Code', 'Do Not Mail', 'Mail Care Of', 'Mail Foreign Address Indicator', 'Parcel Full Address', 'Parcel City', 'Parcel State']
+  Has parcel address column: True
+
+[DEBUG] First result added to results list:
+  owner_name: 'Matthews Dianne Jones'
+  owner_first_name: 'Dianne'
+  owner_last_name: 'Matthews'
+  parcel_address (constructed): 'Wertz Dr'
+  parcel_city: 'Pinehurst'
+
+[DEBUG] Final result sample (before return):
+  apn: '45030'
+  owner_name: 'George Miles Wesley'
+  owner_first_name: 'Miles'
+  owner_last_name: 'George'
+  parcel_address (constructed): '1007 Sorrel Dr'
+  OK: All fields populated correctly
+
+
+=== TEST B — Moore County ===
+Solds file: Moore County NC Solds_625.csv | Rows: 196 | Valid comps: 161 | Format: land_portal
+Targets file: Moore County NC Target_837 (1).csv | Rows: 583
+
+=== TARGET 17792 ===
+  Acreage: 0.533 | Band: small
+  Lat: 35.25224741 | Lon: -79.61249132
+  Comps in same band: 101
+  Comps within 0.25mi: 1
+  Comps within 0.50mi: 2
+  Comps within 1.00mi: 9
+  Comps selected: 1
+  Status assigned: MATCHED
+  Retail estimate: 70000
+  Score: 3
+
+=== TARGET 8389 ===
+  Acreage: 1.78 | Band: small
+  Lat: 35.31828846 | Lon: -79.57359866
+  Comps in same band: 101
+  Comps within 0.25mi: 2
+  Comps within 0.50mi: 5
+  Comps within 1.00mi: 5
+  Comps selected: 2
+  Status assigned: MATCHED
+  Retail estimate: 20000
+  Score: 3
+
+=== TARGET 20150038 ===
+  Acreage: 0.48 | Band: micro
+  Lat: 35.42506285 | Lon: -79.58381231
+  Comps in same band: 58
+  Comps within 0.25mi: 1
+  Comps within 0.50mi: 1
+  Comps within 1.00mi: 2
+  Comps selected: 1
+  Status assigned: MATCHED
+  Retail estimate: 170000
+  Score: 3
+
+MATCH RESULTS:
+  MATCHED: 241 (41.34%)
+  NO_COMPS: 342 (58.66%)
+  Total: 583
+
+SCORE DISTRIBUTION:
+  Score 5: 28
+  Score 4: 8
+  Score 3: 64
+  Score 2: 69
+  Score 1: 72
+  Score 0: 342
+
+PRICING SANITY CHECK:
+  MATCHED records with retail_estimate = 0 or None: 0
+  MATCHED records with valid retail_estimate: 241
+  Sample 3 MATCHED records:
+    45030 | 0.436 | micro | 15000 | 9750 | 1 | 0.23112320875817025 | 5 | LOW
+    20120180 | 0.94 | small | 30000 | 19500 | 1 | 0.34240542125578205 | 5 | LOW
+    25390 | 0.232 | micro | 22000 | 14300 | 1 | 0.11983363485882916 | 5 | LOW
+  Sample 3 NO_COMPS records:
+    20060467 | Status=NO_COMPS | Retail=None | Score=0
+    20060247 | Status=NO_COMPS | Retail=None | Score=0
+    29262 | Status=NO_COMPS | Retail=None | Score=0
+
+PASS/FAIL:
+  Match rate realistic (not 0% or 100%): PASS
+  All MATCHED have retail > 0: PASS
+  All NO_COMPS have retail = None: PASS
+  Score distribution varies: PASS
+  No crashes: PASS
+
+=== FINAL STATUS COUNTS ===
+{'MATCHED': 241, 'NO_COMPS': 342, 'EDGE_CASE': 0}
+Any MATCHED with retail=0 or None: 0
+
+[DEBUG] Available columns in targets DataFrame:
+  Owner-related columns: ['Owner Name(s)', 'Owner 1 Full Name', 'Owner 1 First Name', 'Owner 1 Middle Name', 'Owner 1 Last Name', 'Owner 1 Suffix', 'Owner 1 Corp Indicator', 'Owner 2 Full Name', 'Owner 2 First Name', 'Owner 2 Middle Name', 'Owner 2 Last Name', 'Owner 2 Suffix', 'Owner 2 Corp Indicator']
+  Parcel/Property-related columns: ['propertyID', 'Parcel Full Address', 'Parcel City', 'Parcel State', 'Parcel County', 'Parcel Zip', 'Parcel FIPS', 'Parcel Carrier Code', 'MLS Parcel Acreage']
+  First 5 column names: ['propertyID', 'APN', 'Lot Acres', 'Lot Sq Ft', 'Owner Name(s)']
+  All columns containing 'address': ['Mail Full Address', 'Mail Foreign Address Indicator', 'Parcel Full Address']
+  All columns containing 'street': []
+  All columns containing 'situs': []
+  First 30 columns: ['propertyID', 'APN', 'Lot Acres', 'Lot Sq Ft', 'Owner Name(s)', 'Mail Names', 'Owner 1 Full Name', 'Owner 1 First Name', 'Owner 1 Middle Name', 'Owner 1 Last Name', 'Owner 1 Suffix', 'Owner 1 Corp Indicator', 'Owner 2 Full Name', 'Owner 2 First Name', 'Owner 2 Middle Name', 'Owner 2 Last Name', 'Owner 2 Suffix', 'Owner 2 Corp Indicator', 'Mail Full Address', 'Mail City', 'Mail State', 'Mail Zip', 'Mail County', 'Mail Carrier Code', 'Do Not Mail', 'Mail Care Of', 'Mail Foreign Address Indicator', 'Parcel Full Address', 'Parcel City', 'Parcel State']
+  Has parcel address column: True
+
+[DEBUG] First result added to results list:
+  owner_name: 'Best Dorothy Collier, Collier Mary'
+  owner_first_name: 'Dorothy'
+  owner_last_name: 'Best'
+  parcel_address (constructed): 'Players Ridge Rd'
+  parcel_city: 'Hickory'
+
+[DEBUG] Final result sample (before return):
+  apn: '3740-07-58-1142'
+  owner_name: 'Cardenas-hernandez Raul Juvenal'
+  owner_first_name: 'Raul'
+  owner_last_name: 'Cardenas-hernandez'
+  parcel_address (constructed): '711 Mount Olive Church Rd'
+  OK: All fields populated correctly
+
+
+=== TEST C — MLS solds + Land Portal targets ===
+Solds file: NC SOLD MLS 30-.csv | Rows: 1794 | Valid comps: 1586 | Format: mls
+Targets file: NC Target Master.csv | Rows: 4518
+
+=== TARGET 67243 ===
+  Acreage: 0.329 | Band: micro
+  Lat: 35.80200615 | Lon: -81.31967994
+  Comps in same band: 353
+  Comps within 0.25mi: 0
+  Comps within 0.50mi: 0
+  Comps within 1.00mi: 0
+  Comps selected: 0
+  Status assigned: NO_COMPS
+  Retail estimate: None
+  Score: 0
+
+=== TARGET 67066 ===
+  Acreage: 0.698 | Band: small
+  Lat: 35.80273372 | Lon: -81.32396176
+  Comps in same band: 837
+  Comps within 0.25mi: 0
+  Comps within 0.50mi: 0
+  Comps within 1.00mi: 0
+  Comps selected: 0
+  Status assigned: NO_COMPS
+  Retail estimate: None
+  Score: 0
+
+=== TARGET 64873 ===
+  Acreage: 0.939 | Band: small
+  Lat: 35.83669554 | Lon: -81.32664634
+  Comps in same band: 837
+  Comps within 0.25mi: 0
+  Comps within 0.50mi: 0
+  Comps within 1.00mi: 0
+  Comps selected: 0
+  Status assigned: NO_COMPS
+  Retail estimate: None
+  Score: 0
+
+MATCH RESULTS:
+  MATCHED: 420 (9.30%)
+  NO_COMPS: 4095 (90.70%)
+  Total: 4515
+
+SCORE DISTRIBUTION:
+  Score 5: 28
+  Score 4: 1
+  Score 3: 56
+  Score 2: 133
+  Score 1: 202
+  Score 0: 4095
+
+PRICING SANITY CHECK:
+  MATCHED records with retail_estimate = 0 or None: 0
+  MATCHED records with valid retail_estimate: 420
+  Sample 3 MATCHED records:
+    3740-07-58-1142 | 0.78 | small | 50000 | 32500 | 1 | 0.5190371487477528 | 5 | LOW
+    3702-07-57-9694 | 0.15 | micro | 29000 | 18850 | 1 | 0.06321990080037987 | 5 | LOW
+    3669-03-21-3447 | 0.88 | small | 53000 | 34450 | 1 | 0.23882749094858616 | 5 | LOW
+  Sample 3 NO_COMPS records:
+    67243 | Status=NO_COMPS | Retail=None | Score=0
+    67066 | Status=NO_COMPS | Retail=None | Score=0
+    64873 | Status=NO_COMPS | Retail=None | Score=0
+
+PASS/FAIL:
+  Match rate realistic (not 0% or 100%): PASS
+  All MATCHED have retail > 0: PASS
+  All NO_COMPS have retail = None: PASS
+  Score distribution varies: PASS
+  No crashes: PASS
+
+=== FINAL STATUS COUNTS ===
+{'MATCHED': 420, 'NO_COMPS': 4095, 'EDGE_CASE': 0}
+Any MATCHED with retail=0 or None: 0
+
+STEP 7 — Export Verification
+Columns: ['APN', 'Parcel Address', 'Parcel City', 'Parcel State', 'Parcel ZIP', 'Parcel County', 'Latitude', 'Longitude', 'Owner Name', 'Owner First Name', 'Owner Last Name', 'Mailing Address', 'Mailing City', 'Mailing State', 'Mailing ZIP', 'Retail Est.', 'Offer Low', 'Offer Mid', 'Offer High', 'Comp Count', 'Distance to Closest Comp', 'Acreage Band', 'Confidence', 'Match Score', 'TLP Est', 'Flood', 'Build%', 'Med. Comp $', 'Med. PPA', 'Min Comp $', 'Max Comp $', 'Outliers']
+Total rows: 3821
+Rows with empty Retail Est.: 0
+Rows with Retail Est. = 0: 0
+Min Retail Est.: 15000.0
+Max Retail Est.: 200000.0
+Sample 3 rows:
+     APN Parcel County  Parcel ZIP  Retail Est.  Offer Mid  Comp Count  Distance to Closest Comp Confidence
+230KC063     Brunswick     28462.0      70000.0    45500.0           1                      0.02        LOW
+233BA080     Brunswick     28462.0      62500.0    40625.0           1                      0.18        LOW
+232DB029     Brunswick     28462.0      29000.0    18850.0           2                      0.06     MEDIUM
