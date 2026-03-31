@@ -149,7 +149,10 @@ async def download_mailing(
     FLAGGED_REVIEW_FLAGS = set()  # No longer used - simplified per Damien's request
     FLAGGED_SUSPECT_FLAGS = set()  # No longer used - simplified per Damien's request
 
-    if export_type == "high-confidence":
+    if export_type == "matched":
+        filtered = [p for p in cleaned if getattr(p, 'pricing_flag', None) == 'MATCHED']
+        suffix = f"matched-{len(filtered)}-records"
+    elif export_type == "high-confidence":
         filtered = [
             p for p in cleaned
             if p.matched_comp_count >= 3

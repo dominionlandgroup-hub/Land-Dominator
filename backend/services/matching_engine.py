@@ -259,8 +259,16 @@ def is_comp_set_too_spread(
 def is_comp_set_inconsistent(prices: np.ndarray, cv_threshold: float = 0.5) -> bool:
     """
     Coefficient of variation check: std/mean > 0.5 means inconsistent comps.
+    For 2 comps, uses a stricter spread ratio check (max/min > 5x).
     """
-    if len(prices) < 3:
+    if len(prices) < 2:
+        return False
+
+    # For exactly 2 comps, use spread ratio since CV is unreliable with n=2
+    if len(prices) == 2:
+        min_p, max_p = float(np.min(prices)), float(np.max(prices))
+        if min_p > 0 and max_p / min_p > 5.0:
+            return True
         return False
 
     mean = float(np.mean(prices))
@@ -466,13 +474,56 @@ def remove_outliers_zip_level(comps_df: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
+def remove_outliers_band_level(comps_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Remove comps whose PPA is an outlier within their acreage band.
+    Uses stricter thresholds than ZIP-level: min(Q3 + 1.5*IQR, 3.0 * band median).
+    This catches premium comps that survive ZIP-level filtering because their ZIP
+    has too few comps or is uniformly expensive.
+    """
+    comps_df = comps_df.copy()
+    if 'ppa' not in comps_df.columns:
+        comps_df['ppa'] = comps_df['Current Sale Price'] / comps_df['Lot Acres'].replace(0, np.nan)
+
+    acres = comps_df['Lot Acres'].values
+    band_labels = np.full(len(comps_df), 'nano', dtype=object)
+    for low, high, label in ACREAGE_BANDS:
+        mask = (acres >= low) & (acres < high)
+        band_labels[mask] = label
+    comps_df['_band'] = band_labels
+
+    kept = []
+    total_removed = 0
+    for band_name, group in comps_df.groupby('_band'):
+        ppa = group['ppa'].dropna()
+        if len(ppa) < 4:
+            kept.append(group)
+            continue
+        Q1, Q3 = ppa.quantile(0.25), ppa.quantile(0.75)
+        IQR = Q3 - Q1
+        iqr_threshold = Q3 + 1.5 * IQR
+        median_threshold = ppa.median() * 3.0
+        threshold = min(iqr_threshold, median_threshold)
+        clean = group[group['ppa'] <= threshold]
+        removed = len(group) - len(clean)
+        if removed > 0:
+            print(f"  Band-level outlier removal [{band_name}]: {removed} comps removed (threshold ${threshold:,.0f}/ac)")
+        total_removed += removed
+        kept.append(clean)
+
+    result = pd.concat(kept, ignore_index=True).drop(columns=['_band'], errors='ignore')
+    if total_removed > 0:
+        print(f"Band-level outlier removal total: {total_removed} comps removed")
+    return result
+
+
 def clean_comps_for_pricing(df: pd.DataFrame) -> pd.DataFrame:
     """
     Remove data quality issues from comp dataset.
     Apply once at comp load time. Returns clean DataFrame.
 
     Removes: invalid rows, near-zero acreage, non-market sales,
-    bulk/developer transactions, PPA outliers (global IQR + ZIP-level).
+    bulk/developer transactions, PPA outliers (global IQR + ZIP-level + band-level).
     """
     df = df.copy()
 
@@ -502,6 +553,9 @@ def clean_comps_for_pricing(df: pd.DataFrame) -> pd.DataFrame:
 
         # ZIP-level outlier removal (catches premium comps that pass global IQR)
         df = remove_outliers_zip_level(df)
+
+        # Band-level outlier removal (catches comps that are outliers within their acreage band)
+        df = remove_outliers_band_level(df)
 
     return df.reset_index(drop=True)
 
@@ -1079,8 +1133,11 @@ def run_matching(
     
     # Pre-compute acreage band masks for all comps once
     band_masks_dict = {}
+    band_ppa_medians = {}
     for band_lo, band_hi, band_name in ACREAGE_BANDS:
         band_masks_dict[band_name] = (comp_acres >= band_lo) & (comp_acres < band_hi)
+        band_ppas = comp_ppa[band_masks_dict[band_name]]
+        band_ppa_medians[band_name] = float(np.median(band_ppas)) if len(band_ppas) > 0 else 0.0
 
     # Process targets WITHOUT coordinates (no comps matched)
     results: List[Dict[str, Any]] = []
@@ -1222,6 +1279,72 @@ def run_matching(
             # If no comps found within 1mi, matched_mask stays empty
             if debug and radius_label == 'NO_COMPS':
                 print(f"[DEBUG {target_apn}] NO_COMPS - no comps within 1mi", flush=True)
+
+            # ── Acreage similarity filter ──
+            # For single-comp matches: require acreage ratio >= 0.50 (min/max)
+            # This prevents matching a 0.89ac comp to a 1.6ac target when it's the only comp
+            if has_acres and matched_mask.sum() > 0 and target_acres > 0:
+                matched_idx = np.where(matched_mask)[0]
+                matched_comp_acres = comp_acres[matched_idx]
+                # Calculate acreage similarity ratio for each comp (0.0 to 1.0)
+                acreage_ratios = np.minimum(matched_comp_acres, target_acres) / np.maximum(matched_comp_acres, target_acres)
+
+                if matched_mask.sum() == 1:
+                    # Single comp: hard filter — must be within 55% acreage similarity
+                    if acreage_ratios[0] < 0.55:
+                        if debug:
+                            print(
+                                f"[DEBUG {target_apn}] ACREAGE FILTER: single comp {matched_comp_acres[0]:.2f}ac "
+                                f"vs target {target_acres:.2f}ac (ratio {acreage_ratios[0]:.2f} < 0.55) → NO_COMPS",
+                                flush=True,
+                            )
+                        matched_mask = np.zeros(len(vc), dtype=bool)
+                        radius_label = 'NO_COMPS'
+                elif matched_mask.sum() >= 2:
+                    # Multiple comps: prefer comps with better acreage similarity
+                    # Remove comps with very poor similarity (< 0.30) if better ones exist
+                    good_similarity = acreage_ratios >= 0.30
+                    if good_similarity.sum() >= 1 and good_similarity.sum() < len(acreage_ratios):
+                        new_mask = np.zeros(len(vc), dtype=bool)
+                        new_mask[matched_idx[good_similarity]] = True
+                        matched_mask = new_mask
+                        if debug:
+                            print(
+                                f"[DEBUG {target_apn}] ACREAGE RANKING: kept {good_similarity.sum()}/{len(acreage_ratios)} comps with ratio >= 0.30",
+                                flush=True,
+                            )
+
+            # ── Single-comp PPA sanity check ──
+            # When only 1-2 comps are found, check if their PPA is reasonable
+            # relative to the county-wide band median. Prevents premium area comps
+            # from pricing rural targets.
+            if has_acres and matched_mask.sum() in (1, 2) and band_label in band_ppa_medians:
+                band_median_ppa = band_ppa_medians[band_label]
+                if band_median_ppa > 0:
+                    matched_idx_ppa = np.where(matched_mask)[0]
+                    matched_ppas = comp_ppa[matched_idx_ppa]
+                    # Remove comps with PPA > 2.5x band median when few comps
+                    ppa_ok = matched_ppas <= band_median_ppa * 2.5
+                    if ppa_ok.sum() < len(matched_ppas) and ppa_ok.sum() == 0:
+                        # All comps are premium outliers → NO_COMPS
+                        if debug:
+                            print(
+                                f"[DEBUG {target_apn}] PPA SANITY: all {len(matched_ppas)} comps have PPA > 2.5x band median "
+                                f"(${band_median_ppa:,.0f}/ac) → NO_COMPS",
+                                flush=True,
+                            )
+                        matched_mask = np.zeros(len(vc), dtype=bool)
+                        radius_label = 'NO_COMPS'
+                    elif ppa_ok.sum() < len(matched_ppas):
+                        # Some comps are outliers → keep only reasonable ones
+                        new_mask = np.zeros(len(vc), dtype=bool)
+                        new_mask[matched_idx_ppa[ppa_ok]] = True
+                        matched_mask = new_mask
+                        if debug:
+                            print(
+                                f"[DEBUG {target_apn}] PPA SANITY: removed {(~ppa_ok).sum()} premium comps, kept {ppa_ok.sum()}",
+                                flush=True,
+                            )
 
         n_matched = int(matched_mask.sum())
         t_zip = t_zips[ti]
