@@ -67,3 +67,5 @@ uploads/
 
 # Data files
 *.csv
+railway.json
+frontend/railway.json
