@@ -972,6 +972,23 @@ def run_matching(
         dnm = targets["Do Not Mail"].astype(str).str.strip().str.upper()
         targets = targets[~dnm.isin(["YES", "Y", "1", "TRUE"])]
 
+    # ── Filter out recently sold properties ──────────────────────────
+    # Damien: "I don't want any sold properties on a mailing list"
+    # Exclude targets that sold within the last 12 months
+    if "Current Sale Recording Date" in targets.columns:
+        sale_dates = pd.to_datetime(
+            targets["Current Sale Recording Date"], format='mixed', errors='coerce'
+        )
+        cutoff = pd.Timestamp.now() - pd.DateOffset(months=12)
+        recently_sold = sale_dates >= cutoff
+        before_sold_filter = len(targets)
+        targets = targets[~recently_sold]
+        n_sold_removed = before_sold_filter - len(targets)
+        if n_sold_removed > 0:
+            warnings.append(f"Excluded {n_sold_removed} recently sold properties (sold within last 12 months)")
+            print(f"Recently sold filter: removed {n_sold_removed} targets sold after {cutoff.strftime('%Y-%m-%d')}")
+    filter_counts['after_recently_sold_filter'] = len(targets)
+
     # ── Smart filters ────────────────────────────────────────────────
 
     # Acreage range filter
