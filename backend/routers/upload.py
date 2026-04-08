@@ -17,18 +17,30 @@ MAX_SIZE_BYTES = 300 * 1024 * 1024  # 300 MB
 COMP_COLS_REQUIRED = [
     'APN', 'Latitude', 'Longitude', 'Lot Acres', 'Parcel Zip',
     'Current Sale Price', 'Current Sale Recording Date',
-    'Parcel Full Address', 'Parcel City',
+    'Parcel Full Address', 'Parcel City', 'Parcel State', 'Parcel County',
     'Current Sale Buyer 1 Full Name', 'Current Sale Seller 1 Full Name',
-    'FL FEMA Flood Zone', 'Buildability total (%)', 'TLP Estimate'
+    'FL FEMA Flood Zone', 'Buildability total (%)', 'TLP Estimate',
+    'Lot Sq Ft', 'Calc Acreage', 'Parcel Address County',
 ]
 
 TARGET_COLS_REQUIRED = [
-    'APN', 'propertyID', 'Latitude', 'Longitude', 'Lot Acres',
-    'Parcel Zip', 'Parcel City', 'Owner Name(s)', 'Owner 1 Full Name',
-    'Mail Full Address', 'Mail City', 'Mail State', 'Mail Zip',
-    'FL FEMA Flood Zone', 'FEMA Flood Coverage', 'Buildability total (%)', 'TLP Estimate',
-    'Vacant Flag', 'Land Locked', 'Road Frontage', 'Land Locked Flag', 'Road Frontage Flag',
-    'Do Not Mail', 'Mail Foreign Address Indicator'
+    'APN', 'propertyID', 'Latitude', 'Longitude', 'Lot Acres', 'Lot Sq Ft',
+    'Parcel Zip', 'Parcel City', 'Parcel State', 'Parcel County',
+    'Parcel Full Address', 'Parcel Address County', 'Parcel FIPS', 'Parcel Carrier Code',
+    'Owner Name(s)', 'Owner 1 Full Name',
+    'Owner 1 First Name', 'Owner 1 Middle Name', 'Owner 1 Last Name',
+    'Owner 2 Full Name', 'Owner 2 First Name', 'Owner 2 Last Name',
+    'Mail Names', 'Mail Full Address', 'Mail City', 'Mail State', 'Mail Zip', 'Mail County',
+    'Mail Care Of', 'Mail Foreign Address Indicator',
+    'Do Not Mail',
+    'Current Sale Price', 'Current Sale Recording Date', 'Current Sale Contract Date',
+    'Prev Sales Price', 'Prev Sale Recording Date',
+    'FL FEMA Flood Zone', 'FEMA Flood Coverage',
+    'Buildability total (%)', 'TLP Estimate',
+    'Vacant Flag', 'Land Locked', 'Road Frontage',
+    'Building Sq Ft', 'Building Area', 'Bldg Area',
+    'MLS Parcel Acreage', 'Zoning', 'Topography',
+    'Total Assessed Value', 'Land Market Value',
 ]
 
 def slim_to_required(df: pd.DataFrame, required_cols: list) -> pd.DataFrame:
