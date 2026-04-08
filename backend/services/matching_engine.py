@@ -972,6 +972,20 @@ def run_matching(
         dnm = targets["Do Not Mail"].astype(str).str.strip().str.upper()
         targets = targets[~dnm.isin(["YES", "Y", "1", "TRUE"])]
 
+    # ── Filter out targets that are also in the solds/comps file ─────
+    # If a property appears in both solds and targets, it's a recent sale
+    # and should NOT be on the mailing list
+    if "APN" in targets.columns and "APN" in comps_df.columns:
+        comp_apns = set(comps_df["APN"].astype(str).str.strip())
+        target_apn_col = targets["APN"].astype(str).str.strip()
+        overlap_mask = target_apn_col.isin(comp_apns)
+        n_overlap = overlap_mask.sum()
+        if n_overlap > 0:
+            targets = targets[~overlap_mask]
+            warnings.append(f"Excluded {n_overlap} targets that also appear in solds/comps file")
+            print(f"Solds overlap filter: removed {n_overlap} targets that are also comp sales")
+    filter_counts['after_solds_overlap_filter'] = len(targets)
+
     # ── Filter out recently sold properties ──────────────────────────
     # Damien: "I don't want any sold properties on a mailing list"
     # Exclude targets that sold within the last 12 months
