@@ -996,10 +996,13 @@ def run_matching(
         targets = targets[~dnm.isin(["YES", "Y", "1", "TRUE"])]
 
     # ── Filter out targets that are also in the solds/comps file ─────
-    # If a property appears in both solds and targets, it's a recent sale
-    # and should NOT be on the mailing list
+    # Only exclude targets whose APN appears in solds WITH a valid sale price
+    # (many solds files contain unsold properties with $0/NaN price)
     if "APN" in targets.columns and "APN" in comps_df.columns:
-        comp_apns = set(comps_df["APN"].astype(str).str.strip())
+        sold_comps = comps_df[
+            (comps_df["Current Sale Price"].notna()) & (comps_df["Current Sale Price"] > 0)
+        ] if "Current Sale Price" in comps_df.columns else comps_df
+        comp_apns = set(sold_comps["APN"].astype(str).str.strip())
         target_apn_col = targets["APN"].astype(str).str.strip()
         overlap_mask = target_apn_col.isin(comp_apns)
         n_overlap = overlap_mask.sum()
@@ -1334,35 +1337,41 @@ def run_matching(
             if debug and radius_label == 'NO_COMPS':
                 print(f"[DEBUG {target_apn}] NO_COMPS - no comps within 1mi", flush=True)
 
-            # ── Acreage similarity filter ──
-            # For single-comp matches: require acreage ratio >= 0.50 (min/max)
-            # This prevents matching a 0.89ac comp to a 1.6ac target when it's the only comp
+            # ── Acreage similarity filter (band-specific thresholds) ──
+            # Micro/nano bands: lots under 0.5ac vary widely, use looser threshold
+            # Small/medium/large: tighter threshold to prevent cross-size matching
+            ACREAGE_SIMILARITY_THRESHOLDS = {
+                'nano': 0.40,
+                'micro': 0.50,   # 0.05-0.5ac range is wide, allow more variation
+                'small': 0.75,   # Damien confirmed: 0.5ac vs 0.7ac = too different
+                'medium': 0.65,
+                'large': 0.55,
+                'tract': 0.50,
+            }
             if has_acres and matched_mask.sum() > 0 and target_acres > 0:
                 matched_idx = np.where(matched_mask)[0]
                 matched_comp_acres = comp_acres[matched_idx]
-                # Calculate acreage similarity ratio for each comp (0.0 to 1.0)
                 acreage_ratios = np.minimum(matched_comp_acres, target_acres) / np.maximum(matched_comp_acres, target_acres)
 
-                # Filter out comps with poor acreage similarity (< 0.75)
-                good_similarity = acreage_ratios >= 0.75
+                acreage_threshold = ACREAGE_SIMILARITY_THRESHOLDS.get(band_label, 0.65)
+                good_similarity = acreage_ratios >= acreage_threshold
                 if good_similarity.sum() == 0:
-                    # No comps with adequate acreage match → NO_COMPS
                     if debug:
                         print(
                             f"[DEBUG {target_apn}] ACREAGE FILTER: all {len(acreage_ratios)} comps fail "
-                            f"0.75 similarity threshold (best: {acreage_ratios.max():.2f}) → NO_COMPS",
+                            f"{acreage_threshold} threshold for {band_label} band (best: {acreage_ratios.max():.2f}) → NO_COMPS",
                             flush=True,
                         )
                     matched_mask = np.zeros(len(vc), dtype=bool)
                     radius_label = 'NO_COMPS'
                 elif good_similarity.sum() < len(acreage_ratios):
-                    # Some comps fail — keep only the good ones
                     new_mask = np.zeros(len(vc), dtype=bool)
                     new_mask[matched_idx[good_similarity]] = True
                     matched_mask = new_mask
                     if debug:
                         print(
-                            f"[DEBUG {target_apn}] ACREAGE FILTER: kept {good_similarity.sum()}/{len(acreage_ratios)} comps with ratio >= 0.75",
+                            f"[DEBUG {target_apn}] ACREAGE FILTER: kept {good_similarity.sum()}/{len(acreage_ratios)} "
+                            f"comps with ratio >= {acreage_threshold} ({band_label} band)",
                             flush=True,
                         )
 
