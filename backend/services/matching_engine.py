@@ -865,6 +865,29 @@ def run_matching(
     warnings: List[str] = []
     filter_counts = {}  # Track counts at each filter step
 
+    # ── 0. Check for important missing columns in targets ────────────
+    important_target_cols = {
+        "Parcel County": "Parcel County will be empty in exports",
+        "Parcel Full Address": "Parcel addresses will be constructed from APN+City+Zip",
+        "Parcel State": "Parcel State will be empty in exports",
+        "Current Sale Recording Date": "Cannot filter out recently sold properties",
+        "Owner 1 First Name": "Owner first/last name split unavailable",
+    }
+    missing_important = []
+    for col, msg in important_target_cols.items():
+        if col not in targets_df.columns:
+            missing_important.append(f"{col}: {msg}")
+    if missing_important:
+        warnings.append(
+            f"WARNING: Target file is missing {len(missing_important)} important columns. "
+            f"Please re-export with ALL columns from Land Portal. Missing: "
+            + "; ".join(missing_important)
+        )
+        print(f"\n*** WARNING: Target file missing {len(missing_important)} important columns ***")
+        for m in missing_important:
+            print(f"  - {m}")
+        print("  Please re-export targets with ALL columns from Land Portal.\n")
+
     # ── 1. Clean comps (removes bulk sales, outliers, data errors) ───
     raw_comp_count = len(comps_df)
     filter_counts['total_comps'] = raw_comp_count
