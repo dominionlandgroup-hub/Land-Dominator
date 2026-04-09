@@ -1254,11 +1254,9 @@ def run_matching(
                     print(f"[DEBUG {target_apn}] Premium ZIP {t_zip_str}: comps after ZIP filter = {band_mask.sum()}", flush=True)
 
             # ═══ DAMIEN PRIORITY ORDER (March 2026) ═══
-            # FIX 1 — strict comp-radius steps (no fallback beyond 1 mile)
-            # Step 1: 0.25mi → if 1+ comps found: use them and stop
-            # Step 2: 0.50mi → if 1+ comps found: use them and stop
-            # Step 3: 1.00mi → if 1+ comps found: use them and stop
-            # Step 4: no comps within 1.00mi → NO_COMPS (do not price)
+            # Priority 1: SAME STREET within 1mi (always wins)
+            # Priority 2: 0.25mi → 0.50mi → 1.00mi (closest first)
+            # Priority 3: no comps within 1.00mi → NO_COMPS
 
             matched_mask = np.zeros(len(vc), dtype=bool)
             radius_label = 'NO_COMPS'
@@ -1266,53 +1264,42 @@ def run_matching(
 
             target_street = t_streets[ti]
 
-            for radius, label in COMP_SEARCH_STEPS:
-                trial_mask = band_mask & (row_distances <= radius)
-                if debug:
-                    print(
-                        f"[DEBUG {target_apn}] Step {label}: {trial_mask.sum()} comps within {radius}mi",
-                        flush=True,
-                    )
-                if trial_mask.sum() >= 1:
-                    # Within this radius tier, prefer same-street comps if present,
-                    # BUT only if no non-street comp is dramatically closer.
-                    if target_street and len(target_street) > 2:
-                        street_mask = trial_mask & np.array([s == target_street for s in comp_streets])
-                        if street_mask.sum() >= 1:
-                            # Check: is the closest non-street comp much closer than
-                            # the closest street comp? If so, proximity wins.
-                            non_street_mask = trial_mask & ~street_mask
-                            use_street = True
-                            if non_street_mask.sum() > 0:
-                                closest_street_dist = float(np.min(row_distances[street_mask]))
-                                closest_non_street_dist = float(np.min(row_distances[non_street_mask]))
-                                # If a non-street comp is less than half the distance
-                                # of the closest street comp, prefer all comps (proximity wins)
-                                if closest_non_street_dist < closest_street_dist * 0.5:
-                                    use_street = False
-                                    if debug:
-                                        print(
-                                            f"[DEBUG {target_apn}] PROXIMITY OVERRIDE: non-street comp at {closest_non_street_dist:.3f}mi "
-                                            f"vs street comp at {closest_street_dist:.3f}mi — using all comps",
-                                            flush=True,
-                                        )
-                            if use_street:
-                                matched_mask = street_mask
-                                same_street_used = True
-                                radius_label = label
-                                if debug:
-                                    print(
-                                        f"[DEBUG {target_apn}] SELECTED SAME-STREET: {street_mask.sum()} comps at {label}",
-                                        flush=True,
-                                    )
-                                break
-
-                    matched_mask = trial_mask
-                    same_street_used = False
-                    radius_label = label
+            # STEP 0: Check same-street comps first across full 1mi radius
+            # Damien: "SAME STREET FIRST - If a comp exists on the same street, use it"
+            if target_street and len(target_street) > 2:
+                street_mask = band_mask & (row_distances <= 1.0) & np.array([s == target_street for s in comp_streets])
+                if street_mask.sum() >= 1:
+                    matched_mask = street_mask
+                    same_street_used = True
+                    # Determine radius label from closest same-street comp distance
+                    closest_ss_dist = float(np.min(row_distances[street_mask]))
+                    if closest_ss_dist <= 0.25:
+                        radius_label = '0.25mi'
+                    elif closest_ss_dist <= 0.50:
+                        radius_label = '0.50mi'
+                    else:
+                        radius_label = '1mi'
                     if debug:
-                        print(f"[DEBUG {target_apn}] SELECTED: {trial_mask.sum()} comps at {label}", flush=True)
-                    break
+                        print(
+                            f"[DEBUG {target_apn}] SAME-STREET FIRST: {street_mask.sum()} comps on '{target_street}' within 1mi (closest: {closest_ss_dist:.3f}mi)",
+                            flush=True,
+                        )
+
+            # STEP 1-3: If no same-street comps, search by radius
+            if not same_street_used:
+                for radius, label in COMP_SEARCH_STEPS:
+                    trial_mask = band_mask & (row_distances <= radius)
+                    if debug:
+                        print(
+                            f"[DEBUG {target_apn}] Step {label}: {trial_mask.sum()} comps within {radius}mi",
+                            flush=True,
+                        )
+                    if trial_mask.sum() >= 1:
+                        matched_mask = trial_mask
+                        radius_label = label
+                        if debug:
+                            print(f"[DEBUG {target_apn}] SELECTED: {trial_mask.sum()} comps at {label}", flush=True)
+                        break
 
             # County-awareness guard: if nearby comps are all from different counties,
             # treat as no local comps and avoid forced pricing.
