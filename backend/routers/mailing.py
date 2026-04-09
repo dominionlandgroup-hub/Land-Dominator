@@ -4,8 +4,10 @@ Priority 6: three download tiers — full, high-confidence (3+ comps), top-500.
 """
 import io
 import csv
+import json
+import math
 from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
 from typing import Literal
 
 from models.schemas import MailingPreviewResponse, MatchedParcel
@@ -77,12 +79,13 @@ OUTPUT_HEADERS = [
 ]
 
 
-@router.get("/preview", response_model=MailingPreviewResponse)
+@router.get("/preview")
 async def preview_mailing(
     match_id: str = Query(..., description="Match ID from /match/run"),
-) -> MailingPreviewResponse:
+) -> Response:
     """
     Return deduplicated mailing list preview for a given match run.
+    Uses pre-serialized JSON to avoid Pydantic overhead on 14K+ records.
     """
     match_data = get_match(match_id)
     if match_data is None:
@@ -94,33 +97,33 @@ async def preview_mailing(
     raw_results = match_data["results"]
     total_before = len(raw_results)
 
-    # Debug: Check first raw result
-    if raw_results:
-        print(f"\n[MAILING DEBUG] First raw result from match_data:", flush=True)
-        print(f"  owner_name: '{raw_results[0].get('owner_name')}'", flush=True)
-        print(f"  owner_first_name: '{raw_results[0].get('owner_first_name')}'", flush=True)
-        print(f"  owner_last_name: '{raw_results[0].get('owner_last_name')}'", flush=True)
-        print(f"  parcel_address: '{raw_results[0].get('parcel_address')}'", flush=True)
-
     cleaned, n_foreign, n_dnm = _deduplicate(raw_results)
 
-    # Debug: Check first cleaned result after dedup
-    if cleaned:
-        print(f"\n[MAILING DEBUG] First cleaned result after dedup:", flush=True)
-        print(f"  owner_name: '{cleaned[0].owner_name}'", flush=True)
-        print(f"  owner_first_name: '{cleaned[0].owner_first_name}'", flush=True)
-        print(f"  owner_last_name: '{cleaned[0].owner_last_name}'", flush=True)
-        print(f"  parcel_address: '{cleaned[0].parcel_address}'", flush=True)
-        print("")
+    # Serialize manually to avoid Pydantic validation overhead on 14K+ records
+    results_dicts = []
+    for p in cleaned:
+        results_dicts.append(p.model_dump() if hasattr(p, 'model_dump') else p.dict())
 
-    return MailingPreviewResponse(
-        match_id=match_id,
-        total_before_dedup=total_before,
-        total_after_dedup=len(cleaned),
-        filtered_foreign=n_foreign,
-        filtered_do_not_mail=n_dnm,
-        results=cleaned,
-    )
+    def _clean_nans(obj):
+        if isinstance(obj, dict):
+            return {k: _clean_nans(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [_clean_nans(v) for v in obj]
+        if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
+            return None
+        return obj
+
+    payload = _clean_nans({
+        "match_id": match_id,
+        "total_before_dedup": total_before,
+        "total_after_dedup": len(cleaned),
+        "filtered_foreign": n_foreign,
+        "filtered_do_not_mail": n_dnm,
+        "results": results_dicts,
+    })
+
+    content = json.dumps(payload, default=str)
+    return Response(content=content, media_type="application/json")
 
 
 @router.get("/download")
