@@ -79,14 +79,22 @@ OUTPUT_HEADERS = [
 ]
 
 
+# Cache for pre-serialized mailing preview JSON (avoids reprocessing 14K+ records)
+_preview_cache: dict[str, str] = {}
+
+
 @router.get("/preview")
 async def preview_mailing(
     match_id: str = Query(..., description="Match ID from /match/run"),
 ) -> Response:
     """
     Return deduplicated mailing list preview for a given match run.
-    Uses pre-serialized JSON to avoid Pydantic overhead on 14K+ records.
+    Uses pre-serialized JSON + caching to avoid timeout on large datasets.
     """
+    # Return cached result if available (second call is instant)
+    if match_id in _preview_cache:
+        return Response(content=_preview_cache[match_id], media_type="application/json")
+
     match_data = get_match(match_id)
     if match_data is None:
         raise HTTPException(
@@ -123,6 +131,7 @@ async def preview_mailing(
     })
 
     content = json.dumps(payload, default=str)
+    _preview_cache[match_id] = content  # Cache for instant retry
     return Response(content=content, media_type="application/json")
 
 

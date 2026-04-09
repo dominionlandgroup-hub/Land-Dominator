@@ -152,6 +152,7 @@ export interface MatchResult {
   total_targets: number
   matched_count: number
   results: MatchedParcel[]
+  warnings?: string[]
 }
 
 // ─── Mailing List ──────────────────────────────────────────────────────────

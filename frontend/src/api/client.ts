@@ -71,6 +71,7 @@ export async function runMatch(filters: MatchFilters): Promise<MatchResult> {
 export async function fetchMailingPreview(matchId: string): Promise<MailingPreview> {
   const { data } = await api.get<MailingPreview>('/mailing/preview', {
     params: { match_id: matchId },
+    timeout: 600_000,
   })
   return data
 }

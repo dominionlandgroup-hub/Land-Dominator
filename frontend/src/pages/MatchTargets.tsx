@@ -603,6 +603,16 @@ export default function MatchTargets() {
               />
             </div>
 
+            {/* Warnings from matching engine */}
+            {matchResult.warnings && matchResult.warnings.filter(w => w.includes('Excluded') || w.includes('WARNING')).length > 0 && (
+              <div className="mb-4 p-3 rounded-lg" style={{ background: '#FEF3C7', border: '1px solid #F59E0B' }}>
+                <p className="text-xs font-semibold mb-1" style={{ color: '#92400E' }}>Filters Applied:</p>
+                {matchResult.warnings.filter(w => w.includes('Excluded') || w.includes('WARNING')).map((w, i) => (
+                  <p key={i} className="text-xs" style={{ color: '#78350F' }}>{w}</p>
+                ))}
+              </div>
+            )}
+
             {/* Score distribution pills */}
             <div className="flex items-center gap-3 mb-5">
               <span className="text-xs" style={{ color: '#6B5B8A' }}>Score distribution:</span>
