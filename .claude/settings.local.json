@@ -7,7 +7,28 @@
       "Bash(ls -la *.toml backend/*.toml backend/requirements.txt Procfile)",
       "Bash(railway status:*)",
       "Bash(railway variables:*)",
-      "Bash(ls -la Dockerfile*)"
+      "Bash(ls -la Dockerfile*)",
+      "Bash(railway logs:*)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" https://frontend-production-47175.up.railway.app)",
+      "Bash(python -X utf8 diagnose_flags.py)",
+      "Bash(grep -v \"^$\")",
+      "Bash(python -X utf8 test_phase3.py)",
+      "Bash(curl -s -o /dev/null -w \"Frontend: %{http_code}\" https://frontend-production-47175.up.railway.app)",
+      "Bash(curl -s -o /dev/null -w \"Frontend: %{http_code}\\\\n\" https://frontend-production-47175.up.railway.app)",
+      "Bash(python diagnose_8apns.py)",
+      "Bash(python test_phase3.py)",
+      "Bash(pip install:*)",
+      "Bash(curl -s http://localhost:8000/health)",
+      "Bash(python -c \":*)",
+      "Bash(railway link:*)",
+      "Bash(railway whoami:*)",
+      "Bash(railway list:*)",
+      "Bash(curl -s -o /dev/null -w '%{http_code}' \"https://land-parcel-tool-production.up.railway.app/mailing/download?match_id=test&export_type=matched\")",
+      "Bash(railway domain:*)",
+      "Bash(curl -s -o /dev/null -w '%{http_code}' https://frontend-production-47175.up.railway.app)",
+      "Bash(curl -s https://frontend-production-47175.up.railway.app)",
+      "Bash(curl -s https://frontend-production-47175.up.railway.app/assets/index-qVY_foQn.js)",
+      "Bash(curl -s https://frontend-production-47175.up.railway.app/assets/index-*.js)"
     ]
   }
 }

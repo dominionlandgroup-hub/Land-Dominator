@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c ':*)",
+      "Read(//c/Users/HP/Downloads/**)",
+      "Bash(python)"
+    ]
+  }
+}
