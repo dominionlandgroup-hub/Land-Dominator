@@ -380,7 +380,7 @@ def detect_bulk_sales(df: pd.DataFrame) -> Tuple[pd.DataFrame, int]:
     df = df.copy()
     df['_bulk_key'] = df['Current Sale Price'].astype(str) + '_' + df['Current Sale Recording Date'].astype(str)
     key_counts = df['_bulk_key'].value_counts()
-    bulk_keys = key_counts[key_counts >= 6].index
+    bulk_keys = key_counts[key_counts >= 3].index
     clean = df[~df['_bulk_key'].isin(bulk_keys)].drop(columns=['_bulk_key'])
     removed = len(df) - len(clean)
     return clean, removed
@@ -643,7 +643,7 @@ def calculate_offer_price(
 
     if len(comps) >= 1:
         median_price = comps['Current Sale Price'].median()
-        hard_upper = median_price * 2.5
+        hard_upper = median_price * 2.0
         hard_outlier_mask = comps['Current Sale Price'] > hard_upper
         hard_removed = int(hard_outlier_mask.sum())
         if hard_removed > 0 and len(comps) - hard_removed >= 1:
