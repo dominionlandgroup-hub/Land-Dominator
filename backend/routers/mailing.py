@@ -167,7 +167,7 @@ async def download_mailing(
     elif export_type == "high-confidence":
         filtered = [
             p for p in cleaned
-            if p.matched_comp_count >= 3
+            if p.comp_count >= 3
             and getattr(p, 'pricing_flag', None) == 'MATCHED'
         ]
         suffix = f"high-confidence-{len(filtered)}-records"
