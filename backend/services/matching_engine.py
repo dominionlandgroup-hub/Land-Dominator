@@ -4,9 +4,9 @@ Fully vectorized numpy throughout — no DataFrame creation inside the inner loo
 
 Pricing model (client-approved March 2026):
     Retail Estimate = median(comp sale prices)  — NOT ppa × acres
-    Offer Low  = 50% of retail
-    Offer Mid  = 60% of retail
-    Offer High = 70% of retail
+    Offer Low  = 30% of retail
+    Offer Mid  = 35% of retail
+    Offer High = 40% of retail
 
 Search order: 0.25mi → 0.50mi → 1mi (stop at first step with 1+ comp)
 Minimum 1 comp required for pricing. No TLP cap. No fallback beyond 1 mile.
