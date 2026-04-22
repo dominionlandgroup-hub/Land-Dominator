@@ -565,10 +565,9 @@ def clean_comps_for_pricing(df: pd.DataFrame) -> pd.DataFrame:
 # ─────────────────────────────────────────────
 
 # Client-confirmed pricing percentages (March 2026 - Updated per Damien's request)
-LOW_PCT  = 0.60   # 60% of retail
-MID_PCT  = 0.65   # 65% of retail
-HIGH_PCT = 0.70   # 70% of retail
-
+LOW_PCT  = 0.30   # 30% of retail
+MID_PCT  = 0.35   # 35% of retail
+HIGH_PCT = 0.40   # 40% of retail
 
 def calculate_offer_price(
     target_acres: float,
@@ -584,9 +583,9 @@ def calculate_offer_price(
     Formula:
         Single comp: use that price directly as retail
         Multiple comps: use median(comp sale prices)
-        Offer Low  = 60% of retail
-        Offer Mid  = 65% of retail
-        Offer High = 70% of retail
+        Offer Low  = 30% of retail
+        Offer Mid  = 35% of retail
+        Offer High = 40% of retail
 
     No TLP involvement - comps only.
     Simplified flags: MATCHED or NO_COMPS only.
@@ -737,6 +736,8 @@ def calculate_offer_price(
             retail_estimate = float(np.median(prices))
 
     # Client-confirmed 60/65/70 percentages (updated March 2026)
+    if tlp_estimate and tlp_estimate > 0 and retail_estimate > tlp_estimate * 2.0:
+        retail_estimate = tlp_estimate
     offer_low = round(retail_estimate * LOW_PCT)
     offer_mid = round(retail_estimate * MID_PCT)
     offer_high = round(retail_estimate * HIGH_PCT)
