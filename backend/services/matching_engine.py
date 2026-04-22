@@ -1459,7 +1459,8 @@ def run_matching(
             except (TypeError, ValueError):
                 return None
 
-        tlp_val = _f(row.get("TLP Estimate"))
+        tlp_raw = str(row.get("TLP Estimate") or "").replace("$", "").replace(",", "").strip()
+        tlp_val = _f(tlp_raw) if tlp_raw else None
 
         # Build matched comps DataFrame for pricing (include distances for weighting)
         if n_matched > 0:
