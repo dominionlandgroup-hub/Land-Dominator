@@ -587,7 +587,7 @@ def calculate_offer_price(
         Offer Mid  = 35% of retail
         Offer High = 40% of retail
 
-    No TLP involvement - comps only.
+    TLP cap: if retail > 2x TLP, retail is capped at TLP.
     Simplified flags: MATCHED or NO_COMPS only.
     """
     empty: Dict[str, Any] = {
