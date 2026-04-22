@@ -600,8 +600,7 @@ def clean_comps_for_pricing(df: pd.DataFrame) -> pd.DataFrame:
 
         # Band-level outlier removal (catches comps that are outliers within their acreage band)
         df = remove_outliers_band_level(df)
-        # Subdivision-level outlier removal (catches inflated sales within same subdivision)
-        df = remove_outliers_subdivision_level(df)
+        
 
     return df.reset_index(drop=True)
 
