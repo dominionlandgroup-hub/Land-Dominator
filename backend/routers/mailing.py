@@ -195,7 +195,7 @@ async def download_mailing(
         filtered = sorted(matched_only, key=top500_sort_key)[:500]
         suffix = f"top500-records"
     else:
-        filtered = cleaned
+        filtered = list (cleaned)
         suffix = f"{len(filtered)}-records"
 
     csv_bytes = _build_csv(filtered)
