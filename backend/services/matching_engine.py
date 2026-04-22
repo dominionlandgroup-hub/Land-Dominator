@@ -380,7 +380,7 @@ def detect_bulk_sales(df: pd.DataFrame) -> Tuple[pd.DataFrame, int]:
     df = df.copy()
     df['_bulk_key'] = df['Current Sale Price'].astype(str) + '_' + df['Current Sale Recording Date'].astype(str)
     key_counts = df['_bulk_key'].value_counts()
-    bulk_keys = key_counts[key_counts >= 3].index
+    bulk_keys = key_counts[key_counts >= 6].index
     clean = df[~df['_bulk_key'].isin(bulk_keys)].drop(columns=['_bulk_key'])
     removed = len(df) - len(clean)
     return clean, removed
