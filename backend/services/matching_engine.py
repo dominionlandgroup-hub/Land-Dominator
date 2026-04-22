@@ -473,7 +473,51 @@ def remove_outliers_zip_level(comps_df: pd.DataFrame) -> pd.DataFrame:
 
     return result
 
+def remove_outliers_subdivision_level(comps_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Remove comp outliers within each subdivision.
+    When 3+ comps share the same subdivision, run IQR within that group.
+    Catches cases where one inflated sale anchors an entire street/subdivision.
+    """
+    if 'Subdivision Name' not in comps_df.columns:
+        return comps_df
 
+    comps_df = comps_df.copy()
+    if 'ppa' not in comps_df.columns:
+        comps_df['ppa'] = comps_df['Current Sale Price'] / comps_df['Lot Acres'].replace(0, np.nan)
+
+    comps_df['_subdiv'] = comps_df['Subdivision Name'].fillna('').str.upper().str.strip()
+
+    kept_indices = []
+    total_removed = 0
+
+    for subdiv, group in comps_df.groupby('_subdiv'):
+        if not subdiv or len(group) < 3:
+            kept_indices.extend(group.index.tolist())
+            continue
+
+        ppa = group['ppa'].dropna()
+        if len(ppa) < 3:
+            kept_indices.extend(group.index.tolist())
+            continue
+
+        median_ppa = ppa.median()
+        Q1, Q3 = ppa.quantile(0.25), ppa.quantile(0.75)
+        IQR = Q3 - Q1
+        upper = min(Q3 + 1.5 * IQR, median_ppa * 2.5)
+        lower = median_ppa * 0.20
+
+        clean = group[(group['ppa'] <= upper) & (group['ppa'] >= lower)]
+        removed = len(group) - len(clean)
+        if removed > 0:
+            print(f"  Subdivision IQR [{subdiv}]: {removed} outlier comps removed")
+            total_removed += removed
+        kept_indices.extend(clean.index.tolist())
+
+    result = comps_df.loc[comps_df.index.isin(kept_indices)].drop(columns=['_subdiv'], errors='ignore')
+    if total_removed > 0:
+        print(f"Subdivision-level outlier removal total: {total_removed} comps removed")
+    return result
 def remove_outliers_band_level(comps_df: pd.DataFrame) -> pd.DataFrame:
     """
     Remove comps whose PPA is an outlier within their acreage band.
@@ -556,6 +600,8 @@ def clean_comps_for_pricing(df: pd.DataFrame) -> pd.DataFrame:
 
         # Band-level outlier removal (catches comps that are outliers within their acreage band)
         df = remove_outliers_band_level(df)
+        # Subdivision-level outlier removal (catches inflated sales within same subdivision)
+        df = remove_outliers_subdivision_level(df)
 
     return df.reset_index(drop=True)
 
