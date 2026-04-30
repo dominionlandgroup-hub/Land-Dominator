@@ -5,10 +5,11 @@ Backed by Supabase (PostgreSQL). Requires SUPABASE_URL + SUPABASE_KEY env vars.
 import csv
 import io
 import re
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Body, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Body, File, HTTPException, Query, UploadFile
 
 from models.crm_schemas import (
     Contact, ContactCreate, ContactUpdate,
@@ -19,6 +20,9 @@ from models.crm_schemas import (
 from services.supabase_client import get_supabase
 
 router = APIRouter(prefix="/crm", tags=["crm"])
+
+# In-memory job store for async imports (single-process Railway deployment)
+_import_jobs: dict[str, dict] = {}
 
 # ── Helpers ───────────────────────────────────────────────────────────
 
@@ -285,32 +289,43 @@ def _map_pebble_row(row: dict, col_to_field: dict[str, str]) -> dict:
 # Properties
 # ══════════════════════════════════════════════════════════════════════
 
-@router.post("/properties/import", response_model=ImportResult)
-async def import_properties(file: UploadFile = File(...)) -> ImportResult:
-    """Bulk-import properties from a Pebble REI CSV export (81 columns)."""
+@router.post("/properties/import", status_code=202)
+async def import_properties(
+    file: UploadFile = File(...),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+) -> dict:
+    """Start a background import job. Returns job_id immediately (no timeout risk)."""
     content = await file.read()
+    job_id = str(uuid.uuid4())
+    _import_jobs[job_id] = {"status": "pending"}
+    background_tasks.add_task(_run_import_job, job_id, content)
+    return {"job_id": job_id}
+
+
+def _run_import_job(job_id: str, content: bytes) -> None:
+    """Synchronous worker — FastAPI runs this in a thread pool via BackgroundTasks."""
     try:
-        text = content.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        text = content.decode("latin-1")
+        try:
+            text = content.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            text = content.decode("latin-1")
 
-    reader = csv.DictReader(io.StringIO(text))
-    if not reader.fieldnames:
-        raise HTTPException(status_code=400, detail="CSV has no headers")
+        reader = csv.DictReader(io.StringIO(text))
+        if not reader.fieldnames:
+            _import_jobs[job_id] = {"status": "error", "error": "CSV has no headers"}
+            return
 
-    # Build header → field map (case-insensitive)
-    col_to_field: dict[str, str] = {}
-    for raw_col in reader.fieldnames:
-        canonical = raw_col.strip().lower()
-        if canonical in PEBBLE_MAP:
-            col_to_field[raw_col] = PEBBLE_MAP[canonical]
+        col_to_field: dict[str, str] = {}
+        for raw_col in reader.fieldnames:
+            canonical = raw_col.strip().lower()
+            if canonical in PEBBLE_MAP:
+                col_to_field[raw_col] = PEBBLE_MAP[canonical]
 
-    imported = 0
-    skipped = 0
-    errors: list[str] = []
-    now = _now()
+        imported = 0
+        skipped = 0
+        errors: list[str] = []
+        now = _now()
 
-    try:
         sb = get_supabase()
         batch: list[dict] = []
 
@@ -322,7 +337,6 @@ async def import_properties(file: UploadFile = File(...)) -> ImportResult:
                     continue
                 data["updated_at"] = now
                 batch.append(data)
-
                 if len(batch) >= 500:
                     sb.table("crm_properties").insert(batch).execute()
                     imported += len(batch)
@@ -335,12 +349,21 @@ async def import_properties(file: UploadFile = File(...)) -> ImportResult:
             sb.table("crm_properties").insert(batch).execute()
             imported += len(batch)
 
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
+        _import_jobs[job_id] = {
+            "status": "done",
+            "result": {"imported": imported, "skipped": skipped, "errors": errors[:20]},
+        }
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        _import_jobs[job_id] = {"status": "error", "error": str(exc)}
 
-    return ImportResult(imported=imported, skipped=skipped, errors=errors[:20])
+
+@router.get("/properties/import-status/{job_id}")
+async def get_import_status(job_id: str) -> dict:
+    """Poll for import job completion."""
+    job = _import_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Import job not found or server was restarted")
+    return job
 
 
 @router.post("/properties/import-batch", response_model=ImportResult)

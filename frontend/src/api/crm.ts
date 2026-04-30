@@ -31,10 +31,21 @@ export async function deleteProperty(id: string): Promise<void> {
   await api.delete(`/crm/properties/${id}`)
 }
 
-export async function importProperties(file: File): Promise<ImportResult> {
+export interface ImportJobStatus {
+  status: 'pending' | 'done' | 'error'
+  result?: ImportResult
+  error?: string
+}
+
+export async function startPropertyImport(file: File): Promise<{ job_id: string }> {
   const form = new FormData()
   form.append('file', file)
-  const { data } = await api.post<ImportResult>('/crm/properties/import', form)
+  const { data } = await api.post<{ job_id: string }>('/crm/properties/import', form)
+  return data
+}
+
+export async function getImportJobStatus(jobId: string): Promise<ImportJobStatus> {
+  const { data } = await api.get<ImportJobStatus>(`/crm/properties/import-status/${jobId}`)
   return data
 }
 
