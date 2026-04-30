@@ -100,11 +100,11 @@ export default function CRMDashboard() {
 
   useEffect(() => {
     Promise.all([
-      listProperties().catch(() => [] as CRMProperty[]),
+      listProperties({ limit: 500 }).then(r => r.data).catch(() => [] as CRMProperty[]),
       listDeals().catch(() => [] as CRMDeal[]),
       listCampaigns().catch(() => [] as Campaign[]),
     ]).then(([props, dls, camps]) => {
-      setProperties(props)
+      setProperties(props as CRMProperty[])
       setDeals(dls)
       setCampaigns(camps)
       setLoading(false)
