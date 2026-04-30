@@ -45,7 +45,27 @@
       "Bash(python3 -c \"import ast; ast.parse\\(open\\('/Users/damiendupee/Desktop/Land-Dominator/backend/main.py'\\).read\\(\\)\\); print\\('main.py: syntax OK'\\)\")",
       "Bash(python3 -c \"import ast; ast.parse\\(open\\('/Users/damiendupee/Desktop/Land-Dominator/backend/services/supabase_client.py'\\).read\\(\\)\\); print\\('supabase_client.py: syntax OK'\\)\")",
       "Bash(node *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Read(//Users/damiendupee/**)",
+      "Bash(git remote *)",
+      "Bash(mkdir -p ~/.ssh)",
+      "Bash(ssh-keyscan github.com)",
+      "Bash(ssh-keygen *)",
+      "Bash(ssh *)",
+      "Bash(curl -fsSL https://railway.app/install.sh)",
+      "Bash(sh)",
+      "Bash(mkdir -p ~/.local/bin)",
+      "Bash(curl -fsSL https://github.com/railwayapp/cli/releases/latest/download/railway_darwin_amd64.tar.gz -o /tmp/railway.tar.gz)",
+      "Bash(tar -xzf /tmp/railway.tar.gz -C ~/.local/bin)",
+      "Bash(~/.local/bin/railway --version)",
+      "Bash(curl -s https://api.github.com/repos/railwayapp/cli/releases/latest)",
+      "Bash(curl -fsSL \"https://github.com/railwayapp/cli/releases/download/v4.44.0/railway-v4.44.0-x86_64-apple-darwin.tar.gz\" -o /tmp/railway.tar.gz)",
+      "Bash(export PATH=\"$HOME/.local/bin:$PATH\")",
+      "Bash(npx tsc *)",
+      "Bash(node_modules/.bin/tsc --noEmit)",
+      "Bash(./node_modules/.bin/tsc --noEmit)"
     ]
   }
 }
