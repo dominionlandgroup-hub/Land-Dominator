@@ -925,3 +925,16 @@
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* AI chat typing indicator */
+.typing-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #C4A8D8;
+  animation: typing-bounce 1s ease-in-out infinite;
+}
+@keyframes typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}

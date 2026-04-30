@@ -1,6 +1,7 @@
 import React from 'react'
 import { AppProvider, useApp } from './context/AppContext'
 import Sidebar from './components/Sidebar'
+import AIAssistant from './components/AIAssistant'
 import WelcomeScreen from './pages/WelcomeScreen'
 import UploadComps from './pages/UploadComps'
 import Dashboard from './pages/Dashboard'
@@ -48,6 +49,7 @@ export default function App() {
         <main className="flex-1 overflow-auto" style={{ background: '#F8F6FB' }}>
           <PageContent />
         </main>
+        <AIAssistant />
       </div>
     </AppProvider>
   )
