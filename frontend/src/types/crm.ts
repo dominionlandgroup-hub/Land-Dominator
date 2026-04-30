@@ -66,6 +66,9 @@ export interface CRMProperty {
   marketing_description?: string
   marketing_nearest_city?: string
 
+  property_id?: string
+  fips?: string
+
   ghl_offer_code?: string
   lp_estimate?: number
   offer_range_high?: number

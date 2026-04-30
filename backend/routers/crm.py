@@ -4,10 +4,13 @@ Backed by Supabase (PostgreSQL). Requires SUPABASE_URL + SUPABASE_KEY env vars.
 """
 import csv
 import io
+import os
 import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+
+import httpx
 
 from fastapi import APIRouter, BackgroundTasks, Body, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
@@ -23,8 +26,9 @@ from services.supabase_client import get_supabase
 
 router = APIRouter(prefix="/crm", tags=["crm"])
 
-# In-memory job store for async imports (single-process Railway deployment)
+# In-memory job stores (single-process Railway deployment)
 _import_jobs: dict[str, dict] = {}
+_lp_pull_jobs: dict[str, dict] = {}
 
 # ── Helpers ───────────────────────────────────────────────────────────
 
@@ -134,6 +138,15 @@ PEBBLE_MAP: dict[str, str] = {
     "owner address zip": "owner_mailing_zip",
     "mailing zip": "owner_mailing_zip",
     "owner address zip code": "owner_mailing_zip",
+
+    # Land Portal IDs
+    "property id": "property_id",
+    "property_id": "property_id",
+    "propertyid": "property_id",
+    "county code (fips)": "fips",
+    "county code": "fips",
+    "fips": "fips",
+    "fips code": "fips",
 
     # Campaign
     "campaign code": "campaign_code",
@@ -512,6 +525,109 @@ async def delete_crm_campaign(campaign_id: str) -> None:
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+# ── Land Portal bulk pull (campaign) ──────────────────────────────────
+
+
+@router.post("/campaigns/{campaign_id}/pull-lp-data", status_code=202)
+async def start_campaign_lp_pull(
+    campaign_id: str,
+    background_tasks: BackgroundTasks,
+) -> dict:
+    """Start a background job to pull LP estimates for all properties in a campaign."""
+    job_id = str(uuid.uuid4())
+    _lp_pull_jobs[job_id] = {"status": "running", "done": 0, "total": 0, "errors": []}
+    background_tasks.add_task(_run_lp_pull_job, job_id, campaign_id)
+    return {"job_id": job_id}
+
+
+@router.get("/campaigns/{campaign_id}/pull-lp-status/{job_id}")
+async def get_campaign_lp_pull_status(campaign_id: str, job_id: str) -> dict:
+    job = _lp_pull_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found or server was restarted")
+    return job
+
+
+def _run_lp_pull_job(job_id: str, campaign_id: str) -> None:
+    """Synchronous background worker — calls Land Portal API for each property in the campaign."""
+    token = os.environ.get("LAND_PORTAL_TOKEN", "")
+    if not token:
+        _lp_pull_jobs[job_id] = {"status": "error", "done": 0, "total": 0, "errors": [], "error": "LAND_PORTAL_TOKEN not configured"}
+        return
+
+    try:
+        sb = get_supabase()
+        all_props: list[dict] = []
+        offset = 0
+        while True:
+            r = (sb.table("crm_properties")
+                 .select("id,property_id,fips,acreage")
+                 .eq("campaign_id", campaign_id)
+                 .range(offset, offset + 999)
+                 .execute())
+            if not r.data:
+                break
+            all_props.extend(r.data)
+            if len(r.data) < 1000:
+                break
+            offset += 1000
+
+        eligible = [p for p in all_props if p.get("property_id") and p.get("fips")]
+        _lp_pull_jobs[job_id]["total"] = len(eligible)
+    except Exception as exc:
+        _lp_pull_jobs[job_id] = {"status": "error", "done": 0, "total": 0, "errors": [], "error": str(exc)}
+        return
+
+    done = 0
+    errors: list[str] = []
+
+    with httpx.Client(timeout=30.0) as client:
+        for prop in eligible:
+            try:
+                resp = client.post(
+                    "https://landportal.com/wp-json/lp-rest-api/v1/property-data",
+                    json={"propertyid": prop["property_id"], "fips": prop["fips"]},
+                    headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+
+                lp_prop = data.get("property", {})
+                price_acre_mean = _safe_float(lp_prop.get("price_acre_mean"))
+                size = _safe_float(lp_prop.get("size")) or _safe_float(prop.get("acreage"))
+
+                updates: dict = {}
+                if price_acre_mean is not None and size:
+                    lp_estimate = round(price_acre_mean * size, 2)
+                    updates["lp_estimate"] = lp_estimate
+                    updates["offer_price"] = round(lp_estimate * 0.525, 2)
+
+                comps = data.get("list_of_rows_data", [])
+                for i, comp in enumerate(comps[:3], 1):
+                    link = _safe_str(comp.get("link") or comp.get("url") or comp.get("listing_url"))
+                    price = _safe_float(comp.get("price") or comp.get("sale_price") or comp.get("sold_price"))
+                    acreage = _safe_float(comp.get("acreage") or comp.get("size") or comp.get("lot_size"))
+                    if link:
+                        updates[f"comp{i}_link"] = link
+                    if price is not None:
+                        updates[f"comp{i}_price"] = price
+                    if acreage is not None:
+                        updates[f"comp{i}_acreage"] = acreage
+
+                if updates:
+                    updates["updated_at"] = _now()
+                    sb.table("crm_properties").update(updates).eq("id", prop["id"]).execute()
+
+            except Exception as exc:
+                errors.append(f"Property {prop['id'][:8]}: {str(exc)[:80]}")
+
+            done += 1
+            _lp_pull_jobs[job_id]["done"] = done
+
+    _lp_pull_jobs[job_id]["status"] = "done"
+    _lp_pull_jobs[job_id]["errors"] = errors[:20]
+
+
 # ── Property Bulk Import ───────────────────────────────────────────────
 
 
@@ -796,6 +912,72 @@ async def export_properties_csv(
         raise HTTPException(status_code=503, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/properties/{property_id}/pull-lp-data")
+async def pull_lp_data_for_property(property_id: str) -> dict:
+    """Call Land Portal API to pull lp_estimate, offer_price, and comps for a single property."""
+    token = os.environ.get("LAND_PORTAL_TOKEN", "")
+    if not token:
+        raise HTTPException(status_code=503, detail="LAND_PORTAL_TOKEN not configured in environment")
+
+    sb = get_supabase()
+    res = sb.table("crm_properties").select("*").eq("id", property_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Property not found")
+
+    prop = res.data[0]
+    lp_pid = prop.get("property_id")
+    fips = prop.get("fips")
+
+    if not lp_pid or not fips:
+        raise HTTPException(
+            status_code=422,
+            detail="Property is missing property_id or fips — import from Pebble CSV first"
+        )
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            r = await client.post(
+                "https://landportal.com/wp-json/lp-rest-api/v1/property-data",
+                json={"propertyid": lp_pid, "fips": fips},
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            )
+            r.raise_for_status()
+        data = r.json()
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(status_code=502, detail=f"Land Portal error {exc.response.status_code}: {exc.response.text[:200]}")
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Land Portal request failed: {exc}")
+
+    lp_prop = data.get("property", {})
+    price_acre_mean = _safe_float(lp_prop.get("price_acre_mean"))
+    size = _safe_float(lp_prop.get("size")) or _safe_float(prop.get("acreage"))
+
+    updates: dict = {}
+    if price_acre_mean is not None and size:
+        lp_estimate = round(price_acre_mean * size, 2)
+        updates["lp_estimate"] = lp_estimate
+        updates["offer_price"] = round(lp_estimate * 0.525, 2)
+
+    comps = data.get("list_of_rows_data", [])
+    for i, comp in enumerate(comps[:3], 1):
+        link = _safe_str(comp.get("link") or comp.get("url") or comp.get("listing_url"))
+        price = _safe_float(comp.get("price") or comp.get("sale_price") or comp.get("sold_price"))
+        acreage = _safe_float(comp.get("acreage") or comp.get("size") or comp.get("lot_size"))
+        if link:
+            updates[f"comp{i}_link"] = link
+        if price is not None:
+            updates[f"comp{i}_price"] = price
+        if acreage is not None:
+            updates[f"comp{i}_acreage"] = acreage
+
+    if updates:
+        updates["updated_at"] = _now()
+        sb.table("crm_properties").update(updates).eq("id", property_id).execute()
+
+    updated = sb.table("crm_properties").select("*").eq("id", property_id).execute()
+    return updated.data[0] if updated.data else prop
 
 
 @router.get("/properties/{property_id}", response_model=Property)

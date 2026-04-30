@@ -72,6 +72,10 @@ class PropertyBase(BaseModel):
     pebble_code: Optional[str] = None
     claude_ai_comp: Optional[float] = None
 
+    # Land Portal IDs
+    property_id: Optional[str] = None
+    fips: Optional[str] = None
+
     # Meta
     tags: Optional[List[str]] = None
     additional_phones: Optional[List[str]] = None

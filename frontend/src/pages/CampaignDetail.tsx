@@ -3,7 +3,7 @@ import Papa from 'papaparse'
 import type { CRMProperty, CRMCampaign, PropertyStatus } from '../types/crm'
 import {
   listProperties, updateProperty, deleteProperties, bulkInsertRows, getCrmCampaign,
-  exportPropertiesCsv,
+  exportPropertiesCsv, startCampaignLpPull, getCampaignLpPullStatus,
 } from '../api/crm'
 
 const PAGE_SIZE = 20
@@ -51,6 +51,14 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
   const [adjusting, setAdjusting] = useState(false)
 
   const [exportingAll, setExportingAll] = useState(false)
+
+  // LP pull
+  const [lpJobId, setLpJobId] = useState<string | null>(null)
+  const [lpDone, setLpDone] = useState(0)
+  const [lpTotal, setLpTotal] = useState(0)
+  const [lpStatus, setLpStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
+  const [lpError, setLpError] = useState<string | null>(null)
+  const lpPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Import
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -188,6 +196,37 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
     } catch {} finally { setExportingAll(false) }
   }
 
+  // ── LP Pull ─────────────────────────────────────────────────────────
+  async function handleStartLpPull() {
+    if (lpStatus === 'running') return
+    setLpStatus('running')
+    setLpDone(0)
+    setLpTotal(0)
+    setLpError(null)
+    try {
+      const { job_id } = await startCampaignLpPull(campaign.id)
+      setLpJobId(job_id)
+      if (lpPollRef.current) clearInterval(lpPollRef.current)
+      lpPollRef.current = setInterval(async () => {
+        try {
+          const s = await getCampaignLpPullStatus(campaign.id, job_id)
+          setLpDone(s.done)
+          setLpTotal(s.total)
+          if (s.status === 'done' || s.status === 'error') {
+            setLpStatus(s.status)
+            if (s.status === 'error') setLpError(s.error ?? 'LP pull failed')
+            if (lpPollRef.current) { clearInterval(lpPollRef.current); lpPollRef.current = null }
+            if (s.status === 'done') loadProperties(page, statusFilter, search)
+          }
+        } catch {}
+      }, 2000)
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { detail?: string } } }
+      setLpError(err?.response?.data?.detail ?? 'Failed to start LP pull')
+      setLpStatus('error')
+    }
+  }
+
   // ── Import ──────────────────────────────────────────────────────────
   function triggerImport() {
     cancelledRef.current = false
@@ -262,6 +301,26 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
           <h1 className="text-base font-semibold truncate" style={{ color: '#1A0A2E', maxWidth: '320px' }}>{campaign.name}</h1>
         </div>
         <div className="flex items-center gap-2">
+          {/* LP pull progress */}
+          {lpStatus === 'running' && lpTotal > 0 && (
+            <span className="text-xs" style={{ color: '#6B5B8A' }}>
+              Pulling LP data… {lpDone.toLocaleString()} of {lpTotal.toLocaleString()}
+            </span>
+          )}
+          {lpStatus === 'running' && lpTotal === 0 && (
+            <span className="text-xs" style={{ color: '#6B5B8A' }}>Starting LP pull…</span>
+          )}
+          {lpStatus === 'done' && (
+            <span className="text-xs font-semibold" style={{ color: '#2E7D32' }}>
+              ✓ LP data pulled: {lpDone.toLocaleString()} records
+            </span>
+          )}
+          {lpStatus === 'error' && (
+            <span className="text-xs font-semibold" style={{ color: '#B71C1C' }}>
+              LP pull failed: {lpError}
+            </span>
+          )}
+
           {/* Import progress indicator */}
           {importPhase === 'parsing' && (
             <span className="text-xs" style={{ color: '#6B5B8A' }}>Parsing CSV…</span>
@@ -277,6 +336,19 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
             </span>
           )}
           <input ref={fileInputRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={handleFileSelected} />
+          <button
+            className="btn-secondary text-sm"
+            onClick={handleStartLpPull}
+            disabled={lpStatus === 'running'}
+            title="Pull LP estimate, offer price, and comps for all properties in this campaign"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            {lpStatus === 'running' ? 'Pulling LP…' : 'Pull LP Data'}
+          </button>
           <button
             className="btn-secondary text-sm"
             onClick={handleExportAll}

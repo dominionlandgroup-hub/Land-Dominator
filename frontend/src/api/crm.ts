@@ -149,6 +149,31 @@ export async function exportPropertiesCsv(params: {
   URL.revokeObjectURL(url)
 }
 
+// ── Land Portal ───────────────────────────────────────────────────────
+
+export async function pullLpData(id: string): Promise<CRMProperty> {
+  const { data } = await api.post<CRMProperty>(`/crm/properties/${id}/pull-lp-data`)
+  return data
+}
+
+export interface LpPullJobStatus {
+  status: 'running' | 'done' | 'error'
+  done: number
+  total: number
+  errors?: string[]
+  error?: string
+}
+
+export async function startCampaignLpPull(campaignId: string): Promise<{ job_id: string }> {
+  const { data } = await api.post<{ job_id: string }>(`/crm/campaigns/${campaignId}/pull-lp-data`)
+  return data
+}
+
+export async function getCampaignLpPullStatus(campaignId: string, jobId: string): Promise<LpPullJobStatus> {
+  const { data } = await api.get<LpPullJobStatus>(`/crm/campaigns/${campaignId}/pull-lp-status/${jobId}`)
+  return data
+}
+
 // ── Contacts ──────────────────────────────────────────────────────────
 
 export async function listContacts(): Promise<CRMContact[]> {

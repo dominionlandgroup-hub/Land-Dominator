@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import type { CRMProperty, PropertyStatus } from '../types/crm'
+import { pullLpData } from '../api/crm'
 
 interface Props {
   property: CRMProperty | null
@@ -27,6 +28,8 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
   const [error, setError] = useState<string | null>(null)
   const [tagInput, setTagInput] = useState('')
   const [phoneInput, setPhoneInput] = useState('')
+  const [lpPulling, setLpPulling] = useState(false)
+  const [lpMsg, setLpMsg] = useState<string | null>(null)
   const isNew = !property
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -86,6 +89,23 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
 
   function removePhone(p: string) {
     set('additional_phones', (form.additional_phones || []).filter(x => x !== p))
+  }
+
+  async function handlePullLp() {
+    if (!property?.id || lpPulling) return
+    setLpPulling(true)
+    setLpMsg(null)
+    setError(null)
+    try {
+      const updated = await pullLpData(property.id)
+      setForm(updated)
+      setLpMsg(`✓ LP data pulled — LP Estimate: $${updated.lp_estimate?.toLocaleString() ?? '—'}, Offer Price: $${updated.offer_price?.toLocaleString() ?? '—'}`)
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { detail?: string } } }
+      setError(err?.response?.data?.detail ?? 'LP pull failed')
+    } finally {
+      setLpPulling(false)
+    }
   }
 
   const Field = ({
@@ -154,6 +174,21 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {!isNew && property?.property_id && (
+            <button
+              className="btn-secondary text-sm flex items-center gap-1.5"
+              onClick={handlePullLp}
+              disabled={lpPulling}
+              title="Pull LP estimate, offer price, and comps from Land Portal"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              {lpPulling ? 'Pulling LP…' : 'Pull LP Data'}
+            </button>
+          )}
           {!isNew && (
             <button className="btn-danger" onClick={() => setConfirmDelete(true)} disabled={deleting}>
               Delete
@@ -171,6 +206,11 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
             {error}
           </div>
         )}
+        {lpMsg && (
+          <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: '#E8F5E9', color: '#2E7D32', border: '1px solid #A5D6A7' }}>
+            {lpMsg}
+          </div>
+        )}
 
         <div className="space-y-5">
           {/* Basic Info */}
@@ -181,6 +221,8 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
               <Field label="County" field="county" />
               <Field label="State" field="state" placeholder="TX" />
               <Field label="Acreage" field="acreage" type="number" placeholder="0.00" />
+              <Field label="Property ID (LP)" field="property_id" placeholder="LP property ID" />
+              <Field label="FIPS Code" field="fips" placeholder="County FIPS code" />
               <div className="flex flex-col gap-1">
                 <label className="label-caps">Status</label>
                 <select
