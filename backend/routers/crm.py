@@ -323,7 +323,7 @@ async def import_properties(file: UploadFile = File(...)) -> ImportResult:
                 data["updated_at"] = now
                 batch.append(data)
 
-                if len(batch) >= 50:
+                if len(batch) >= 500:
                     sb.table("crm_properties").insert(batch).execute()
                     imported += len(batch)
                     batch = []
@@ -337,6 +337,8 @@ async def import_properties(file: UploadFile = File(...)) -> ImportResult:
 
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
     return ImportResult(imported=imported, skipped=skipped, errors=errors[:20])
 

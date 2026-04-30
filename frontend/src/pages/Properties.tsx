@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import DataTable from '../components/DataTable'
 import type { Column } from '../components/DataTable'
 import type { CRMProperty, PropertyStatus } from '../types/crm'
-import { listProperties, createProperty, updateProperty, deleteProperty, importPropertiesBatch, deleteProperties } from '../api/crm'
+import { listProperties, createProperty, updateProperty, deleteProperty, importProperties, deleteProperties } from '../api/crm'
 import PropertyDetail from './PropertyDetail'
 
 type View = 'list' | 'detail' | 'new'
@@ -30,51 +30,6 @@ const STATUS_LABELS: Record<string, string> = {
 }
 
 const ALL_STATUSES = ['all', 'lead', 'prospect', 'offer_sent', 'under_contract', 'due_diligence', 'closed_won', 'closed_lost']
-
-// ── CSV parser ─────────────────────────────────────────────────────────────
-
-function parseCSV(text: string): Record<string, string>[] {
-  const t = text.startsWith('﻿') ? text.slice(1) : text
-
-  const rows: string[][] = []
-  let current: string[] = []
-  let field = ''
-  let inQuotes = false
-  let i = 0
-
-  while (i < t.length) {
-    const ch = t[i]
-    if (inQuotes) {
-      if (ch === '"') {
-        if (t[i + 1] === '"') { field += '"'; i += 2 }
-        else { inQuotes = false; i++ }
-      } else { field += ch; i++ }
-    } else {
-      if (ch === '"') { inQuotes = true; i++ }
-      else if (ch === ',') { current.push(field); field = ''; i++ }
-      else if (ch === '\r') {
-        if (t[i + 1] === '\n') i++
-        current.push(field); field = ''; rows.push(current); current = []; i++
-      } else if (ch === '\n') {
-        current.push(field); field = ''; rows.push(current); current = []; i++
-      } else { field += ch; i++ }
-    }
-  }
-  if (field || current.length > 0) {
-    current.push(field)
-    if (current.some(f => f.trim())) rows.push(current)
-  }
-
-  if (rows.length < 2) return []
-  const headers = rows[0]
-  return rows.slice(1)
-    .filter(row => row.some(f => f.trim()))
-    .map(row => {
-      const record: Record<string, string> = {}
-      headers.forEach((h, idx) => { record[h] = row[idx] ?? '' })
-      return record
-    })
-}
 
 // ── Main component ─────────────────────────────────────────────────────────
 
@@ -471,90 +426,44 @@ function ImportModal({ onDone, onClose }: {
   onClose: () => void
 }) {
   const [dragOver, setDragOver] = useState(false)
-  const [phase, setPhase] = useState<'idle' | 'ready' | 'importing' | 'done'>('idle')
+  const [phase, setPhase] = useState<'idle' | 'uploading' | 'done' | 'error'>('idle')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [rowCount, setRowCount] = useState(0)
-  const [progress, setProgress] = useState(0)
   const [imported, setImported] = useState(0)
-  const [failed, setFailed] = useState(0)
-  const [parsedRows, setParsedRows] = useState<Record<string, string>[]>([])
-  const cancelledRef = useRef(false)
+  const [skipped, setSkipped] = useState(0)
+  const [errorMsg, setErrorMsg] = useState('')
 
   function isCSV(f: File) { return f.name.toLowerCase().endsWith('.csv') }
 
-  async function handleFile(f: File) {
+  function pickFile(f: File) {
     if (!isCSV(f)) return
     setSelectedFile(f)
-    const text = await f.text()
-    const rows = parseCSV(text)
-    setParsedRows(rows)
-    setRowCount(rows.length)
-    setPhase('ready')
   }
 
   async function startImport() {
-    if (!parsedRows.length) return
-    cancelledRef.current = false
-    setPhase('importing')
-    setProgress(0)
-    setImported(0)
-    setFailed(0)
-
-    const BATCH_SIZE = 100
-    let totalImported = 0
-    let totalFailed = 0
-
-    for (let i = 0; i < parsedRows.length; i += BATCH_SIZE) {
-      if (cancelledRef.current) break
-      const batch = parsedRows.slice(i, i + BATCH_SIZE)
-      let succeeded = false
-
-      for (let attempt = 0; attempt < 2; attempt++) {
-        try {
-          const result = await importPropertiesBatch(batch)
-          totalImported += result.imported
-          totalFailed += result.skipped
-          succeeded = true
-          break
-        } catch {
-          if (attempt === 1) totalFailed += batch.length
-        }
-      }
-
-      if (!succeeded) {
-        // already counted failed above
-      }
-
-      const done = Math.min(i + BATCH_SIZE, parsedRows.length)
-      setProgress(done)
-      setImported(totalImported)
-      setFailed(totalFailed)
-
-      if (i + BATCH_SIZE < parsedRows.length) {
-        await new Promise(r => setTimeout(r, 50))
-      }
+    if (!selectedFile) return
+    setPhase('uploading')
+    try {
+      const result = await importProperties(selectedFile)
+      setImported(result.imported)
+      setSkipped(result.skipped)
+      setPhase('done')
+      onDone()
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { detail?: string } }; message?: string }
+      const detail = err?.response?.data?.detail ?? err?.message ?? 'Upload failed'
+      setErrorMsg(detail && !detail.includes('SUPABASE') ? detail : 'Import failed. Check the backend is running.')
+      setPhase('error')
     }
-
-    setPhase('done')
-    onDone()
   }
-
-  function cancel() {
-    cancelledRef.current = true
-    onClose()
-  }
-
-  const pct = rowCount > 0 ? Math.round((progress / rowCount) * 100) : 0
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(26,10,46,0.55)' }}>
       <div className="bg-white rounded-2xl p-6 w-full shadow-xl" style={{ maxWidth: '480px' }}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="section-heading">Import Pebble CSV</h2>
-          <button
-            onClick={phase === 'importing' ? cancel : onClose}
-            style={{ color: '#9B8AAE', fontSize: '18px', lineHeight: 1 }}
-          >✕</button>
+          {phase !== 'uploading' && (
+            <button onClick={onClose} style={{ color: '#9B8AAE', fontSize: '18px', lineHeight: 1 }}>✕</button>
+          )}
         </div>
 
         {phase === 'done' ? (
@@ -565,46 +474,51 @@ function ImportModal({ onDone, onClose }: {
                 <div className="text-xs mt-1 font-medium" style={{ color: '#2E7D32' }}>Imported</div>
               </div>
               <div className="p-4 rounded-xl text-center" style={{ background: '#FFF8E1' }}>
-                <div className="text-3xl font-bold" style={{ color: '#F57F17' }}>{failed.toLocaleString()}</div>
-                <div className="text-xs mt-1 font-medium" style={{ color: '#F57F17' }}>Failed</div>
+                <div className="text-3xl font-bold" style={{ color: '#F57F17' }}>{skipped.toLocaleString()}</div>
+                <div className="text-xs mt-1 font-medium" style={{ color: '#F57F17' }}>Skipped</div>
               </div>
             </div>
             <p className="text-sm mb-4 text-center" style={{ color: '#6B5B8A' }}>
-              Import complete. {imported.toLocaleString()} imported, {failed.toLocaleString()} failed.
+              Import complete — {imported.toLocaleString()} records imported.
             </p>
             <button className="btn-primary w-full" onClick={onClose}>Done</button>
           </>
-        ) : phase === 'importing' ? (
-          <>
-            <div className="text-center py-6">
-              <div className="text-lg font-semibold mb-1" style={{ color: '#3D2B5E' }}>
-                Importing {progress.toLocaleString()} of {rowCount.toLocaleString()}…
-              </div>
-              <div className="text-sm mb-4" style={{ color: '#9B8AAE' }}>
-                {imported.toLocaleString()} imported · {failed.toLocaleString()} failed
-              </div>
-              <div className="w-full rounded-full overflow-hidden" style={{ height: '8px', background: '#E8E0F0' }}>
-                <div
-                  className="h-full rounded-full transition-all duration-200"
-                  style={{ width: `${pct}%`, background: '#5C2977' }}
-                />
-              </div>
-              <div className="text-xs mt-2" style={{ color: '#9B8AAE' }}>{pct}%</div>
+
+        ) : phase === 'uploading' ? (
+          <div className="text-center py-8">
+            <div className="inline-block w-10 h-10 rounded-full mb-4" style={{
+              border: '3px solid #E8E0F0',
+              borderTopColor: '#5C2977',
+              animation: 'spin 0.8s linear infinite',
+            }} />
+            <div className="text-base font-semibold mb-1" style={{ color: '#3D2B5E' }}>Uploading…</div>
+            <div className="text-sm" style={{ color: '#9B8AAE' }}>
+              Processing {selectedFile?.name} on the server. This may take up to 30 seconds for large files.
             </div>
-            <button className="btn-secondary w-full" onClick={cancel}>Cancel</button>
+          </div>
+
+        ) : phase === 'error' ? (
+          <>
+            <div className="p-3 rounded-lg mb-4 text-sm" style={{ background: '#FFF0F0', color: '#B71C1C', border: '1px solid #FFCDD2' }}>
+              {errorMsg}
+            </div>
+            <div className="flex gap-2">
+              <button className="btn-secondary flex-1" onClick={() => setPhase('idle')}>Try Again</button>
+              <button className="btn-secondary flex-1" onClick={onClose}>Close</button>
+            </div>
           </>
+
         ) : (
           <>
             <p className="text-sm mb-4" style={{ color: '#6B5B8A' }}>
-              Upload a Pebble REI property export CSV (supports 81-column format).
-              Columns are matched automatically — case-insensitive.
+              Upload a Pebble REI property export CSV. The server processes all rows and maps columns automatically.
             </p>
 
             <div
               className={`drop-zone${dragOver ? ' drag-over' : ''}`}
               onDragOver={e => { e.preventDefault(); setDragOver(true) }}
               onDragLeave={() => setDragOver(false)}
-              onDrop={e => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f) }}
+              onDrop={e => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) pickFile(f) }}
               onClick={() => document.getElementById('pebble-csv-input')?.click()}
               style={{ cursor: 'pointer' }}
             >
@@ -618,14 +532,11 @@ function ImportModal({ onDone, onClose }: {
               <div className="drop-zone-title">
                 {selectedFile ? selectedFile.name : 'Drop CSV here or click to browse'}
               </div>
-              {phase === 'ready' && rowCount > 0 && (
-                <div style={{ fontSize: '13px', color: '#2E7D32', marginTop: '6px', fontWeight: 600 }}>
-                  {rowCount.toLocaleString()} rows ready to import
-                </div>
-              )}
-              {phase === 'idle' && (
-                <div style={{ fontSize: '13px', color: '#9B8AAE', marginTop: '6px' }}>.csv files only</div>
-              )}
+              <div style={{ fontSize: '13px', color: selectedFile ? '#2E7D32' : '#9B8AAE', marginTop: '6px', fontWeight: selectedFile ? 600 : 400 }}>
+                {selectedFile
+                  ? `${(selectedFile.size / 1024 / 1024).toFixed(1)} MB — ready to upload`
+                  : '.csv files only'}
+              </div>
             </div>
 
             <input
@@ -633,23 +544,21 @@ function ImportModal({ onDone, onClose }: {
               type="file"
               accept=".csv"
               style={{ display: 'none' }}
-              onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); (e.target as HTMLInputElement).value = '' }}
+              onChange={e => { const f = e.target.files?.[0]; if (f) pickFile(f); (e.target as HTMLInputElement).value = '' }}
             />
 
             <div className="flex gap-2 mt-4">
               <button
                 className="btn-primary flex-1"
                 onClick={startImport}
-                disabled={phase !== 'ready'}
+                disabled={!selectedFile}
               >
-                {phase === 'ready'
-                  ? `Import ${rowCount.toLocaleString()} rows`
-                  : 'Select a CSV file first'}
+                {selectedFile ? `Upload & Import` : 'Select a CSV file first'}
               </button>
               {selectedFile && (
                 <button
                   className="btn-secondary"
-                  onClick={() => { setSelectedFile(null); setPhase('idle'); setParsedRows([]); setRowCount(0) }}
+                  onClick={() => setSelectedFile(null)}
                   title="Clear selection"
                 >✕</button>
               )}
