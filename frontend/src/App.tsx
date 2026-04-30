@@ -9,6 +9,7 @@ import MatchTargets from './pages/MatchTargets'
 import MailingList from './pages/MailingList'
 import Campaigns from './pages/Campaigns'
 import Properties from './pages/Properties'
+import CRMCampaigns from './pages/CRMCampaigns'
 import Contacts from './pages/Contacts'
 import Deals from './pages/Deals'
 import CRMDashboard from './pages/CRMDashboard'
@@ -27,6 +28,7 @@ function PageContent() {
     case 'match-targets':    return <MatchTargets />
     case 'mailing-list':     return <MailingList />
     case 'campaigns':        return <Campaigns />
+    case 'crm-campaigns':    return <CRMCampaigns />
     case 'crm-properties':   return <Properties />
     case 'crm-contacts':     return <Contacts />
     case 'crm-deals':        return <Deals />

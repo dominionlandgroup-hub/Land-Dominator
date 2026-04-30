@@ -13,6 +13,7 @@ from fastapi import APIRouter, BackgroundTasks, Body, File, HTTPException, Query
 
 from models.crm_schemas import (
     Contact, ContactCreate, ContactUpdate,
+    CRMCampaign, CRMCampaignCreate, CRMCampaignUpdate,
     Deal, DealCreate, DealUpdate,
     ImportResult,
     Property, PropertyCreate, PropertyUpdate,
@@ -415,9 +416,73 @@ async def import_properties_batch(
     return ImportResult(imported=imported, skipped=skipped, errors=errors[:20])
 
 
+# ── CRM Campaigns ─────────────────────────────────────────────────────
+
+
+@router.get("/campaigns")
+async def list_crm_campaigns() -> list:
+    """List CRM import campaigns with their property counts."""
+    try:
+        sb = get_supabase()
+        campaigns = sb.table("crm_campaigns").select("*").order("created_at", desc=True).execute().data
+        for c in campaigns:
+            r = sb.table("crm_properties").select("*", count="exact").eq("campaign_id", c["id"]).limit(0).execute()
+            c["property_count"] = r.count or 0
+        return campaigns
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/campaigns", status_code=201)
+async def create_crm_campaign(body: CRMCampaignCreate) -> dict:
+    try:
+        sb = get_supabase()
+        data = body.model_dump(exclude_none=True)
+        data["updated_at"] = _now()
+        res = sb.table("crm_campaigns").insert(data).execute()
+        row = res.data[0]
+        row["property_count"] = 0
+        return row
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.patch("/campaigns/{campaign_id}")
+async def update_crm_campaign(campaign_id: str, body: CRMCampaignUpdate) -> dict:
+    try:
+        sb = get_supabase()
+        data = body.model_dump(exclude_none=True)
+        if not data:
+            raise HTTPException(status_code=400, detail="Nothing to update")
+        data["updated_at"] = _now()
+        res = sb.table("crm_campaigns").update(data).eq("id", campaign_id).execute()
+        if not res.data:
+            raise HTTPException(status_code=404, detail="Campaign not found")
+        return res.data[0]
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.delete("/campaigns/{campaign_id}", status_code=204)
+async def delete_crm_campaign(campaign_id: str) -> None:
+    try:
+        sb = get_supabase()
+        # Unlink properties before deleting
+        sb.table("crm_properties").update({"campaign_id": None}).eq("campaign_id", campaign_id).execute()
+        sb.table("crm_campaigns").delete().eq("id", campaign_id).execute()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ── Property Bulk Import ───────────────────────────────────────────────
+
+
 @router.post("/properties/bulk", response_model=ImportResult)
 async def bulk_insert_properties(
     rows: List[Dict[str, str]] = Body(...),
+    campaign_id: Optional[str] = Query(None),
 ) -> ImportResult:
     """Accept a chunk of pre-parsed CSV rows from frontend, map columns, insert immediately."""
     if not rows:
@@ -441,6 +506,8 @@ async def bulk_insert_properties(
                 skipped += 1
                 continue
             data["updated_at"] = now
+            if campaign_id:
+                data["campaign_id"] = campaign_id
             mapped.append(data)
         except Exception as exc:
             errors.append(f"Row {i + 1}: {exc}")
@@ -503,6 +570,7 @@ async def list_properties(
     status: Optional[str] = Query(None),
     state: Optional[str] = Query(None),
     county: Optional[str] = Query(None),
+    campaign_id: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=500),
 ) -> dict:
@@ -519,6 +587,8 @@ async def list_properties(
             q = q.eq("state", state)
         if county:
             q = q.eq("county", county)
+        if campaign_id:
+            q = q.eq("campaign_id", campaign_id)
         result = q.execute()
         return {"data": result.data, "total": result.count or 0, "page": page, "limit": limit}
     except RuntimeError as exc:

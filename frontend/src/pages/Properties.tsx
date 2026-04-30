@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react'
 import DataTable from '../components/DataTable'
 import type { Column } from '../components/DataTable'
-import type { CRMProperty, PropertyStatus } from '../types/crm'
+import type { CRMProperty, CRMCampaign, PropertyStatus } from '../types/crm'
 import Papa from 'papaparse'
-import { listProperties, createProperty, updateProperty, deleteProperty, bulkInsertRows, deleteProperties, getPropertyCounts } from '../api/crm'
+import { listProperties, createProperty, updateProperty, deleteProperty, bulkInsertRows, deleteProperties, getPropertyCounts, listCrmCampaigns, createCrmCampaign } from '../api/crm'
 import PropertyDetail from './PropertyDetail'
+import { useApp } from '../context/AppContext'
 
 type View = 'list' | 'detail' | 'new'
 
@@ -37,12 +38,15 @@ const ALL_STATUSES = ['all', 'lead', 'prospect', 'offer_sent', 'under_contract',
 // ── Main component ─────────────────────────────────────────────────────────
 
 export default function Properties() {
+  const { propertyCampaignId, setPropertyCampaignId } = useApp()
   const [view, setView] = useState<View>('list')
   const [selected, setSelected] = useState<CRMProperty | null>(null)
   const [properties, setProperties] = useState<CRMProperty[]>([])
   const [totalCount, setTotalCount] = useState(0)
   const [page, setPage] = useState(1)
   const [statusFilter, setStatusFilter] = useState('all')
+  const [campaignFilter, setCampaignFilter] = useState<string>(propertyCampaignId ?? '')
+  const [campaigns, setCampaigns] = useState<CRMCampaign[]>([])
   const [allCounts, setAllCounts] = useState<{ total: number; by_status: Record<string, number> }>({ total: 0, by_status: {} })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -51,14 +55,25 @@ export default function Properties() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
-  useEffect(() => { loadPage(1, 'all') }, [])
+  useEffect(() => {
+    const initialCampaign = propertyCampaignId ?? ''
+    setCampaignFilter(initialCampaign)
+    setPropertyCampaignId(null) // clear so next visit starts fresh
+    loadPage(1, 'all', initialCampaign)
+    listCrmCampaigns().then(setCampaigns).catch(() => {})
+  }, [])
 
-  async function loadPage(p: number, sf: string) {
+  async function loadPage(p: number, sf: string, cf = campaignFilter) {
     setLoading(true)
     setError(null)
     try {
       const [res, counts] = await Promise.all([
-        listProperties({ page: p, limit: PAGE_SIZE, status: sf === 'all' ? undefined : sf }),
+        listProperties({
+          page: p,
+          limit: PAGE_SIZE,
+          status: sf === 'all' ? undefined : sf,
+          campaign_id: cf || undefined,
+        }),
         getPropertyCounts(),
       ])
       setProperties(res.data)
@@ -76,11 +91,16 @@ export default function Properties() {
 
   function handleStatusChange(s: string) {
     setStatusFilter(s)
-    loadPage(1, s)
+    loadPage(1, s, campaignFilter)
+  }
+
+  function handleCampaignChange(cid: string) {
+    setCampaignFilter(cid)
+    loadPage(1, statusFilter, cid)
   }
 
   function goToPage(p: number) {
-    loadPage(p, statusFilter)
+    loadPage(p, statusFilter, campaignFilter)
   }
 
   async function handleBulkDelete() {
@@ -89,7 +109,7 @@ export default function Properties() {
       await deleteProperties(Array.from(selectedIds))
       setSelectedIds(new Set())
       setShowDeleteConfirm(false)
-      loadPage(page, statusFilter)
+      loadPage(page, statusFilter, campaignFilter)
     } catch {
       setError('Failed to delete selected properties.')
       setShowDeleteConfirm(false)
@@ -102,7 +122,7 @@ export default function Properties() {
     return (
       <PropertyDetail
         property={selected}
-        onBack={() => { setView('list'); setSelected(null); loadPage(page, statusFilter) }}
+        onBack={() => { setView('list'); setSelected(null); loadPage(page, statusFilter, campaignFilter) }}
         onSave={async (updates) => {
           const updated = await updateProperty(selected.id, updates)
           setSelected(updated)
@@ -111,7 +131,7 @@ export default function Properties() {
           await deleteProperty(selected.id)
           setView('list')
           setSelected(null)
-          loadPage(page, statusFilter)
+          loadPage(page, statusFilter, campaignFilter)
         }}
       />
     )
@@ -121,8 +141,8 @@ export default function Properties() {
     return (
       <PropertyDetail
         property={null}
-        onBack={() => { setView('list'); loadPage(page, statusFilter) }}
-        onSave={async (data) => { await createProperty(data); setView('list'); loadPage(1, statusFilter) }}
+        onBack={() => { setView('list'); loadPage(page, statusFilter, campaignFilter) }}
+        onSave={async (data) => { await createProperty(data); setView('list'); loadPage(1, statusFilter, campaignFilter) }}
         onDelete={() => Promise.resolve()}
       />
     )
@@ -280,6 +300,33 @@ export default function Properties() {
           ))}
         </div>
 
+        {/* Campaign filter */}
+        {campaigns.length > 0 && (
+          <div className="flex items-center gap-3 mb-4">
+            <span className="text-xs font-semibold" style={{ color: '#6B5B8A' }}>Campaign:</span>
+            <select
+              className="input-base text-sm py-1.5"
+              style={{ maxWidth: '280px' }}
+              value={campaignFilter}
+              onChange={e => handleCampaignChange(e.target.value)}
+            >
+              <option value="">All Campaigns</option>
+              {campaigns.map(c => (
+                <option key={c.id} value={c.id}>{c.name} ({(c.property_count ?? 0).toLocaleString()})</option>
+              ))}
+            </select>
+            {campaignFilter && (
+              <button
+                className="text-xs px-2 py-1 rounded"
+                style={{ color: '#5C2977', background: 'rgba(92,41,119,0.07)', border: '1px solid #D4B8E8' }}
+                onClick={() => handleCampaignChange('')}
+              >
+                Clear filter
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Status filters */}
         <div className="flex items-center gap-2 mb-5 flex-wrap">
           {ALL_STATUSES.map(s => (
@@ -368,7 +415,12 @@ export default function Properties() {
 
       {showImport && (
         <ImportModal
-          onDone={() => loadPage(1, statusFilter)}
+          campaigns={campaigns}
+          onCampaignCreated={camp => setCampaigns(prev => [camp, ...prev])}
+          onDone={() => {
+            listCrmCampaigns().then(setCampaigns).catch(() => {})
+            loadPage(1, statusFilter, campaignFilter)
+          }}
           onClose={() => setShowImport(false)}
         />
       )}
@@ -476,10 +528,21 @@ function StatusDropdown({
 
 const CHUNK_SIZE = 50
 
-function ImportModal({ onDone, onClose }: {
+function ImportModal({ campaigns, onCampaignCreated, onDone, onClose }: {
+  campaigns: CRMCampaign[]
+  onCampaignCreated: (c: CRMCampaign) => void
   onDone: () => void
   onClose: () => void
 }) {
+  // Step 1: campaign selection
+  const [step, setStep] = useState<'campaign' | 'file'>('campaign')
+  const [selectedCampaignId, setSelectedCampaignId] = useState('')
+  const [isNewCampaign, setIsNewCampaign] = useState(false)
+  const [newCampaignName, setNewCampaignName] = useState('')
+  const [creatingCampaign, setCreatingCampaign] = useState(false)
+  const [campaignError, setCampaignError] = useState('')
+
+  // Step 2: file + import
   const [dragOver, setDragOver] = useState(false)
   const [phase, setPhase] = useState<'idle' | 'parsing' | 'importing' | 'done' | 'error'>('idle')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -489,6 +552,31 @@ function ImportModal({ onDone, onClose }: {
   const [failed, setFailed] = useState(0)
   const [errorMsg, setErrorMsg] = useState('')
   const cancelledRef = useRef(false)
+
+  async function handleCampaignNext() {
+    setCampaignError('')
+    if (isNewCampaign) {
+      if (!newCampaignName.trim()) { setCampaignError('Enter a campaign name.'); return }
+      setCreatingCampaign(true)
+      try {
+        const camp = await createCrmCampaign(newCampaignName.trim())
+        onCampaignCreated(camp)
+        setSelectedCampaignId(camp.id)
+        setStep('file')
+      } catch {
+        setCampaignError('Failed to create campaign.')
+      } finally {
+        setCreatingCampaign(false)
+      }
+    } else {
+      if (!selectedCampaignId) { setCampaignError('Select a campaign or create a new one.'); return }
+      setStep('file')
+    }
+  }
+
+  const selectedCampaignName = isNewCampaign
+    ? newCampaignName
+    : campaigns.find(c => c.id === selectedCampaignId)?.name ?? ''
 
   function isCSV(f: File) { return f.name.toLowerCase().endsWith('.csv') }
   function pickFile(f: File) { if (isCSV(f)) setSelectedFile(f) }
@@ -519,7 +607,7 @@ function ImportModal({ onDone, onClose }: {
           if (cancelledRef.current) break
           const chunk = rows.slice(i, i + CHUNK_SIZE)
           try {
-            const result = await bulkInsertRows(chunk)
+            const result = await bulkInsertRows(chunk, selectedCampaignId || undefined)
             totalImported += result.imported
             totalFailed += result.skipped
           } catch (e: unknown) {
@@ -548,12 +636,72 @@ function ImportModal({ onDone, onClose }: {
       <div className="bg-white rounded-2xl p-6 w-full shadow-xl" style={{ maxWidth: '480px' }}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="section-heading">Import Pebble CSV</h2>
+          {!busy && step !== 'campaign' && (
+            <button onClick={() => setStep('campaign')} style={{ color: '#9B8AAE', fontSize: '13px' }}>← Back</button>
+          )}
           {!busy && (
             <button onClick={onClose} style={{ color: '#9B8AAE', fontSize: '18px', lineHeight: 1 }}>✕</button>
           )}
         </div>
 
-        {phase === 'done' ? (
+        {/* Step 1: Campaign selection */}
+        {step === 'campaign' ? (
+          <>
+            <p className="text-sm mb-4" style={{ color: '#6B5B8A' }}>
+              Which campaign is this import for? Properties will be tagged automatically.
+            </p>
+
+            <div className="mb-4">
+              <label className="text-xs font-semibold mb-2 block" style={{ color: '#3D2B5E' }}>Select existing campaign</label>
+              <select
+                className="input-base w-full text-sm"
+                value={isNewCampaign ? '__new__' : selectedCampaignId}
+                onChange={e => {
+                  if (e.target.value === '__new__') { setIsNewCampaign(true); setSelectedCampaignId('') }
+                  else { setIsNewCampaign(false); setSelectedCampaignId(e.target.value) }
+                }}
+              >
+                <option value="">— Choose a campaign —</option>
+                {campaigns.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+                <option value="__new__">+ Create new campaign…</option>
+              </select>
+            </div>
+
+            {isNewCampaign && (
+              <div className="mb-4">
+                <label className="text-xs font-semibold mb-2 block" style={{ color: '#3D2B5E' }}>New campaign name</label>
+                <input
+                  type="text"
+                  className="input-base w-full text-sm"
+                  placeholder="e.g. Brunswick County April 2026"
+                  value={newCampaignName}
+                  onChange={e => setNewCampaignName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleCampaignNext()}
+                  maxLength={80}
+                  autoFocus
+                />
+              </div>
+            )}
+
+            {campaignError && (
+              <p className="text-sm mb-3" style={{ color: '#B71C1C' }}>{campaignError}</p>
+            )}
+
+            <div className="flex gap-2">
+              <button className="btn-secondary flex-1" onClick={onClose}>Cancel</button>
+              <button
+                className="btn-primary flex-1"
+                onClick={handleCampaignNext}
+                disabled={creatingCampaign || (!isNewCampaign && !selectedCampaignId)}
+              >
+                {creatingCampaign ? 'Creating…' : 'Next →'}
+              </button>
+            </div>
+          </>
+
+        ) : phase === 'done' ? (
           <>
             <div className="grid grid-cols-2 gap-3 mb-4">
               <div className="p-4 rounded-xl text-center" style={{ background: '#E8F5E9' }}>
@@ -611,6 +759,14 @@ function ImportModal({ onDone, onClose }: {
 
         ) : (
           <>
+            {selectedCampaignName && (
+              <div className="mb-3 px-3 py-2 rounded-lg flex items-center gap-2" style={{ background: '#F0EBF8', border: '1px solid #D4B8E8' }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#5C2977" strokeWidth="2">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                </svg>
+                <span className="text-xs font-semibold" style={{ color: '#5C2977' }}>{selectedCampaignName}</span>
+              </div>
+            )}
             <p className="text-sm mb-4" style={{ color: '#6B5B8A' }}>
               Upload a Pebble REI export CSV. Parsed in the browser and sent in {CHUNK_SIZE}-row chunks — no timeouts possible.
             </p>

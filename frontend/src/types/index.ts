@@ -188,6 +188,7 @@ export type AppPage =
   | 'mailing-list'
   | 'campaigns'
   | 'crm-dashboard'
+  | 'crm-campaigns'
   | 'crm-properties'
   | 'crm-contacts'
   | 'crm-deals'

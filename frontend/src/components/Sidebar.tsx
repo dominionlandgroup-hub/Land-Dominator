@@ -203,6 +203,7 @@ export default function Sidebar() {
 
         <div style={{ borderTop: '1px solid rgba(213,169,64,0.1)', margin: '6px 4px' }} />
 
+        <NavBtn id="crm-campaigns"  label="Campaigns"      icon={<IconCampaign />} active={currentPage === 'crm-campaigns'}  onClick={() => nav('crm-campaigns')} />
         <NavBtn id="crm-properties" label="Properties"     icon={<IconHome />}     active={currentPage === 'crm-properties'} onClick={() => nav('crm-properties')} />
         <NavBtn id="crm-contacts"   label="Contacts"       icon={<IconPerson />}   active={currentPage === 'crm-contacts'}   onClick={() => nav('crm-contacts')} />
         <NavBtn id="crm-deals"      label="Deals Pipeline" icon={<IconPipeline />} active={currentPage === 'crm-deals'}      onClick={() => nav('crm-deals')} />

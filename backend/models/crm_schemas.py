@@ -22,6 +22,9 @@ class PropertyBase(BaseModel):
     owner_mailing_state: Optional[str] = None
     owner_mailing_zip: Optional[str] = None
 
+    # CRM Campaign link
+    campaign_id: Optional[str] = None
+
     # Campaign
     campaign_code: Optional[str] = None
     campaign_price: Optional[float] = None
@@ -158,6 +161,34 @@ class Deal(DealBase):
     id: str
     created_at: str
     updated_at: str
+
+    model_config = {"from_attributes": True}
+
+
+# ── CRM Campaigns ─────────────────────────────────────────────────────
+
+
+class CRMCampaignBase(BaseModel):
+    name: str
+    notes: Optional[str] = None
+    color: Optional[str] = None
+
+
+class CRMCampaignCreate(CRMCampaignBase):
+    pass
+
+
+class CRMCampaignUpdate(BaseModel):
+    name: Optional[str] = None
+    notes: Optional[str] = None
+    color: Optional[str] = None
+
+
+class CRMCampaign(CRMCampaignBase):
+    id: str
+    created_at: str
+    updated_at: Optional[str] = None
+    property_count: Optional[int] = None
 
     model_config = {"from_attributes": True}
 

@@ -31,6 +31,7 @@ export interface CRMProperty {
   owner_mailing_state?: string
   owner_mailing_zip?: string
 
+  campaign_id?: string
   campaign_code?: string
   campaign_price?: number
   offer_price?: number
@@ -122,4 +123,14 @@ export interface ImportResult {
   imported: number
   skipped: number
   errors: string[]
+}
+
+export interface CRMCampaign {
+  id: string
+  name: string
+  notes?: string
+  color?: string
+  created_at: string
+  updated_at?: string
+  property_count?: number
 }

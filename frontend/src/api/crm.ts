@@ -1,5 +1,5 @@
 import api from './client'
-import type { CRMProperty, CRMContact, CRMDeal, ImportResult } from '../types/crm'
+import type { CRMProperty, CRMContact, CRMDeal, CRMCampaign, ImportResult } from '../types/crm'
 
 // ── Properties ────────────────────────────────────────────────────────
 
@@ -21,6 +21,7 @@ export async function listProperties(params?: {
   status?: string
   state?: string
   county?: string
+  campaign_id?: string
 }): Promise<PropertyListResponse> {
   const { data } = await api.get<PropertyListResponse>('/crm/properties', { params })
   return data
@@ -72,9 +73,31 @@ export async function getImportJobStatus(jobId: string): Promise<ImportJobStatus
   return data
 }
 
-export async function bulkInsertRows(rows: Record<string, string>[]): Promise<ImportResult> {
-  const { data } = await api.post<ImportResult>('/crm/properties/bulk', rows)
+export async function bulkInsertRows(rows: Record<string, string>[], campaignId?: string): Promise<ImportResult> {
+  const params = campaignId ? { campaign_id: campaignId } : {}
+  const { data } = await api.post<ImportResult>('/crm/properties/bulk', rows, { params })
   return data
+}
+
+// ── CRM Campaigns ─────────────────────────────────────────────────────
+
+export async function listCrmCampaigns(): Promise<CRMCampaign[]> {
+  const { data } = await api.get<CRMCampaign[]>('/crm/campaigns')
+  return data
+}
+
+export async function createCrmCampaign(name: string, notes?: string): Promise<CRMCampaign> {
+  const { data } = await api.post<CRMCampaign>('/crm/campaigns', { name, notes })
+  return data
+}
+
+export async function updateCrmCampaign(id: string, updates: { name?: string; notes?: string }): Promise<CRMCampaign> {
+  const { data } = await api.patch<CRMCampaign>(`/crm/campaigns/${id}`, updates)
+  return data
+}
+
+export async function deleteCrmCampaign(id: string): Promise<void> {
+  await api.delete(`/crm/campaigns/${id}`)
 }
 
 export async function importPropertiesBatch(

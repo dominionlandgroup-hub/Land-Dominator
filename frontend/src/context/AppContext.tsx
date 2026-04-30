@@ -37,6 +37,10 @@ interface AppState {
   // Navigation
   currentPage: AppPage
   setCurrentPage: (p: AppPage) => void
+
+  // Properties campaign pre-filter (set by CRM Campaigns page before navigating)
+  propertyCampaignId: string | null
+  setPropertyCampaignId: (id: string | null) => void
 }
 
 const AppContext = createContext<AppState | null>(null)
@@ -49,6 +53,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [lastFilters, setLastFilters] = useState<Partial<MatchFilters> | null>(null)
   const [mailingPreview, setMailingPreview] = useState<MailingPreview | null>(null)
   const [currentPage, setCurrentPage] = useState<AppPage>('crm-dashboard')
+  const [propertyCampaignId, setPropertyCampaignId] = useState<string | null>(null)
 
   const value: AppState = {
     compsStats,
@@ -65,6 +70,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setMailingPreview: useCallback((m) => setMailingPreview(m), []),
     currentPage,
     setCurrentPage: useCallback((p) => setCurrentPage(p), []),
+    propertyCampaignId,
+    setPropertyCampaignId: useCallback((id) => setPropertyCampaignId(id), []),
   }
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
