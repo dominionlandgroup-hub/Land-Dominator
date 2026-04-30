@@ -153,7 +153,7 @@ export default function Campaigns() {
         </div>
       </div>
 
-      <div className="p-8 max-w-5xl mx-auto w-full">
+      <div className="p-6 max-w-5xl mx-auto w-full">
         {/* Save current run */}
         {matchResult ? (
           <div className="card mb-6">
@@ -243,7 +243,7 @@ export default function Campaigns() {
             <p className="text-xs mt-1">Run the matching engine and save your first campaign.</p>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {campaigns.map((camp) => (
               <CampaignCard
                 key={camp.id}
@@ -263,6 +263,7 @@ export default function Campaigns() {
                 onDeleteCancel={() => setDeletingId(null)}
                 onDuplicateSettings={() => handleDuplicateSettings(camp)}
                 onToggleCompare={() => toggleCompare(camp.id)}
+                onImportList={() => setCurrentPage('upload-comps')}
               />
             ))}
           </div>
@@ -291,6 +292,7 @@ function CampaignCard({
   onDeleteCancel,
   onDuplicateSettings,
   onToggleCompare,
+  onImportList,
 }: {
   campaign: Campaign
   formatDate: (s: string) => string
@@ -308,11 +310,11 @@ function CampaignCard({
   onDeleteCancel: () => void
   onDuplicateSettings: () => void
   onToggleCompare: () => void
+  onImportList: () => void
 }) {
   const filtersObj = ((camp.settings?.filters as Record<string, unknown> | undefined) ?? (camp.settings as Record<string, unknown> | undefined) ?? {})
   const hasFilters = Object.keys(filtersObj).length > 0
-  const filtersSummary = buildFilterSummary(filtersObj)
-  const offerSummary = buildOfferSummary(camp.stats)
+  const totalRecords = Number(camp.stats?.mailing_list_count ?? camp.stats?.matched_count ?? 0)
   const [notes, setNotes] = useState(camp.notes || '')
   const [savingNotes, setSavingNotes] = useState(false)
 
@@ -327,160 +329,135 @@ function CampaignCard({
 
   return (
     <div
-      className="rounded-xl p-5 transition-all"
+      className="rounded-xl bg-white transition-all"
       style={{
-        background: isNew ? 'rgba(45,122,79,0.04)' : '#FFFFFF',
-        border: `1px solid ${isNew ? 'rgba(45,122,79,0.2)' : isSelectedForCompare ? '#D5A940' : '#E8E0F0'}`,
+        border: `1px solid ${isNew ? 'rgba(45,122,79,0.25)' : isSelectedForCompare ? '#D5A940' : '#EDE8F5'}`,
+        boxShadow: '0 1px 4px rgba(61,26,94,0.06)',
+        borderTop: `4px solid ${isNew ? '#2D7A4F' : '#5C2977'}`,
       }}
     >
-      {/* Top row: name + actions */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex-1 min-w-0">
-          {renamingId === camp.id ? (
-            <div className="flex gap-2">
-              <input
-                type="text"
-                className="input-base text-sm py-1.5 flex-1"
-                value={renameValue}
-                onChange={(e) => onRenameChange(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') onRenameSubmit()
-                  if (e.key === 'Escape') onRenameCancel()
-                }}
-                autoFocus
-                maxLength={80}
-              />
-              <button className="btn-primary text-xs py-1 px-3" onClick={onRenameSubmit}>Save</button>
-              <button className="btn-secondary text-xs py-1 px-3" onClick={onRenameCancel}>Cancel</button>
+      {/* Card header */}
+      <div className="px-5 py-4">
+        {renamingId === camp.id ? (
+          <div className="flex gap-2">
+            <input
+              type="text"
+              className="input-base text-sm py-1.5 flex-1"
+              value={renameValue}
+              onChange={(e) => onRenameChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') onRenameSubmit()
+                if (e.key === 'Escape') onRenameCancel()
+              }}
+              autoFocus
+              maxLength={80}
+            />
+            <button className="btn-primary text-xs py-1 px-3" onClick={onRenameSubmit}>Save</button>
+            <button className="btn-secondary text-xs py-1 px-3" onClick={onRenameCancel}>Cancel</button>
+          </div>
+        ) : (
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-semibold text-sm truncate" style={{ color: '#1A0A2E' }}>{camp.name}</h3>
+                {isNew && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold"
+                    style={{ background: 'rgba(45,122,79,0.1)', color: '#2D7A4F', border: '1px solid rgba(45,122,79,0.2)' }}>
+                    NEW
+                  </span>
+                )}
+              </div>
+              <p className="text-xs mt-0.5" style={{ color: '#9B8AAE' }}>{formatDate(camp.created_at)}</p>
             </div>
-          ) : (
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="font-semibold truncate" style={{ color: '#1A0A2E' }}>{camp.name}</h3>
-              {isNew && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
-                  style={{ background: 'rgba(45,122,79,0.1)', color: '#2D7A4F', border: '1px solid rgba(45,122,79,0.2)' }}>
-                  NEW
-                </span>
-              )}
-            </div>
-          )}
-          <p className="text-xs mt-1" style={{ color: '#6B5B8A' }}>{formatDate(camp.created_at)}</p>
-          <p className="text-xs mt-2" style={{ color: '#5C2977' }}>{filtersSummary}</p>
-          <p className="text-xs mt-1" style={{ color: '#2D7A4F' }}>{offerSummary}</p>
-        </div>
-
-        {/* Stats */}
-        <div className="flex items-center gap-5 flex-none">
-          {camp.stats.mailing_list_count != null && (
-            <div className="text-center">
-              <p className="font-bold text-sm" style={{ color: '#2D7A4F' }}>
-                {Number(camp.stats.mailing_list_count).toLocaleString()}
-              </p>
-              <p className="text-xs" style={{ color: '#6B5B8A' }}>mailing</p>
-            </div>
-          )}
-          {camp.stats.matched_count != null && (
-            <div className="text-center">
-              <p className="font-bold text-sm" style={{ color: '#5C2977' }}>
-                {Number(camp.stats.matched_count).toLocaleString()}
-              </p>
-              <p className="text-xs" style={{ color: '#6B5B8A' }}>matched</p>
-            </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
-      {/* Bottom row: action buttons */}
-      {renamingId !== camp.id && (
-        <div className="flex items-center gap-2 mt-4 pt-3 flex-wrap" style={{ borderTop: '1px solid #E8E0F0' }}>
-          {camp.has_output && (
-            <a
-              href={getCampaignDownloadUrl(camp.id)}
-              download
-              className="btn-secondary text-xs no-underline"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="7 10 12 15 17 10"/>
-                <line x1="12" y1="15" x2="12" y2="3"/>
-              </svg>
-              Re-download CSV
-            </a>
-          )}
+      {/* Stat grid */}
+      <div className="grid grid-cols-3 gap-px mx-5 mb-4 rounded-lg overflow-hidden" style={{ background: '#F0EBF8' }}>
+        {[
+          { label: 'Amount Spent', value: '—' },
+          { label: 'Total Records', value: totalRecords > 0 ? totalRecords.toLocaleString() : '—' },
+          { label: 'Response Rate', value: '—' },
+        ].map((s) => (
+          <div key={s.label} className="px-4 py-3 text-center" style={{ background: '#FAFAFE' }}>
+            <p className="text-base font-bold" style={{ color: '#1A0A2E' }}>{s.value}</p>
+            <p style={{ fontSize: '10px', color: '#9B8AAE', marginTop: '2px' }}>{s.label}</p>
+          </div>
+        ))}
+      </div>
 
+      {/* Primary action buttons */}
+      <div className="flex gap-2 px-5 pb-4">
+        {camp.has_output ? (
+          <a
+            href={getCampaignDownloadUrl(camp.id)}
+            download
+            className="flex-1 text-center text-sm font-semibold rounded-lg py-2 transition-opacity hover:opacity-90 no-underline"
+            style={{ background: '#5C2977', color: '#FFFFFF' }}
+          >
+            Start Mailing
+          </a>
+        ) : (
+          <button
+            className="flex-1 text-sm font-semibold rounded-lg py-2 transition-opacity hover:opacity-90"
+            style={{ background: '#5C2977', color: '#FFFFFF', opacity: 0.4, cursor: 'not-allowed' }}
+            disabled
+          >
+            Start Mailing
+          </button>
+        )}
+        <button
+          onClick={onImportList}
+          className="flex-1 text-sm font-semibold rounded-lg py-2 transition-all hover:opacity-90"
+          style={{ background: 'transparent', color: '#5C2977', border: '1.5px solid #5C2977' }}
+        >
+          Import List
+        </button>
+      </div>
+
+      {/* Secondary actions */}
+      {renamingId !== camp.id && (
+        <div className="flex items-center gap-1.5 px-5 pb-4 flex-wrap">
           {hasFilters && (
-            <button
-              className="btn-secondary text-xs"
-              onClick={onDuplicateSettings}
-              title="Pre-fill Match Targets with this campaign's filter settings"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-              </svg>
+            <button className="btn-secondary text-xs" onClick={onDuplicateSettings}>
               Duplicate Settings
             </button>
           )}
-
-          {hasFilters && (
-            <button
-              className="btn-secondary text-xs"
-              onClick={onDuplicateSettings}
-              title="Load all saved settings and go to Match Targets"
-            >
-              Load Settings
-            </button>
-          )}
-
           <button
             className="btn-secondary text-xs"
             onClick={onToggleCompare}
             style={isSelectedForCompare ? { borderColor: '#D5A940', color: '#D5A940' } : {}}
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="18" y1="20" x2="18" y2="10"/>
-              <line x1="12" y1="20" x2="12" y2="4"/>
-              <line x1="6" y1="20" x2="6" y2="14"/>
-            </svg>
             {isSelectedForCompare ? 'Deselect' : 'Compare'}
           </button>
-
-          <button
-            className="btn-secondary text-xs"
-            onClick={onRenameStart}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-            </svg>
+          <button className="btn-secondary text-xs" onClick={onRenameStart}>
             Rename
           </button>
-
           {deletingId === camp.id ? (
             <div className="flex items-center gap-1 ml-auto">
-              <span className="text-xs" style={{ color: '#dc2626' }}>Delete permanently?</span>
+              <span className="text-xs" style={{ color: '#dc2626' }}>Delete?</span>
               <button
                 className="text-xs px-2 py-1 rounded font-medium"
-                style={{ background: 'rgba(239,68,68,0.15)', color: '#dc2626', border: '1px solid rgba(239,68,68,0.3)' }}
+                style={{ background: 'rgba(239,68,68,0.12)', color: '#dc2626', border: '1px solid rgba(239,68,68,0.3)' }}
                 onClick={onDeleteConfirm}
               >
-                Yes, delete
+                Yes
               </button>
               <button className="btn-secondary text-xs py-1 px-2" onClick={onDeleteCancel}>Cancel</button>
             </div>
           ) : (
             <button
-              className="text-xs px-2.5 py-1.5 rounded-lg ml-auto transition-colors"
-              style={{ color: '#6B5B8A' }}
+              className="text-xs px-2 py-1 rounded-lg ml-auto transition-colors"
+              style={{ color: '#9B8AAE' }}
               onClick={onDeleteStart}
               onMouseEnter={(e) => (e.currentTarget.style.color = '#dc2626')}
-              onMouseLeave={(e) => (e.currentTarget.style.color = '#6B5B8A')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = '#9B8AAE')}
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polyline points="3 6 5 6 21 6"/>
                 <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-                <path d="M10 11v6"/>
-                <path d="M14 11v6"/>
+                <path d="M10 11v6"/><path d="M14 11v6"/>
                 <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
               </svg>
             </button>
@@ -488,15 +465,16 @@ function CampaignCard({
         </div>
       )}
 
-      <div className="mt-3">
+      {/* Notes */}
+      <div className="px-5 pb-4">
         <textarea
-          className="input-base text-xs min-h-[72px]"
+          className="input-base text-xs min-h-[60px]"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           onBlur={saveNotes}
           placeholder="Add notes, e.g. Sent to printer March 15"
         />
-        {savingNotes && <p className="text-[11px] mt-1" style={{ color: '#6B5B8A' }}>Saving notes…</p>}
+        {savingNotes && <p className="text-[11px] mt-1" style={{ color: '#9B8AAE' }}>Saving…</p>}
       </div>
     </div>
   )

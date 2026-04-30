@@ -48,7 +48,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [matchResult, setMatchResult] = useState<MatchResult | null>(null)
   const [lastFilters, setLastFilters] = useState<Partial<MatchFilters> | null>(null)
   const [mailingPreview, setMailingPreview] = useState<MailingPreview | null>(null)
-  const [currentPage, setCurrentPage] = useState<AppPage>('welcome')
+  const [currentPage, setCurrentPage] = useState<AppPage>('crm-dashboard')
 
   const value: AppState = {
     compsStats,

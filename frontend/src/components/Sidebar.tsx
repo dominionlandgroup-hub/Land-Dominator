@@ -1,60 +1,34 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { useApp } from '../context/AppContext'
 import type { AppPage } from '../types'
 
-interface NavItem {
-  id: AppPage
-  label: string
-  step?: number
-  icon: React.ReactNode
-  requiresComps?: boolean
-  requiresTargets?: boolean
-  requiresMatch?: boolean
-  isCRM?: boolean
-}
+// ── Icons ───────────────────────────────────────────────────────────────────
 
-// ── SVG Icons ──────────────────────────────────────────────────────────────
-const IconUpload = () => (
+const IconDashboard = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-    <polyline points="17 8 12 3 7 8"/>
-    <line x1="12" y1="3" x2="12" y2="15"/>
+    <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+    <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
   </svg>
 )
 
-const IconChart = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="18" y1="20" x2="18" y2="10"/>
-    <line x1="12" y1="20" x2="12" y2="4"/>
-    <line x1="6" y1="20" x2="6" y2="14"/>
-    <line x1="2" y1="20" x2="22" y2="20"/>
-  </svg>
-)
-
-const IconTarget = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="10"/>
-    <circle cx="12" cy="12" r="6"/>
-    <circle cx="12" cy="12" r="2"/>
-  </svg>
-)
-
-const IconMail = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-    <polyline points="22,6 12,13 2,6"/>
-  </svg>
-)
-
-const IconFolder = () => (
+const IconCampaign = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
   </svg>
 )
 
-const IconCheck = () => (
-  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="20 6 9 17 4 12"/>
+const IconInbox = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/>
+    <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>
+  </svg>
+)
+
+const IconBoard = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2" y="3" width="6" height="18" rx="1"/>
+    <rect x="9" y="7" width="6" height="14" rx="1"/>
+    <rect x="16" y="11" width="6" height="10" rx="1"/>
   </svg>
 )
 
@@ -74,206 +48,197 @@ const IconPerson = () => (
 
 const IconPipeline = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="2" y="3" width="6" height="18" rx="1"/>
-    <rect x="9" y="7" width="6" height="14" rx="1"/>
-    <rect x="16" y="11" width="6" height="10" rx="1"/>
+    <circle cx="12" cy="5" r="3"/><line x1="12" y1="8" x2="12" y2="12"/>
+    <circle cx="5" cy="17" r="3"/><circle cx="19" cy="17" r="3"/>
+    <path d="M12 12 L5 14"/><path d="M12 12 L19 14"/>
   </svg>
 )
 
-const NAV_ITEMS: NavItem[] = [
-  { id: 'upload-comps',  label: 'Upload Comps',  step: 1, icon: <IconUpload /> },
-  { id: 'dashboard',     label: 'ZIP Dashboard', step: 2, icon: <IconChart />,  requiresComps: true },
-  { id: 'match-targets', label: 'Match Targets', step: 3, icon: <IconTarget />, requiresComps: true },
-  { id: 'mailing-list',  label: 'Mailing List',  step: 4, icon: <IconMail />,   requiresMatch: true },
-  { id: 'campaigns',     label: 'Campaigns',     step: 5, icon: <IconFolder /> },
+const IconUpload = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+    <polyline points="17 8 12 3 7 8"/>
+    <line x1="12" y1="3" x2="12" y2="15"/>
+  </svg>
+)
+
+const IconSettings = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="3"/>
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+  </svg>
+)
+
+const IconChevronDown = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="6 9 12 15 18 9"/>
+  </svg>
+)
+
+const IconChevronRight = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="9 18 15 12 9 6"/>
+  </svg>
+)
+
+// ── Constants ────────────────────────────────────────────────────────────────
+
+const SIDEBAR_BG = '#3D1A6E'
+const ACTIVE_GOLD = '#D5A940'
+const TEXT_DEFAULT = 'rgba(232,213,245,0.85)'
+const TEXT_ACTIVE = '#D5A940'
+const HOVER_BG = 'rgba(213,169,64,0.1)'
+const ACTIVE_BG = 'linear-gradient(90deg, rgba(213,169,64,0.18) 0%, transparent 100%)'
+
+const BOARD_SUBITEMS: { id: AppPage; label: string }[] = [
+  { id: 'boards-seller', label: 'Seller Deals' },
+  { id: 'boards-buyer',  label: 'Buyer Deals' },
+  { id: 'boards-inventory', label: 'Inventory' },
 ]
 
-const CRM_ITEMS: NavItem[] = [
-  { id: 'crm-properties', label: 'Properties',     icon: <IconHome />,     isCRM: true },
-  { id: 'crm-contacts',   label: 'Contacts',       icon: <IconPerson />,   isCRM: true },
-  { id: 'crm-deals',      label: 'Deals Pipeline', icon: <IconPipeline />, isCRM: true },
-]
+// ── NavButton ────────────────────────────────────────────────────────────────
+
+function NavBtn({
+  id,
+  label,
+  icon,
+  active,
+  onClick,
+  indent = false,
+  rightEl,
+}: {
+  id: AppPage
+  label: string
+  icon?: React.ReactNode
+  active: boolean
+  onClick: () => void
+  indent?: boolean
+  rightEl?: React.ReactNode
+}) {
+  const [hovered, setHovered] = React.useState(false)
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      className="w-full flex items-center gap-2.5 rounded-lg text-left transition-all duration-150"
+      style={{
+        padding: indent ? '6px 12px 6px 28px' : '7px 12px',
+        background: active ? ACTIVE_BG : hovered ? HOVER_BG : 'transparent',
+        color: active ? TEXT_ACTIVE : TEXT_DEFAULT,
+        borderLeft: active ? `3px solid ${ACTIVE_GOLD}` : '3px solid transparent',
+      }}
+    >
+      {icon && <span className="flex-none" style={{ opacity: active ? 1 : 0.75 }}>{icon}</span>}
+      <span className="text-sm font-medium flex-1 truncate">{label}</span>
+      {rightEl}
+    </button>
+  )
+}
+
+// ── Sidebar ──────────────────────────────────────────────────────────────────
 
 export default function Sidebar() {
   const { currentPage, setCurrentPage, compsStats, targetStats, matchResult } = useApp()
+  const [boardsOpen, setBoardsOpen] = useState(
+    ['boards-seller', 'boards-buyer', 'boards-inventory'].includes(currentPage)
+  )
 
-  function isUnlocked(item: NavItem): boolean {
-    if (item.requiresMatch && !matchResult) return false
-    if (item.requiresComps && !compsStats) return false
-    return true
-  }
+  const boardsActive = ['boards-seller', 'boards-buyer', 'boards-inventory'].includes(currentPage)
 
-  function getStatus(item: NavItem): 'active' | 'complete' | 'locked' | 'available' {
-    if (currentPage === item.id) return 'active'
-    if (!isUnlocked(item)) return 'locked'
-    if (item.id === 'upload-comps' && compsStats) return 'complete'
-    if (item.id === 'dashboard' && matchResult) return 'complete'
-    if (item.id === 'match-targets' && matchResult) return 'complete'
-    if (item.id === 'match-targets' && targetStats) return 'complete'
-    return 'available'
+  function nav(page: AppPage) {
+    setCurrentPage(page)
   }
 
   return (
-    <aside className="w-64 min-h-screen flex flex-col shrink-0" style={{ background: '#3D1A5C', borderRight: '1px solid #5C2977' }}>
+    <aside
+      className="w-60 min-h-screen flex flex-col shrink-0"
+      style={{ background: SIDEBAR_BG, borderRight: '1px solid rgba(92,41,119,0.4)' }}
+    >
       {/* Logo */}
-      <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(213,169,64,0.2)' }}>
+      <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(213,169,64,0.15)' }}>
         <div className="flex items-center justify-center rounded-xl px-3 py-2" style={{ background: '#fff' }}>
           <img src="/logo.png" alt="Logo" className="h-12 w-auto object-contain" />
         </div>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-3 space-y-1 overflow-y-auto">
-        {NAV_ITEMS.map((item) => {
-          const status = getStatus(item)
-          const locked = status === 'locked'
-          const active = status === 'active'
-          const complete = status === 'complete'
+      <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
 
-          return (
-            <button
-              key={item.id}
-              onClick={() => !locked && setCurrentPage(item.id)}
-              disabled={locked}
-              className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all duration-150 relative"
-              style={{
-                background: active ? 'linear-gradient(90deg, rgba(213,169,64,0.2) 0%, transparent 100%)' : 'transparent',
-                color: locked ? '#5C2977' : active ? '#D5A940' : complete ? '#E8D5F5' : '#E8D5F5',
-                cursor: locked ? 'not-allowed' : 'pointer',
-                borderLeft: active ? '3px solid #D5A940' : '3px solid transparent',
-              }}
-              onMouseEnter={(e) => {
-                if (!locked && !active) {
-                  (e.currentTarget as HTMLElement).style.background = 'rgba(213,169,64,0.12)'
-                  ;(e.currentTarget as HTMLElement).style.color = '#E8D5F5'
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!locked && !active) {
-                  (e.currentTarget as HTMLElement).style.background = 'transparent'
-                  ;(e.currentTarget as HTMLElement).style.color = complete ? '#E8D5F5' : '#E8D5F5'
-                }
-              }}
-            >
-              {/* Step indicator */}
-              <span
-                className="flex-none w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold"
-                style={{
-                  background: active
-                    ? '#D5A940'
-                    : complete
-                    ? '#D5A940'
-                    : locked
-                    ? '#2A0F42'
-                    : 'rgba(232,213,245,0.15)',
-                  color: active ? '#3D1A5C' : complete ? '#3D1A5C' : locked ? '#5C2977' : 'rgba(232,213,245,0.4)',
-                  boxShadow: active ? '0 0 0 3px rgba(213,169,64,0.35)' : 'none',
-                }}
-              >
-                {complete ? <IconCheck /> : item.step}
-              </span>
+        <NavBtn id="crm-dashboard" label="Dashboard"     icon={<IconDashboard />} active={currentPage === 'crm-dashboard'} onClick={() => nav('crm-dashboard')} />
+        <NavBtn id="campaigns"     label="Campaigns"     icon={<IconCampaign />}  active={currentPage === 'campaigns'}     onClick={() => nav('campaigns')} />
+        <NavBtn id="seller-inbox"  label="Seller Inbox"  icon={<IconInbox />}     active={currentPage === 'seller-inbox'}  onClick={() => nav('seller-inbox')} />
+        <NavBtn id="buyer-inbox"   label="Buyer Inbox"   icon={<IconInbox />}     active={currentPage === 'buyer-inbox'}   onClick={() => nav('buyer-inbox')} />
 
-              {/* Icon */}
-              <span className="flex-none opacity-80">{item.icon}</span>
+        {/* Boards accordion */}
+        <button
+          onClick={() => setBoardsOpen((v) => !v)}
+          className="w-full flex items-center gap-2.5 rounded-lg text-left transition-all duration-150"
+          style={{
+            padding: '7px 12px',
+            background: boardsActive ? ACTIVE_BG : 'transparent',
+            color: boardsActive ? TEXT_ACTIVE : TEXT_DEFAULT,
+            borderLeft: boardsActive ? `3px solid ${ACTIVE_GOLD}` : '3px solid transparent',
+          }}
+          onMouseEnter={(e) => { if (!boardsActive) (e.currentTarget as HTMLElement).style.background = HOVER_BG }}
+          onMouseLeave={(e) => { if (!boardsActive) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+        >
+          <span className="flex-none" style={{ opacity: boardsActive ? 1 : 0.75 }}><IconBoard /></span>
+          <span className="text-sm font-medium flex-1">Boards</span>
+          <span style={{ opacity: 0.5, transition: 'transform 0.15s', transform: boardsOpen ? 'rotate(0deg)' : 'rotate(-90deg)', display: 'inline-flex' }}>
+            <IconChevronDown />
+          </span>
+        </button>
 
-              {/* Label */}
-              <span className="text-sm font-medium truncate">{item.label}</span>
-            </button>
-          )
-        })}
+        {boardsOpen && BOARD_SUBITEMS.map((sub) => (
+          <NavBtn
+            key={sub.id}
+            id={sub.id}
+            label={sub.label}
+            active={currentPage === sub.id}
+            onClick={() => nav(sub.id)}
+            indent
+          />
+        ))}
 
-        {/* CRM section */}
-        <div style={{ borderTop: '1px solid rgba(213,169,64,0.15)', margin: '10px 0 6px', paddingTop: '10px' }}>
-          <div className="px-3 pb-1">
-            <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#9B8AAE' }}>
-              CRM
-            </span>
-          </div>
-          {CRM_ITEMS.map((item) => {
-            const active = currentPage === item.id
-            return (
-              <button
-                key={item.id}
-                onClick={() => setCurrentPage(item.id)}
-                className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all duration-150 relative"
-                style={{
-                  background: active ? 'linear-gradient(90deg, rgba(213,169,64,0.2) 0%, transparent 100%)' : 'transparent',
-                  color: active ? '#D5A940' : '#E8D5F5',
-                  borderLeft: active ? '3px solid #D5A940' : '3px solid transparent',
-                }}
-                onMouseEnter={(e) => {
-                  if (!active) {
-                    (e.currentTarget as HTMLElement).style.background = 'rgba(213,169,64,0.12)'
-                    ;(e.currentTarget as HTMLElement).style.color = '#E8D5F5'
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!active) {
-                    (e.currentTarget as HTMLElement).style.background = 'transparent'
-                    ;(e.currentTarget as HTMLElement).style.color = '#E8D5F5'
-                  }
-                }}
-              >
-                {/* Dot indicator */}
-                <span
-                  className="flex-none w-5 h-5 rounded-full flex items-center justify-center"
-                  style={{
-                    background: active ? '#D5A940' : 'rgba(232,213,245,0.15)',
-                    boxShadow: active ? '0 0 0 3px rgba(213,169,64,0.35)' : 'none',
-                  }}
-                >
-                  <span style={{
-                    width: '6px', height: '6px', borderRadius: '50%',
-                    background: active ? '#3D1A5C' : 'rgba(232,213,245,0.4)',
-                    display: 'block',
-                  }} />
-                </span>
+        <div style={{ borderTop: '1px solid rgba(213,169,64,0.1)', margin: '6px 4px' }} />
 
-                {/* Icon */}
-                <span className="flex-none opacity-80">{item.icon}</span>
+        <NavBtn id="crm-properties" label="Properties"     icon={<IconHome />}     active={currentPage === 'crm-properties'} onClick={() => nav('crm-properties')} />
+        <NavBtn id="crm-contacts"   label="Contacts"       icon={<IconPerson />}   active={currentPage === 'crm-contacts'}   onClick={() => nav('crm-contacts')} />
+        <NavBtn id="crm-deals"      label="Deals Pipeline" icon={<IconPipeline />} active={currentPage === 'crm-deals'}      onClick={() => nav('crm-deals')} />
 
-                {/* Label */}
-                <span className="text-sm font-medium truncate">{item.label}</span>
-              </button>
-            )
-          })}
-        </div>
+        <div style={{ borderTop: '1px solid rgba(213,169,64,0.1)', margin: '6px 4px' }} />
+
+        <NavBtn id="upload-comps" label="Upload Comps" icon={<IconUpload />}   active={currentPage === 'upload-comps' || currentPage === 'dashboard' || currentPage === 'match-targets' || currentPage === 'mailing-list'} onClick={() => nav('upload-comps')} />
+        <NavBtn id="settings"     label="Settings"     icon={<IconSettings />} active={currentPage === 'settings'}     onClick={() => nav('settings')} />
       </nav>
 
-      {/* Status footer */}
-      <div className="p-4 space-y-2" style={{ borderTop: '1px solid rgba(213,169,64,0.2)' }}>
-        <StatusRow
-          label="Comps"
-          value={compsStats ? `${compsStats.total_rows.toLocaleString()} rows` : 'Not loaded'}
-          active={!!compsStats}
-        />
-        <StatusRow
-          label="Targets"
-          value={targetStats ? `${targetStats.total_rows.toLocaleString()} rows` : 'Not loaded'}
-          active={!!targetStats}
-        />
-        <StatusRow
-          label="Match"
-          value={matchResult ? `${matchResult.matched_count.toLocaleString()} matched` : 'Not run'}
-          active={!!matchResult}
-        />
-      </div>
+      {/* Session status footer — shown only when workflow data is loaded */}
+      {(compsStats || targetStats || matchResult) && (
+        <div className="px-3 py-3 space-y-1.5" style={{ borderTop: '1px solid rgba(213,169,64,0.12)' }}>
+          <p style={{ fontSize: '9px', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(155,138,174,0.7)', marginBottom: '4px' }}>
+            Session
+          </p>
+          {compsStats && (
+            <StatusRow label="Comps" value={`${compsStats.total_rows.toLocaleString()} rows`} />
+          )}
+          {targetStats && (
+            <StatusRow label="Targets" value={`${targetStats.total_rows.toLocaleString()} rows`} />
+          )}
+          {matchResult && (
+            <StatusRow label="Match" value={`${matchResult.matched_count.toLocaleString()} matched`} />
+          )}
+        </div>
+      )}
     </aside>
   )
 }
 
-function StatusRow({ label, value, active }: { label: string; value: string; active: boolean }) {
+function StatusRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-xs" style={{ color: '#9B8AAE' }}>{label}</span>
-      <span
-        className="text-xs px-2 py-0.5 rounded-full"
-        style={
-          active
-            ? { background: 'rgba(213,169,64,0.15)', color: '#D5A940', border: '1px solid rgba(213,169,64,0.3)' }
-            : { background: '#2A0F42', color: '#9B8AAE', border: '1px solid rgba(232,213,245,0.1)' }
-        }
-      >
+      <span style={{ fontSize: '10px', color: 'rgba(155,138,174,0.7)' }}>{label}</span>
+      <span style={{ fontSize: '10px', color: ACTIVE_GOLD, background: 'rgba(213,169,64,0.1)', border: '1px solid rgba(213,169,64,0.2)', borderRadius: '9999px', padding: '1px 7px' }}>
         {value}
       </span>
     </div>

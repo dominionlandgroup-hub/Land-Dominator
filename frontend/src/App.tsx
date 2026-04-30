@@ -10,33 +10,33 @@ import Campaigns from './pages/Campaigns'
 import Properties from './pages/Properties'
 import Contacts from './pages/Contacts'
 import Deals from './pages/Deals'
+import CRMDashboard from './pages/CRMDashboard'
+import SellerInbox from './pages/SellerInbox'
+import BuyerInbox from './pages/BuyerInbox'
+import Boards from './pages/Boards'
+import SettingsPage from './pages/SettingsPage'
 
 function PageContent() {
   const { currentPage } = useApp()
 
-  if (currentPage === 'welcome') {
-    return <WelcomeScreen />
-  }
-
   switch (currentPage) {
-    case 'upload-comps':
-      return <UploadComps />
-    case 'dashboard':
-      return <Dashboard />
-    case 'match-targets':
-      return <MatchTargets />
-    case 'mailing-list':
-      return <MailingList />
-    case 'campaigns':
-      return <Campaigns />
-    case 'crm-properties':
-      return <Properties />
-    case 'crm-contacts':
-      return <Contacts />
-    case 'crm-deals':
-      return <Deals />
-    default:
-      return <WelcomeScreen />
+    case 'crm-dashboard':    return <CRMDashboard />
+    case 'upload-comps':     return <UploadComps />
+    case 'dashboard':        return <Dashboard />
+    case 'match-targets':    return <MatchTargets />
+    case 'mailing-list':     return <MailingList />
+    case 'campaigns':        return <Campaigns />
+    case 'crm-properties':   return <Properties />
+    case 'crm-contacts':     return <Contacts />
+    case 'crm-deals':        return <Deals />
+    case 'seller-inbox':     return <SellerInbox />
+    case 'buyer-inbox':      return <BuyerInbox />
+    case 'boards-seller':    return <Boards view="boards-seller" />
+    case 'boards-buyer':     return <Boards view="boards-buyer" />
+    case 'boards-inventory': return <Boards view="boards-inventory" />
+    case 'settings':         return <SettingsPage />
+    case 'welcome':          return <WelcomeScreen />
+    default:                 return <CRMDashboard />
   }
 }
 
