@@ -28,7 +28,7 @@ SYSTEM_PROMPT = (
     "data provided in this system prompt and give exact numbers."
 )
 
-MODEL = "claude-sonnet-4-20250514"
+MODEL = "claude-sonnet-4-5"
 
 
 def _get_crm_context() -> str:
