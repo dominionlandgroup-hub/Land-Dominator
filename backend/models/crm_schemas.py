@@ -76,6 +76,15 @@ class PropertyBase(BaseModel):
     property_id: Optional[str] = None
     fips: Optional[str] = None
 
+    # Parcel location (from Land Portal "parcel full address" etc.)
+    property_address: Optional[str] = None
+    property_city: Optional[str] = None
+    property_zip: Optional[str] = None
+
+    # Geo coordinates
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+
     # Meta
     tags: Optional[List[str]] = None
     additional_phones: Optional[List[str]] = None

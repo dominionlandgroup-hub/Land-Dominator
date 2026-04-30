@@ -154,6 +154,41 @@ PEBBLE_MAP: dict[str, str] = {
     "fips_code": "fips",
     "county fips": "fips",
     "county_fips": "fips",
+    "parcel fips": "fips",
+
+    # Land Portal owner columns
+    "owner name(s)": "owner_full_name",
+    "mail names": "owner_full_name",          # fallback — see _FALLBACK_COLS
+    "owner 1 first name": "owner_first_name",
+    "owner 1 last name": "owner_last_name",
+
+    # Land Portal mailing address columns
+    "mail full address": "owner_mailing_address",
+    "mail city": "owner_mailing_city",
+    "mail state": "owner_mailing_state",
+    "mail zip": "owner_mailing_zip",
+
+    # Land Portal parcel location columns
+    "parcel full address": "property_address",
+    "parcel city": "property_city",
+    "parcel state": "state",
+    "parcel county": "county",
+    "parcel zip": "property_zip",
+
+    # Land Portal acreage / estimate
+    "calc acreage": "acreage",                # fallback — see _FALLBACK_COLS
+    "tlp estimate": "lp_estimate",
+
+    # Land Portal due diligence
+    "total assessed value": "dd_back_taxes",
+    "land locked": "dd_access",
+
+    # Land Portal comp link
+    "hyperlink": "comp1_link",
+
+    # Land Portal geo
+    "latitude": "latitude",
+    "longitude": "longitude",
 
     # Campaign
     "campaign code": "campaign_code",
@@ -268,7 +303,12 @@ _FLOAT_FIELDS = {
     "comp1_price", "comp1_acreage", "comp2_price", "comp2_acreage",
     "comp3_price", "comp3_acreage", "marketing_price", "lp_estimate",
     "offer_range_high", "pricing_offer_price", "claude_ai_comp",
+    "latitude", "longitude",
 }
+
+# Columns that should only fill in a field if it is not already populated by a
+# higher-priority column (e.g. "mail names" only fires when "owner name(s)" is absent).
+_FALLBACK_COLS: set[str] = {"mail names", "calc acreage"}
 
 
 def _map_pebble_row(row: dict, col_to_field: dict[str, str]) -> dict:
@@ -280,6 +320,8 @@ def _map_pebble_row(row: dict, col_to_field: dict[str, str]) -> dict:
         field = col_to_field.get(col)
         if field is None:
             continue
+
+        is_fallback = col.strip().lower() in _FALLBACK_COLS
 
         if field == "tags":
             if value and str(value).strip():
@@ -294,11 +336,11 @@ def _map_pebble_row(row: dict, col_to_field: dict[str, str]) -> dict:
 
         if field in _FLOAT_FIELDS:
             v = _safe_float(value)
-            if v is not None:
+            if v is not None and (not is_fallback or field not in result):
                 result[field] = v
         else:
             s = _safe_str(value)
-            if s:
+            if s and (not is_fallback or field not in result):
                 result[field] = s
 
     if extra_phones:
@@ -314,6 +356,11 @@ def _map_pebble_row(row: dict, col_to_field: dict[str, str]) -> dict:
 _MIGRATION_SQL = """
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS property_id TEXT;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS fips TEXT;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS latitude NUMERIC;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS longitude NUMERIC;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS property_address TEXT;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS property_city TEXT;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS property_zip TEXT;
 """.strip()
 
 

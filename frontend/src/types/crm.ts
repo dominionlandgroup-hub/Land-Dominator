@@ -68,6 +68,11 @@ export interface CRMProperty {
 
   property_id?: string
   fips?: string
+  property_address?: string
+  property_city?: string
+  property_zip?: string
+  latitude?: number
+  longitude?: number
 
   ghl_offer_code?: string
   lp_estimate?: number
