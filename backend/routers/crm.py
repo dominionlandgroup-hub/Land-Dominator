@@ -470,34 +470,57 @@ async def bulk_delete_properties(ids: List[str] = Body(...)) -> None:
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@router.get("/properties", response_model=List[Property])
+@router.get("/properties/counts")
+async def get_property_counts() -> dict:
+    """Return total and per-status counts without loading all data."""
+    try:
+        sb = get_supabase()
+        statuses = ["lead", "prospect", "offer_sent", "under_contract",
+                    "due_diligence", "closed_won", "closed_lost", "dead"]
+        total_res = sb.table("crm_properties").select("*", count="exact").limit(0).execute()
+        total = total_res.count or 0
+        by_status: dict = {}
+        for s in statuses:
+            r = sb.table("crm_properties").select("*", count="exact").eq("status", s).limit(0).execute()
+            by_status[s] = r.count or 0
+        return {"total": total, "by_status": by_status}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.delete("/properties/all", status_code=204)
+async def delete_all_properties() -> None:
+    """Truncate the entire crm_properties table."""
+    try:
+        sb = get_supabase()
+        sb.table("crm_properties").delete().gte("created_at", "1900-01-01T00:00:00+00:00").execute()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/properties")
 async def list_properties(
     status: Optional[str] = Query(None),
     state: Optional[str] = Query(None),
     county: Optional[str] = Query(None),
-) -> list:
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=500),
+) -> dict:
     try:
         sb = get_supabase()
-        all_data: list = []
-        BATCH = 1000
-        offset = 0
-        while True:
-            q = (sb.table("crm_properties")
-                 .select("*")
-                 .order("created_at", desc=True)
-                 .range(offset, offset + BATCH - 1))
-            if status:
-                q = q.eq("status", status)
-            if state:
-                q = q.eq("state", state)
-            if county:
-                q = q.eq("county", county)
-            page = q.execute().data
-            all_data.extend(page)
-            if len(page) < BATCH:
-                break
-            offset += BATCH
-        return all_data
+        offset = (page - 1) * limit
+        q = (sb.table("crm_properties")
+             .select("*", count="exact")
+             .order("created_at", desc=True)
+             .range(offset, offset + limit - 1))
+        if status:
+            q = q.eq("status", status)
+        if state:
+            q = q.eq("state", state)
+        if county:
+            q = q.eq("county", county)
+        result = q.execute()
+        return {"data": result.data, "total": result.count or 0, "page": page, "limit": limit}
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     except Exception as exc:

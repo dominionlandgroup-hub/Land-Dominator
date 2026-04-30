@@ -3,13 +3,36 @@ import type { CRMProperty, CRMContact, CRMDeal, ImportResult } from '../types/cr
 
 // ── Properties ────────────────────────────────────────────────────────
 
-export async function listProperties(filters?: {
+export interface PropertyListResponse {
+  data: CRMProperty[]
+  total: number
+  page: number
+  limit: number
+}
+
+export interface PropertyCounts {
+  total: number
+  by_status: Record<string, number>
+}
+
+export async function listProperties(params?: {
+  page?: number
+  limit?: number
   status?: string
   state?: string
   county?: string
-}): Promise<CRMProperty[]> {
-  const { data } = await api.get<CRMProperty[]>('/crm/properties', { params: filters })
+}): Promise<PropertyListResponse> {
+  const { data } = await api.get<PropertyListResponse>('/crm/properties', { params })
   return data
+}
+
+export async function getPropertyCounts(): Promise<PropertyCounts> {
+  const { data } = await api.get<PropertyCounts>('/crm/properties/counts')
+  return data
+}
+
+export async function clearAllProperties(): Promise<void> {
+  await api.delete('/crm/properties/all')
 }
 
 export async function createProperty(body: Partial<CRMProperty>): Promise<CRMProperty> {

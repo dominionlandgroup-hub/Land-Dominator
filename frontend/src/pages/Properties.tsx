@@ -3,10 +3,12 @@ import DataTable from '../components/DataTable'
 import type { Column } from '../components/DataTable'
 import type { CRMProperty, PropertyStatus } from '../types/crm'
 import Papa from 'papaparse'
-import { listProperties, createProperty, updateProperty, deleteProperty, bulkInsertRows, deleteProperties } from '../api/crm'
+import { listProperties, createProperty, updateProperty, deleteProperty, bulkInsertRows, deleteProperties, getPropertyCounts } from '../api/crm'
 import PropertyDetail from './PropertyDetail'
 
 type View = 'list' | 'detail' | 'new'
+
+const PAGE_SIZE = 50
 
 const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   lead:           { bg: '#FFF3E0', text: '#E65100', border: '#FFCC80' },
@@ -38,22 +40,31 @@ export default function Properties() {
   const [view, setView] = useState<View>('list')
   const [selected, setSelected] = useState<CRMProperty | null>(null)
   const [properties, setProperties] = useState<CRMProperty[]>([])
+  const [totalCount, setTotalCount] = useState(0)
+  const [page, setPage] = useState(1)
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [allCounts, setAllCounts] = useState<{ total: number; by_status: Record<string, number> }>({ total: 0, by_status: {} })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showImport, setShowImport] = useState(false)
-  const [statusFilter, setStatusFilter] = useState('all')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
-  useEffect(() => { fetchProperties() }, [])
+  useEffect(() => { loadPage(1, 'all') }, [])
 
-  async function fetchProperties() {
+  async function loadPage(p: number, sf: string) {
     setLoading(true)
     setError(null)
     try {
-      const data = await listProperties()
-      setProperties(data)
+      const [res, counts] = await Promise.all([
+        listProperties({ page: p, limit: PAGE_SIZE, status: sf === 'all' ? undefined : sf }),
+        getPropertyCounts(),
+      ])
+      setProperties(res.data)
+      setTotalCount(res.total)
+      setAllCounts(counts)
+      setPage(p)
     } catch (e: unknown) {
       const err = e as { response?: { data?: { detail?: string } } }
       const detail = err?.response?.data?.detail ?? ''
@@ -63,13 +74,22 @@ export default function Properties() {
     }
   }
 
+  function handleStatusChange(s: string) {
+    setStatusFilter(s)
+    loadPage(1, s)
+  }
+
+  function goToPage(p: number) {
+    loadPage(p, statusFilter)
+  }
+
   async function handleBulkDelete() {
     setDeleting(true)
     try {
       await deleteProperties(Array.from(selectedIds))
       setSelectedIds(new Set())
       setShowDeleteConfirm(false)
-      await fetchProperties()
+      loadPage(page, statusFilter)
     } catch {
       setError('Failed to delete selected properties.')
       setShowDeleteConfirm(false)
@@ -82,7 +102,7 @@ export default function Properties() {
     return (
       <PropertyDetail
         property={selected}
-        onBack={() => { setView('list'); setSelected(null); fetchProperties() }}
+        onBack={() => { setView('list'); setSelected(null); loadPage(page, statusFilter) }}
         onSave={async (updates) => {
           const updated = await updateProperty(selected.id, updates)
           setSelected(updated)
@@ -91,7 +111,7 @@ export default function Properties() {
           await deleteProperty(selected.id)
           setView('list')
           setSelected(null)
-          fetchProperties()
+          loadPage(page, statusFilter)
         }}
       />
     )
@@ -101,23 +121,23 @@ export default function Properties() {
     return (
       <PropertyDetail
         property={null}
-        onBack={() => { setView('list'); fetchProperties() }}
-        onSave={async (data) => { await createProperty(data); setView('list'); fetchProperties() }}
+        onBack={() => { setView('list'); loadPage(page, statusFilter) }}
+        onSave={async (data) => { await createProperty(data); setView('list'); loadPage(1, statusFilter) }}
         onDelete={() => Promise.resolve()}
       />
     )
   }
 
-  const filtered = statusFilter === 'all'
-    ? properties
-    : properties.filter(p => p.status === statusFilter)
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE)
+  const firstRow = totalCount === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
+  const lastRow = Math.min(page * PAGE_SIZE, totalCount)
 
   const counts = {
-    total: properties.length,
-    lead: properties.filter(p => p.status === 'lead').length,
-    offer_sent: properties.filter(p => p.status === 'offer_sent').length,
-    under_contract: properties.filter(p => p.status === 'under_contract').length,
-    closed_won: properties.filter(p => p.status === 'closed_won').length,
+    total: allCounts.total,
+    lead: allCounts.by_status.lead ?? 0,
+    offer_sent: allCounts.by_status.offer_sent ?? 0,
+    under_contract: allCounts.by_status.under_contract ?? 0,
+    closed_won: allCounts.by_status.closed_won ?? 0,
   }
 
   const columns: Column<CRMProperty>[] = [
@@ -212,7 +232,7 @@ export default function Properties() {
       <div className="page-header">
         <div className="page-header-left">
           <h1 className="page-title">Properties</h1>
-          <p className="page-subtitle">{properties.length.toLocaleString()} properties in CRM</p>
+          <p className="page-subtitle">{allCounts.total.toLocaleString()} properties in CRM</p>
         </div>
         <div className="flex items-center gap-2">
           {selectedIds.size > 0 && (
@@ -255,7 +275,7 @@ export default function Properties() {
           ].map(s => (
             <div key={s.label} className="stat-card" style={{ '--stat-accent': s.accent } as React.CSSProperties}>
               <span className="label-caps">{s.label}</span>
-              <span className="stat-value" style={{ fontSize: '28px' }}>{s.value}</span>
+              <span className="stat-value" style={{ fontSize: '28px' }}>{s.value.toLocaleString()}</span>
             </div>
           ))}
         </div>
@@ -265,7 +285,7 @@ export default function Properties() {
           {ALL_STATUSES.map(s => (
             <button
               key={s}
-              onClick={() => setStatusFilter(s)}
+              onClick={() => handleStatusChange(s)}
               className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
               style={{
                 background: statusFilter === s ? '#5C2977' : 'rgba(92,41,119,0.06)',
@@ -276,7 +296,7 @@ export default function Properties() {
               {s === 'all' ? 'All' : STATUS_LABELS[s]}
               {s !== 'all' && (
                 <span className="ml-1.5 opacity-70">
-                  {properties.filter(p => p.status === s).length}
+                  {(allCounts.by_status[s] ?? 0).toLocaleString()}
                 </span>
               )}
             </button>
@@ -294,29 +314,61 @@ export default function Properties() {
             <div className="text-sm" style={{ color: '#6B5B8A' }}>Loading properties…</div>
           </div>
         ) : (
-          <div className="card-static">
-            <DataTable
-              columns={columns}
-              data={filtered}
-              searchable
-              searchKeys={['apn', 'county', 'state', 'owner_full_name', 'campaign_code', 'status', 'marketing_nearest_city']}
-              pageSize={50}
-              emptyMessage={statusFilter === 'all'
-                ? 'No properties yet. Import a Pebble CSV or add one manually.'
-                : `No properties with status "${STATUS_LABELS[statusFilter] || statusFilter}".`}
-              onRowClick={(row) => { setSelected(row); setView('detail') }}
-              selectable
-              selectedKeys={selectedIds}
-              getRowKey={(row) => row.id}
-              onSelectionChange={setSelectedIds}
-            />
-          </div>
+          <>
+            <div className="card-static">
+              <DataTable
+                columns={columns}
+                data={properties}
+                searchable
+                searchKeys={['apn', 'county', 'state', 'owner_full_name', 'campaign_code', 'status', 'marketing_nearest_city']}
+                pageSize={PAGE_SIZE}
+                emptyMessage={statusFilter === 'all'
+                  ? 'No properties yet. Import a Pebble CSV or add one manually.'
+                  : `No properties with status "${STATUS_LABELS[statusFilter] || statusFilter}".`}
+                onRowClick={(row) => { setSelected(row); setView('detail') }}
+                selectable
+                selectedKeys={selectedIds}
+                getRowKey={(row) => row.id}
+                onSelectionChange={setSelectedIds}
+              />
+            </div>
+
+            {/* Pagination controls */}
+            {totalCount > PAGE_SIZE && (
+              <div className="flex items-center justify-between mt-4 px-1">
+                <span className="text-sm" style={{ color: '#6B5B8A' }}>
+                  Showing {firstRow.toLocaleString()}–{lastRow.toLocaleString()} of {totalCount.toLocaleString()}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    className="px-3 py-1.5 rounded-lg text-sm font-semibold transition-all disabled:opacity-40"
+                    style={{ background: 'rgba(92,41,119,0.07)', color: '#5C2977', border: '1px solid #D4B8E8' }}
+                    onClick={() => goToPage(page - 1)}
+                    disabled={page <= 1}
+                  >
+                    ← Previous
+                  </button>
+                  <span className="text-sm font-medium px-2" style={{ color: '#3D2B5E' }}>
+                    Page {page} of {totalPages.toLocaleString()}
+                  </span>
+                  <button
+                    className="px-3 py-1.5 rounded-lg text-sm font-semibold transition-all disabled:opacity-40"
+                    style={{ background: 'rgba(92,41,119,0.07)', color: '#5C2977', border: '1px solid #D4B8E8' }}
+                    onClick={() => goToPage(page + 1)}
+                    disabled={page >= totalPages}
+                  >
+                    Next →
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
 
       {showImport && (
         <ImportModal
-          onDone={fetchProperties}
+          onDone={() => loadPage(1, statusFilter)}
           onClose={() => setShowImport(false)}
         />
       )}
