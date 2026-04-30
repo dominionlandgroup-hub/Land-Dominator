@@ -68,14 +68,14 @@ export default function AIAssistant() {
 
     try {
       const reply = await sendChatMessage(updated)
-      setMessages(prev => [...prev, { role: 'assistant', content: reply }].slice(-10))
+      setMessages(prev => [...prev, { role: 'assistant' as const, content: reply }].slice(-10))
     } catch (e: unknown) {
       const err = e as { response?: { data?: { detail?: string } } }
       const detail = err?.response?.data?.detail ?? 'Connection error. Please try again.'
       const msg = detail.includes('ANTHROPIC_API_KEY')
         ? 'The AI API key is not configured. Add ANTHROPIC_API_KEY to your Railway environment variables.'
         : detail
-      setMessages(prev => [...prev, { role: 'assistant', content: msg }].slice(-10))
+      setMessages(prev => [...prev, { role: 'assistant' as const, content: msg }].slice(-10))
     } finally {
       setLoading(false)
     }

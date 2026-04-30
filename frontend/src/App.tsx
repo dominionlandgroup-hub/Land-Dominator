@@ -18,6 +18,40 @@ import BuyerInbox from './pages/BuyerInbox'
 import Boards from './pages/Boards'
 import SettingsPage from './pages/SettingsPage'
 
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props)
+    this.state = { error: null }
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { error }
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: '40px', fontFamily: 'monospace', background: '#fff', minHeight: '100vh' }}>
+          <h2 style={{ color: '#B71C1C', marginBottom: '16px' }}>Runtime Error</h2>
+          <pre style={{ background: '#FFF0F0', padding: '16px', borderRadius: '8px', border: '1px solid #FFCDD2', whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: '#1A0A2E', fontSize: '13px' }}>
+            {this.state.error.message}
+            {'\n\n'}
+            {this.state.error.stack}
+          </pre>
+          <button
+            style={{ marginTop: '16px', padding: '8px 16px', background: '#5C2977', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}
+            onClick={() => this.setState({ error: null })}
+          >
+            Retry
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 function PageContent() {
   const { currentPage } = useApp()
 
@@ -45,14 +79,18 @@ function PageContent() {
 
 export default function App() {
   return (
-    <AppProvider>
-      <div className="flex min-h-screen" style={{ background: '#F8F6FB' }}>
-        <Sidebar />
-        <main className="flex-1 overflow-auto" style={{ background: '#F8F6FB' }}>
-          <PageContent />
-        </main>
-        <AIAssistant />
-      </div>
-    </AppProvider>
+    <ErrorBoundary>
+      <AppProvider>
+        <div className="flex min-h-screen" style={{ background: '#F8F6FB' }}>
+          <Sidebar />
+          <main className="flex-1 overflow-auto" style={{ background: '#F8F6FB' }}>
+            <ErrorBoundary>
+              <PageContent />
+            </ErrorBoundary>
+          </main>
+          <AIAssistant />
+        </div>
+      </AppProvider>
+    </ErrorBoundary>
   )
 }

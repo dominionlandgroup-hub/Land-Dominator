@@ -170,7 +170,7 @@ export default function CRMDashboard() {
               </thead>
               <tbody>
                 {campaigns.map((c, i) => {
-                  const records = Number(c.stats['mailing_list_count'] ?? c.stats['matched_count'] ?? 0)
+                  const records = Number(c.stats?.['mailing_list_count'] ?? c.stats?.['matched_count'] ?? 0)
                   return (
                     <tr
                       key={c.id}
