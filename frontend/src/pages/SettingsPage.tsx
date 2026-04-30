@@ -13,18 +13,19 @@ const SECTIONS = [
 export default function SettingsPage() {
   const [showClearConfirm, setShowClearConfirm] = useState(false)
   const [clearing, setClearing] = useState(false)
-  const [clearDone, setClearDone] = useState(false)
+  const [clearCount, setClearCount] = useState<number | null>(null)
   const [clearError, setClearError] = useState<string | null>(null)
 
   async function handleClearAll() {
     setClearing(true)
     setClearError(null)
     try {
-      await clearAllProperties()
-      setClearDone(true)
+      const result = await clearAllProperties()
+      setClearCount(result.count)
       setShowClearConfirm(false)
-    } catch {
-      setClearError('Failed to clear properties. Try again.')
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { detail?: string } } }
+      setClearError(err?.response?.data?.detail ?? 'Failed to clear properties. Try again.')
     } finally {
       setClearing(false)
     }
@@ -69,9 +70,9 @@ export default function SettingsPage() {
                 <p className="text-xs mt-0.5" style={{ color: '#9B8AAE' }}>
                   Permanently delete every property record from the CRM. This cannot be undone.
                 </p>
-                {clearDone && (
+                {clearCount !== null && (
                   <p className="text-xs mt-1 font-semibold" style={{ color: '#2E7D32' }}>
-                    All properties cleared successfully.
+                    ✓ {clearCount.toLocaleString()} {clearCount === 1 ? 'property' : 'properties'} deleted successfully.
                   </p>
                 )}
                 {clearError && (
@@ -81,7 +82,7 @@ export default function SettingsPage() {
               <button
                 className="ml-4 px-4 py-2 rounded-lg text-sm font-semibold text-white flex-none"
                 style={{ background: '#B71C1C' }}
-                onClick={() => { setClearDone(false); setClearError(null); setShowClearConfirm(true) }}
+                onClick={() => { setClearCount(null); setClearError(null); setShowClearConfirm(true) }}
               >
                 Clear All Properties
               </button>

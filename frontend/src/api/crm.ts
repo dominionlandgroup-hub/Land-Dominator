@@ -33,8 +33,9 @@ export async function getPropertyCounts(): Promise<PropertyCounts> {
   return data
 }
 
-export async function clearAllProperties(): Promise<void> {
-  await api.delete('/crm/properties/all')
+export async function clearAllProperties(): Promise<{ deleted: boolean; count: number }> {
+  const { data } = await api.delete<{ deleted: boolean; count: number }>('/crm/properties/all')
+  return data
 }
 
 export async function createProperty(body: Partial<CRMProperty>): Promise<CRMProperty> {

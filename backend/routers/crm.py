@@ -852,12 +852,34 @@ async def get_property_counts() -> dict:
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@router.delete("/properties/all", status_code=204)
-async def delete_all_properties() -> None:
-    """Truncate the entire crm_properties table."""
+@router.delete("/properties/all")
+async def delete_all_properties() -> dict:
+    """
+    Clear all properties.
+    1. Null out campaign_id to avoid FK constraint violations.
+    2. Null out any other FK columns.
+    3. Count rows, then delete.
+    """
     try:
         sb = get_supabase()
+        # Count first
+        count_res = sb.table("crm_properties").select("*", count="exact").limit(0).execute()
+        count = count_res.count or 0
+
+        # Step 1: clear all FK references so cascade constraints don't block delete
+        sb.table("crm_properties").update({
+            "campaign_id": None,
+        }).gte("created_at", "1900-01-01T00:00:00+00:00").execute()
+
+        # Step 2: clear any deals that reference these properties to avoid reverse FK
+        sb.table("crm_deals").update({
+            "property_id": None,
+        }).gte("created_at", "1900-01-01T00:00:00+00:00").execute()
+
+        # Step 3: delete
         sb.table("crm_properties").delete().gte("created_at", "1900-01-01T00:00:00+00:00").execute()
+
+        return {"deleted": True, "count": count}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
