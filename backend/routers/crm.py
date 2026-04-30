@@ -98,10 +98,12 @@ PEBBLE_MAP: dict[str, str] = {
     "owner phone": "owner_phone",
     "mobile": "owner_phone",
     "cell": "owner_phone",
-    "phone 2": "_extra_phone",
-    "phone_2": "_extra_phone",
-    "phone 3": "_extra_phone",
-    "phone_3": "_extra_phone",
+    "phone 2": "phone_2",
+    "phone_2": "phone_2",
+    "additional phone number - phone 2": "phone_2",
+    "phone 3": "phone_3",
+    "phone_3": "phone_3",
+    "additional phone number - phone 3": "phone_3",
     "additional phone": "_extra_phone",
     "additional_phone": "_extra_phone",
 
@@ -110,12 +112,22 @@ PEBBLE_MAP: dict[str, str] = {
     "owner email": "owner_email",
     "e-mail": "owner_email",
 
-    # Mailing address
+    # Mailing address — full address or line 1
     "mailing address": "owner_mailing_address",
     "mailing_address": "owner_mailing_address",
     "mail address": "owner_mailing_address",
     "mail_address": "owner_mailing_address",
     "owner address": "owner_mailing_address",
+    "owner address line 1": "owner_mailing_address",
+
+    # Mailing address parts
+    "owner address city": "owner_mailing_city",
+    "mailing city": "owner_mailing_city",
+    "owner address state": "owner_mailing_state",
+    "mailing state": "owner_mailing_state",
+    "owner address zip": "owner_mailing_zip",
+    "mailing zip": "owner_mailing_zip",
+    "owner address zip code": "owner_mailing_zip",
 
     # Campaign
     "campaign code": "campaign_code",
@@ -398,14 +410,26 @@ async def list_properties(
 ) -> list:
     try:
         sb = get_supabase()
-        q = sb.table("crm_properties").select("*").order("created_at", desc=True).limit(50000)
-        if status:
-            q = q.eq("status", status)
-        if state:
-            q = q.eq("state", state)
-        if county:
-            q = q.eq("county", county)
-        return q.execute().data
+        all_data: list = []
+        BATCH = 1000
+        offset = 0
+        while True:
+            q = (sb.table("crm_properties")
+                 .select("*")
+                 .order("created_at", desc=True)
+                 .range(offset, offset + BATCH - 1))
+            if status:
+                q = q.eq("status", status)
+            if state:
+                q = q.eq("state", state)
+            if county:
+                q = q.eq("county", county)
+            page = q.execute().data
+            all_data.extend(page)
+            if len(page) < BATCH:
+                break
+            offset += BATCH
+        return all_data
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     except Exception as exc:

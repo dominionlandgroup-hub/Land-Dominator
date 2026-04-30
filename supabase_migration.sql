@@ -160,3 +160,13 @@ CREATE INDEX IF NOT EXISTS idx_crm_properties_state   ON crm_properties (state);
 CREATE INDEX IF NOT EXISTS idx_crm_properties_county  ON crm_properties (county);
 CREATE INDEX IF NOT EXISTS idx_crm_properties_apn     ON crm_properties (apn);
 CREATE INDEX IF NOT EXISTS idx_crm_deals_stage        ON crm_deals (stage);
+
+-- ── Migration v2: Phone 2/3 + mailing address parts ─────────────
+-- Run this block in Supabase SQL Editor if upgrading an existing database.
+
+ALTER TABLE crm_properties
+  ADD COLUMN IF NOT EXISTS phone_2              TEXT,
+  ADD COLUMN IF NOT EXISTS phone_3              TEXT,
+  ADD COLUMN IF NOT EXISTS owner_mailing_city   TEXT,
+  ADD COLUMN IF NOT EXISTS owner_mailing_state  TEXT,
+  ADD COLUMN IF NOT EXISTS owner_mailing_zip    TEXT;

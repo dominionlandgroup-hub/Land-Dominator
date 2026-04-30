@@ -23,8 +23,13 @@ export interface CRMProperty {
   owner_first_name?: string
   owner_last_name?: string
   owner_phone?: string
+  phone_2?: string
+  phone_3?: string
   owner_email?: string
   owner_mailing_address?: string
+  owner_mailing_city?: string
+  owner_mailing_state?: string
+  owner_mailing_zip?: string
 
   campaign_code?: string
   campaign_price?: number

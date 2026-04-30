@@ -204,11 +204,15 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
               <Field label="First Name" field="owner_first_name" />
               <Field label="Last Name" field="owner_last_name" />
               <Field label="Primary Phone" field="owner_phone" placeholder="(555) 000-0000" />
+              <Field label="Phone 2" field="phone_2" placeholder="(555) 000-0000" />
+              <Field label="Phone 3" field="phone_3" placeholder="(555) 000-0000" />
               <Field label="Email" field="owner_email" placeholder="owner@email.com" />
               <div />
-              <div className="col-span-3">
-                <Field label="Mailing Address" field="owner_mailing_address" placeholder="123 Main St, City, State 00000" />
-              </div>
+              <div />
+              <Field label="Mailing Address (Line 1)" field="owner_mailing_address" placeholder="123 Main St" />
+              <Field label="City" field="owner_mailing_city" placeholder="Austin" />
+              <Field label="Mailing State" field="owner_mailing_state" placeholder="TX" />
+              <Field label="Zip" field="owner_mailing_zip" placeholder="78701" />
             </div>
 
             <div className="mt-4">

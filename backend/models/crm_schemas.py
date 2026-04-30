@@ -14,8 +14,13 @@ class PropertyBase(BaseModel):
     owner_first_name: Optional[str] = None
     owner_last_name: Optional[str] = None
     owner_phone: Optional[str] = None
+    phone_2: Optional[str] = None
+    phone_3: Optional[str] = None
     owner_email: Optional[str] = None
     owner_mailing_address: Optional[str] = None
+    owner_mailing_city: Optional[str] = None
+    owner_mailing_state: Optional[str] = None
+    owner_mailing_zip: Optional[str] = None
 
     # Campaign
     campaign_code: Optional[str] = None
