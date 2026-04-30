@@ -22,6 +22,7 @@ export async function listProperties(params?: {
   state?: string
   county?: string
   campaign_id?: string
+  search?: string
 }): Promise<PropertyListResponse> {
   const { data } = await api.get<PropertyListResponse>('/crm/properties', { params })
   return data
@@ -83,6 +84,11 @@ export async function bulkInsertRows(rows: Record<string, string>[], campaignId?
 
 export async function listCrmCampaigns(): Promise<CRMCampaign[]> {
   const { data } = await api.get<CRMCampaign[]>('/crm/campaigns')
+  return data
+}
+
+export async function getCrmCampaign(id: string): Promise<CRMCampaign> {
+  const { data } = await api.get<CRMCampaign>(`/crm/campaigns/${id}`)
   return data
 }
 

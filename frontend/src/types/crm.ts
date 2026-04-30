@@ -133,4 +133,5 @@ export interface CRMCampaign {
   created_at: string
   updated_at?: string
   property_count?: number
+  by_status?: Record<string, number>
 }

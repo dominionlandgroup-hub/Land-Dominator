@@ -1,15 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react'
-import DataTable from '../components/DataTable'
-import type { Column } from '../components/DataTable'
 import type { CRMProperty, CRMCampaign, PropertyStatus } from '../types/crm'
-import Papa from 'papaparse'
-import { listProperties, createProperty, updateProperty, deleteProperty, bulkInsertRows, deleteProperties, getPropertyCounts, listCrmCampaigns, createCrmCampaign } from '../api/crm'
+import {
+  listProperties, createProperty, updateProperty, deleteProperty,
+  deleteProperties, getPropertyCounts, listCrmCampaigns,
+} from '../api/crm'
 import PropertyDetail from './PropertyDetail'
 import { useApp } from '../context/AppContext'
 
 type View = 'list' | 'detail' | 'new'
 
-const PAGE_SIZE = 50
+const PAGE_SIZE = 20
 
 const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   lead:           { bg: '#FFF3E0', text: '#E65100', border: '#FFCC80' },
@@ -23,56 +23,60 @@ const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }
 }
 
 const STATUS_LABELS: Record<string, string> = {
-  lead: 'Lead',
-  prospect: 'Prospect',
-  offer_sent: 'Offer Sent',
-  under_contract: 'Under Contract',
-  due_diligence: 'Due Diligence',
-  closed_won: 'Closed Won',
-  closed_lost: 'Closed Lost',
-  dead: 'Dead',
+  lead: 'Lead', prospect: 'Prospect', offer_sent: 'Offer Sent',
+  under_contract: 'Under Contract', due_diligence: 'Due Diligence',
+  closed_won: 'Closed Won', closed_lost: 'Closed Lost', dead: 'Dead',
 }
 
 const ALL_STATUSES = ['all', 'lead', 'prospect', 'offer_sent', 'under_contract', 'due_diligence', 'closed_won', 'closed_lost']
-
-// ── Main component ─────────────────────────────────────────────────────────
 
 export default function Properties() {
   const { propertyCampaignId, setPropertyCampaignId } = useApp()
   const [view, setView] = useState<View>('list')
   const [selected, setSelected] = useState<CRMProperty | null>(null)
+
   const [properties, setProperties] = useState<CRMProperty[]>([])
   const [totalCount, setTotalCount] = useState(0)
   const [page, setPage] = useState(1)
-  const [statusFilter, setStatusFilter] = useState('all')
-  const [campaignFilter, setCampaignFilter] = useState<string>(propertyCampaignId ?? '')
-  const [campaigns, setCampaigns] = useState<CRMCampaign[]>([])
   const [allCounts, setAllCounts] = useState<{ total: number; by_status: Record<string, number> }>({ total: 0, by_status: {} })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [showImport, setShowImport] = useState(false)
+
+  // Filters
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [campaignFilter, setCampaignFilter] = useState<string>(propertyCampaignId ?? '')
+  const [countyFilter, setCountyFilter] = useState('')
+  const [stateFilter, setStateFilter] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const [campaigns, setCampaigns] = useState<CRMCampaign[]>([])
+
+  // Selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
-    const initialCampaign = propertyCampaignId ?? ''
-    setCampaignFilter(initialCampaign)
-    setPropertyCampaignId(null) // clear so next visit starts fresh
-    loadPage(1, 'all', initialCampaign)
+    const initCampaign = propertyCampaignId ?? ''
+    setCampaignFilter(initCampaign)
+    setPropertyCampaignId(null)
+    loadPage(1, 'all', initCampaign, '', '', '')
     listCrmCampaigns().then(setCampaigns).catch(() => {})
   }, [])
 
-  async function loadPage(p: number, sf: string, cf = campaignFilter) {
+  async function loadPage(p: number, sf: string, cf: string, county: string, state: string, sq: string) {
     setLoading(true)
     setError(null)
     try {
       const [res, counts] = await Promise.all([
         listProperties({
-          page: p,
-          limit: PAGE_SIZE,
+          page: p, limit: PAGE_SIZE,
           status: sf === 'all' ? undefined : sf,
           campaign_id: cf || undefined,
+          county: county.trim() || undefined,
+          state: state.trim() || undefined,
+          search: sq.trim() || undefined,
         }),
         getPropertyCounts(),
       ])
@@ -83,24 +87,40 @@ export default function Properties() {
     } catch (e: unknown) {
       const err = e as { response?: { data?: { detail?: string } } }
       const detail = err?.response?.data?.detail ?? ''
-      setError(detail && !detail.includes('SUPABASE') ? detail : 'Failed to load properties. Check that the backend API is reachable.')
-    } finally {
-      setLoading(false)
-    }
+      setError(detail && !detail.includes('SUPABASE') ? detail : 'Failed to load properties.')
+    } finally { setLoading(false) }
   }
 
-  function handleStatusChange(s: string) {
-    setStatusFilter(s)
-    loadPage(1, s, campaignFilter)
+  function reload(overrides?: { sf?: string; cf?: string; county?: string; state?: string; sq?: string; p?: number }) {
+    const sf = overrides?.sf ?? statusFilter
+    const cf = overrides?.cf ?? campaignFilter
+    const county = overrides?.county ?? countyFilter
+    const state = overrides?.state ?? stateFilter
+    const sq = overrides?.sq ?? searchQuery
+    const p = overrides?.p ?? 1
+    loadPage(p, sf, cf, county, state, sq)
   }
 
-  function handleCampaignChange(cid: string) {
-    setCampaignFilter(cid)
-    loadPage(1, statusFilter, cid)
+  function handleStatusChange(s: string) { setStatusFilter(s); setSelectedIds(new Set()); reload({ sf: s }) }
+  function handleCampaignChange(v: string) { setCampaignFilter(v); setSelectedIds(new Set()); reload({ cf: v }) }
+  function handleCountyChange(v: string) {
+    setCountyFilter(v)
+    if (searchDebounce.current) clearTimeout(searchDebounce.current)
+    searchDebounce.current = setTimeout(() => reload({ county: v }), 400)
   }
-
-  function goToPage(p: number) {
-    loadPage(p, statusFilter, campaignFilter)
+  function handleStateChange(v: string) {
+    setStateFilter(v)
+    if (searchDebounce.current) clearTimeout(searchDebounce.current)
+    searchDebounce.current = setTimeout(() => reload({ state: v }), 400)
+  }
+  function handleSearchChange(v: string) {
+    setSearchQuery(v)
+    if (searchDebounce.current) clearTimeout(searchDebounce.current)
+    searchDebounce.current = setTimeout(() => reload({ sq: v }), 400)
+  }
+  function clearFilters() {
+    setStatusFilter('all'); setCampaignFilter(''); setCountyFilter(''); setStateFilter(''); setSearchQuery('')
+    loadPage(1, 'all', '', '', '', '')
   }
 
   async function handleBulkDelete() {
@@ -109,30 +129,18 @@ export default function Properties() {
       await deleteProperties(Array.from(selectedIds))
       setSelectedIds(new Set())
       setShowDeleteConfirm(false)
-      loadPage(page, statusFilter, campaignFilter)
-    } catch {
-      setError('Failed to delete selected properties.')
-      setShowDeleteConfirm(false)
-    } finally {
-      setDeleting(false)
-    }
+      reload({ p: page })
+    } catch { setError('Failed to delete selected properties.') }
+    finally { setDeleting(false) }
   }
 
   if (view === 'detail' && selected) {
     return (
       <PropertyDetail
         property={selected}
-        onBack={() => { setView('list'); setSelected(null); loadPage(page, statusFilter, campaignFilter) }}
-        onSave={async (updates) => {
-          const updated = await updateProperty(selected.id, updates)
-          setSelected(updated)
-        }}
-        onDelete={async () => {
-          await deleteProperty(selected.id)
-          setView('list')
-          setSelected(null)
-          loadPage(page, statusFilter, campaignFilter)
-        }}
+        onBack={() => { setView('list'); setSelected(null); reload({ p: page }) }}
+        onSave={async updates => { const u = await updateProperty(selected.id, updates); setSelected(u) }}
+        onDelete={async () => { await deleteProperty(selected.id); setView('list'); setSelected(null); reload() }}
       />
     )
   }
@@ -141,8 +149,8 @@ export default function Properties() {
     return (
       <PropertyDetail
         property={null}
-        onBack={() => { setView('list'); loadPage(page, statusFilter, campaignFilter) }}
-        onSave={async (data) => { await createProperty(data); setView('list'); loadPage(1, statusFilter, campaignFilter) }}
+        onBack={() => { setView('list'); reload({ p: page }) }}
+        onSave={async data => { await createProperty(data); setView('list'); reload() }}
         onDelete={() => Promise.resolve()}
       />
     )
@@ -151,7 +159,6 @@ export default function Properties() {
   const totalPages = Math.ceil(totalCount / PAGE_SIZE)
   const firstRow = totalCount === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
   const lastRow = Math.min(page * PAGE_SIZE, totalCount)
-
   const counts = {
     total: allCounts.total,
     lead: allCounts.by_status.lead ?? 0,
@@ -159,127 +166,31 @@ export default function Properties() {
     under_contract: allCounts.by_status.under_contract ?? 0,
     closed_won: allCounts.by_status.closed_won ?? 0,
   }
-
-  const columns: Column<CRMProperty>[] = [
-    {
-      key: 'apn',
-      header: 'APN',
-      sortable: true,
-      render: (val, row) => (
-        <button
-          onClick={e => { e.stopPropagation(); setSelected(row); setView('detail') }}
-          className="text-left font-semibold hover:underline"
-          style={{ color: '#5C2977' }}
-        >
-          {val ? String(val) : <span style={{ color: '#9B8AAE' }}>—</span>}
-        </button>
-      ),
-    },
-    { key: 'county', header: 'County', sortable: true },
-    { key: 'state', header: 'State', sortable: true },
-    {
-      key: 'acreage',
-      header: 'Acres',
-      sortable: true,
-      align: 'right',
-      render: (val) => val != null ? Number(val).toFixed(2) : <span style={{ color: '#9B8AAE' }}>—</span>,
-    },
-    {
-      key: 'owner_full_name',
-      header: 'Owner',
-      sortable: true,
-      render: (val) => val ? String(val) : <span style={{ color: '#9B8AAE' }}>—</span>,
-    },
-    {
-      key: 'offer_price',
-      header: 'Offer Price',
-      sortable: true,
-      align: 'right',
-      render: (val) => val != null ? `$${Number(val).toLocaleString()}` : <span style={{ color: '#9B8AAE' }}>—</span>,
-    },
-    {
-      key: 'campaign_code',
-      header: 'Campaign',
-      sortable: true,
-      defaultHidden: true,
-      render: (val) => val ? String(val) : <span style={{ color: '#9B8AAE' }}>—</span>,
-    },
-    {
-      key: 'lp_estimate',
-      header: 'LP Estimate',
-      sortable: true,
-      align: 'right',
-      defaultHidden: true,
-      render: (val) => val != null ? `$${Number(val).toLocaleString()}` : <span style={{ color: '#9B8AAE' }}>—</span>,
-    },
-    {
-      key: 'status',
-      header: 'Status',
-      sortable: true,
-      render: (val, row) => (
-        <StatusDropdown
-          status={String(val || 'lead') as PropertyStatus}
-          onStatusChange={async (newStatus) => {
-            await updateProperty(row.id, { status: newStatus })
-            setProperties(prev => prev.map(p => p.id === row.id ? { ...p, status: newStatus } : p))
-          }}
-        />
-      ),
-    },
-    {
-      key: 'tags',
-      header: 'Tags',
-      defaultHidden: true,
-      render: (val) => {
-        const tags = (val as string[] | undefined) || []
-        return tags.length > 0 ? (
-          <div className="flex gap-1 flex-wrap">
-            {tags.slice(0, 3).map(t => (
-              <span key={t} className="px-1.5 py-0.5 rounded text-[11px]"
-                style={{ background: '#F0EBF8', color: '#5C2977' }}>{t}</span>
-            ))}
-            {tags.length > 3 && (
-              <span className="text-[11px]" style={{ color: '#9B8AAE' }}>+{tags.length - 3}</span>
-            )}
-          </div>
-        ) : <span style={{ color: '#9B8AAE' }}>—</span>
-      },
-    },
-  ]
+  const hasActiveFilter = campaignFilter || countyFilter || stateFilter || searchQuery || statusFilter !== 'all'
 
   return (
     <div className="page-content">
       <div className="page-header">
         <div className="page-header-left">
           <h1 className="page-title">Properties</h1>
-          <p className="page-subtitle">{allCounts.total.toLocaleString()} properties in CRM</p>
+          <p className="page-subtitle">{allCounts.total.toLocaleString()} total · showing {totalCount.toLocaleString()}</p>
         </div>
         <div className="flex items-center gap-2">
           {selectedIds.size > 0 && (
             <button
-              className="px-4 py-2 rounded-lg text-sm font-semibold text-white transition-colors flex items-center gap-2"
+              className="px-4 py-2 rounded-lg text-sm font-semibold text-white flex items-center gap-2"
               style={{ background: '#B71C1C' }}
               onClick={() => setShowDeleteConfirm(true)}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polyline points="3 6 5 6 21 6"/>
                 <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
                 <path d="M10 11v6M14 11v6"/>
               </svg>
-              Delete Selected ({selectedIds.size.toLocaleString()})
+              Delete ({selectedIds.size.toLocaleString()})
             </button>
           )}
-          <button className="btn-secondary" onClick={() => setShowImport(true)}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="7 10 12 15 17 10"/>
-              <line x1="12" y1="15" x2="12" y2="3"/>
-            </svg>
-            Import CSV
-          </button>
-          <button className="btn-primary" onClick={() => setView('new')}>
-            + New Property
-          </button>
+          <button className="btn-primary" onClick={() => setView('new')}>+ New Property</button>
         </div>
       </div>
 
@@ -295,39 +206,69 @@ export default function Properties() {
           ].map(s => (
             <div key={s.label} className="stat-card" style={{ '--stat-accent': s.accent } as React.CSSProperties}>
               <span className="label-caps">{s.label}</span>
-              <span className="stat-value" style={{ fontSize: '28px' }}>{s.value.toLocaleString()}</span>
+              <span className="stat-value" style={{ fontSize: '26px' }}>{s.value.toLocaleString()}</span>
             </div>
           ))}
         </div>
 
-        {/* Campaign filter */}
-        {campaigns.length > 0 && (
-          <div className="flex items-center gap-3 mb-4">
-            <span className="text-xs font-semibold" style={{ color: '#6B5B8A' }}>Campaign:</span>
+        {/* Filter bar */}
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
+          {/* Campaign */}
+          {campaigns.length > 0 && (
             <select
               className="input-base text-sm py-1.5"
-              style={{ maxWidth: '280px' }}
+              style={{ maxWidth: '220px' }}
               value={campaignFilter}
               onChange={e => handleCampaignChange(e.target.value)}
             >
               <option value="">All Campaigns</option>
-              {campaigns.map(c => (
-                <option key={c.id} value={c.id}>{c.name} ({(c.property_count ?? 0).toLocaleString()})</option>
-              ))}
+              {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
-            {campaignFilter && (
-              <button
-                className="text-xs px-2 py-1 rounded"
-                style={{ color: '#5C2977', background: 'rgba(92,41,119,0.07)', border: '1px solid #D4B8E8' }}
-                onClick={() => handleCampaignChange('')}
-              >
-                Clear filter
-              </button>
-            )}
+          )}
+          {/* County */}
+          <input
+            type="text"
+            className="input-base text-sm py-1.5"
+            style={{ maxWidth: '150px' }}
+            placeholder="County…"
+            value={countyFilter}
+            onChange={e => handleCountyChange(e.target.value)}
+          />
+          {/* State */}
+          <input
+            type="text"
+            className="input-base text-sm py-1.5"
+            style={{ maxWidth: '80px' }}
+            placeholder="State…"
+            value={stateFilter}
+            onChange={e => handleStateChange(e.target.value)}
+          />
+          {/* Search */}
+          <div className="relative">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9B8AAE" strokeWidth="2">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input
+              type="text"
+              className="input-base text-sm py-1.5 pl-8"
+              style={{ maxWidth: '220px' }}
+              placeholder="Search APN or owner…"
+              value={searchQuery}
+              onChange={e => handleSearchChange(e.target.value)}
+            />
           </div>
-        )}
+          {hasActiveFilter && (
+            <button
+              className="text-xs px-2.5 py-1.5 rounded-lg"
+              style={{ color: '#5C2977', background: 'rgba(92,41,119,0.07)', border: '1px solid #D4B8E8' }}
+              onClick={clearFilters}
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
 
-        {/* Status filters */}
+        {/* Status filter pills */}
         <div className="flex items-center gap-2 mb-5 flex-wrap">
           {ALL_STATUSES.map(s => (
             <button
@@ -342,9 +283,7 @@ export default function Properties() {
             >
               {s === 'all' ? 'All' : STATUS_LABELS[s]}
               {s !== 'all' && (
-                <span className="ml-1.5 opacity-70">
-                  {(allCounts.by_status[s] ?? 0).toLocaleString()}
-                </span>
+                <span className="ml-1.5 opacity-70">{(allCounts.by_status[s] ?? 0).toLocaleString()}</span>
               )}
             </button>
           ))}
@@ -358,91 +297,143 @@ export default function Properties() {
 
         {loading ? (
           <div className="flex items-center justify-center py-16">
-            <div className="text-sm" style={{ color: '#6B5B8A' }}>Loading properties…</div>
+            <div className="text-sm" style={{ color: '#6B5B8A' }}>Loading…</div>
           </div>
         ) : (
           <>
-            <div className="card-static">
-              <DataTable
-                columns={columns}
-                data={properties}
-                searchable
-                searchKeys={['apn', 'county', 'state', 'owner_full_name', 'campaign_code', 'status', 'marketing_nearest_city']}
-                pageSize={PAGE_SIZE}
-                emptyMessage={statusFilter === 'all'
-                  ? 'No properties yet. Import a Pebble CSV or add one manually.'
-                  : `No properties with status "${STATUS_LABELS[statusFilter] || statusFilter}".`}
-                onRowClick={(row) => { setSelected(row); setView('detail') }}
-                selectable
-                selectedKeys={selectedIds}
-                getRowKey={(row) => row.id}
-                onSelectionChange={setSelectedIds}
-              />
-            </div>
+            <div className="bg-white rounded-xl overflow-hidden" style={{ border: '1px solid #EDE8F5' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                <thead>
+                  <tr style={{ background: '#F8F5FC', borderBottom: '1px solid #EDE8F5' }}>
+                    <th style={{ width: '36px', padding: '10px 12px' }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.size === properties.length && properties.length > 0}
+                        ref={el => { if (el) el.indeterminate = selectedIds.size > 0 && selectedIds.size < properties.length }}
+                        onChange={() => {
+                          if (selectedIds.size === properties.length) setSelectedIds(new Set())
+                          else setSelectedIds(new Set(properties.map(p => p.id)))
+                        }}
+                        style={{ cursor: 'pointer' }}
+                      />
+                    </th>
+                    {['OWNER', 'APN', 'COUNTY', 'STATE', 'ACRES', 'OFFER PRICE', 'CAMPAIGN', 'STATUS'].map(h => (
+                      <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', color: '#9B8AAE' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {properties.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} style={{ padding: '48px 20px', textAlign: 'center', color: '#9B8AAE' }}>
+                        No properties match the current filters.
+                      </td>
+                    </tr>
+                  ) : properties.map((p, i) => {
+                    const isSelected = selectedIds.has(p.id)
+                    const sc = STATUS_COLORS[p.status ?? 'lead'] ?? STATUS_COLORS.lead
+                    return (
+                      <tr
+                        key={p.id}
+                        style={{
+                          borderBottom: i < properties.length - 1 ? '1px solid #F5F0FC' : 'none',
+                          background: isSelected ? 'rgba(92,41,119,0.04)' : 'transparent',
+                          cursor: 'pointer',
+                        }}
+                        onClick={() => { setSelected(p); setView('detail') }}
+                      >
+                        <td style={{ padding: '10px 12px' }} onClick={e => { e.stopPropagation(); setSelectedIds(prev => { const n = new Set(prev); n.has(p.id) ? n.delete(p.id) : n.add(p.id); return n }) }}>
+                          <input type="checkbox" checked={isSelected} onChange={() => {}} style={{ cursor: 'pointer' }} />
+                        </td>
+                        <td style={{ padding: '10px 12px', fontWeight: 500, color: '#1A0A2E', maxWidth: '180px' }}>
+                          <div className="truncate">{p.owner_full_name ?? <span style={{ color: '#C4B5D8' }}>—</span>}</div>
+                        </td>
+                        <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '11px', color: '#5C2977', fontWeight: 600 }}>
+                          {p.apn ?? <span style={{ color: '#C4B5D8', fontFamily: 'inherit', fontWeight: 400 }}>—</span>}
+                        </td>
+                        <td style={{ padding: '10px 12px', color: '#6B5B8A' }}>
+                          {p.county ?? <span style={{ color: '#C4B5D8' }}>—</span>}
+                        </td>
+                        <td style={{ padding: '10px 12px', color: '#6B5B8A' }}>
+                          {p.state ?? <span style={{ color: '#C4B5D8' }}>—</span>}
+                        </td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right', color: '#6B5B8A' }}>
+                          {p.acreage != null ? p.acreage.toFixed(2) : <span style={{ color: '#C4B5D8' }}>—</span>}
+                        </td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right', color: '#3D2B5E', fontWeight: 500 }}>
+                          {p.offer_price != null ? `$${p.offer_price.toLocaleString()}` : <span style={{ color: '#C4B5D8' }}>—</span>}
+                        </td>
+                        <td style={{ padding: '10px 12px', fontSize: '11px', color: '#9B8AAE' }}>
+                          {p.campaign_code ?? <span style={{ color: '#C4B5D8' }}>—</span>}
+                        </td>
+                        <td style={{ padding: '10px 12px' }}>
+                          <span
+                            className="px-2 py-0.5 rounded-full text-[11px] font-semibold"
+                            style={{ background: sc.bg, color: sc.text, border: `1px solid ${sc.border}` }}
+                          >
+                            {STATUS_LABELS[p.status ?? 'lead'] ?? p.status}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
 
-            {/* Pagination controls */}
-            {totalCount > PAGE_SIZE && (
-              <div className="flex items-center justify-between mt-4 px-1">
-                <span className="text-sm" style={{ color: '#6B5B8A' }}>
-                  Showing {firstRow.toLocaleString()}–{lastRow.toLocaleString()} of {totalCount.toLocaleString()}
+              {/* Pagination */}
+              <div
+                className="flex items-center justify-between px-4 py-3"
+                style={{ borderTop: '1px solid #EDE8F5', background: '#FAFAFE' }}
+              >
+                <span className="text-xs" style={{ color: '#9B8AAE' }}>
+                  {totalCount === 0 ? '0 results' : `${firstRow.toLocaleString()}–${lastRow.toLocaleString()} of ${totalCount.toLocaleString()} results`}
                 </span>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
                   <button
-                    className="px-3 py-1.5 rounded-lg text-sm font-semibold transition-all disabled:opacity-40"
-                    style={{ background: 'rgba(92,41,119,0.07)', color: '#5C2977', border: '1px solid #D4B8E8' }}
-                    onClick={() => goToPage(page - 1)}
+                    onClick={() => { setSelectedIds(new Set()); reload({ p: page - 1 }) }}
                     disabled={page <= 1}
+                    className="p-1.5 rounded disabled:opacity-30"
+                    style={{ color: '#5C2977' }}
                   >
-                    ← Previous
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <polyline points="15 18 9 12 15 6"/>
+                    </svg>
                   </button>
-                  <span className="text-sm font-medium px-2" style={{ color: '#3D2B5E' }}>
-                    Page {page} of {totalPages.toLocaleString()}
+                  <span className="text-xs px-2 font-medium" style={{ color: '#3D2B5E' }}>
+                    {page} / {totalPages || 1}
                   </span>
                   <button
-                    className="px-3 py-1.5 rounded-lg text-sm font-semibold transition-all disabled:opacity-40"
-                    style={{ background: 'rgba(92,41,119,0.07)', color: '#5C2977', border: '1px solid #D4B8E8' }}
-                    onClick={() => goToPage(page + 1)}
+                    onClick={() => { setSelectedIds(new Set()); reload({ p: page + 1 }) }}
                     disabled={page >= totalPages}
+                    className="p-1.5 rounded disabled:opacity-30"
+                    style={{ color: '#5C2977' }}
                   >
-                    Next →
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <polyline points="9 18 15 12 9 6"/>
+                    </svg>
                   </button>
                 </div>
               </div>
-            )}
+            </div>
           </>
         )}
       </div>
 
-      {showImport && (
-        <ImportModal
-          campaigns={campaigns}
-          onCampaignCreated={camp => setCampaigns(prev => [camp, ...prev])}
-          onDone={() => {
-            listCrmCampaigns().then(setCampaigns).catch(() => {})
-            loadPage(1, statusFilter, campaignFilter)
-          }}
-          onClose={() => setShowImport(false)}
-        />
-      )}
-
+      {/* Bulk delete confirm */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(26,10,46,0.55)' }}>
-          <div className="bg-white rounded-2xl p-6 w-full shadow-xl" style={{ maxWidth: '400px' }}>
-            <h2 className="section-heading mb-3">Delete {selectedIds.size.toLocaleString()} Properties?</h2>
-            <p className="text-sm mb-6" style={{ color: '#6B5B8A' }}>
-              This will permanently delete {selectedIds.size.toLocaleString()} selected {selectedIds.size === 1 ? 'property' : 'properties'}. This action cannot be undone.
-            </p>
+          <div className="bg-white rounded-2xl p-6 shadow-xl" style={{ maxWidth: '400px', width: '100%' }}>
+            <h2 className="section-heading mb-3">Delete {selectedIds.size.toLocaleString()} {selectedIds.size === 1 ? 'Property' : 'Properties'}?</h2>
+            <p className="text-sm mb-6" style={{ color: '#6B5B8A' }}>This cannot be undone.</p>
             <div className="flex gap-3">
-              <button className="btn-secondary flex-1" onClick={() => setShowDeleteConfirm(false)} disabled={deleting}>
-                Cancel
-              </button>
+              <button className="btn-secondary flex-1" onClick={() => setShowDeleteConfirm(false)} disabled={deleting}>Cancel</button>
               <button
-                className="flex-1 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-opacity disabled:opacity-60"
+                className="flex-1 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
                 style={{ background: '#B71C1C' }}
                 onClick={handleBulkDelete}
                 disabled={deleting}
               >
-                {deleting ? 'Deleting…' : `Delete ${selectedIds.size.toLocaleString()} ${selectedIds.size === 1 ? 'Property' : 'Properties'}`}
+                {deleting ? 'Deleting…' : 'Delete'}
               </button>
             </div>
           </div>
@@ -452,359 +443,5 @@ export default function Properties() {
   )
 }
 
-// ── Status inline dropdown ─────────────────────────────────────────────────
-
-function StatusDropdown({
-  status,
-  onStatusChange,
-}: {
-  status: PropertyStatus
-  onStatusChange: (s: PropertyStatus) => Promise<void>
-}) {
-  const [open, setOpen] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    function handle(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', handle)
-    return () => document.removeEventListener('mousedown', handle)
-  }, [open])
-
-  const c = STATUS_COLORS[status] || STATUS_COLORS.lead
-
-  async function select(s: PropertyStatus) {
-    if (s === status) { setOpen(false); return }
-    setSaving(true)
-    setOpen(false)
-    try { await onStatusChange(s) } finally { setSaving(false) }
-  }
-
-  return (
-    <div ref={ref} className="relative inline-block" onClick={e => e.stopPropagation()}>
-      <button
-        onClick={() => setOpen(v => !v)}
-        disabled={saving}
-        className="px-2 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1 transition-opacity hover:opacity-80"
-        style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}`, opacity: saving ? 0.6 : 1 }}
-      >
-        {saving ? '…' : STATUS_LABELS[status] || status}
-        <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-          <polyline points="6 9 12 15 18 9"/>
-        </svg>
-      </button>
-
-      {open && (
-        <div
-          className="absolute left-0 top-full mt-1 rounded-lg z-50 py-1 min-w-[140px]"
-          style={{ background: '#FFFFFF', border: '1px solid #E8E0F0', boxShadow: '0 4px 16px rgba(61,26,94,0.12)' }}
-        >
-          {(Object.keys(STATUS_LABELS) as PropertyStatus[]).map(s => {
-            const sc = STATUS_COLORS[s] || STATUS_COLORS.lead
-            return (
-              <button
-                key={s}
-                onClick={() => select(s)}
-                className="w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 transition-colors"
-                style={{ color: s === status ? sc.text : '#3D2B5E', fontWeight: s === status ? 600 : 400 }}
-                onMouseEnter={e => (e.currentTarget.style.background = '#F8F5FC')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-              >
-                <span className="w-2 h-2 rounded-full flex-none" style={{ background: sc.text }} />
-                {STATUS_LABELS[s]}
-              </button>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── Import modal ───────────────────────────────────────────────────────────
-
-const CHUNK_SIZE = 50
-
-function ImportModal({ campaigns, onCampaignCreated, onDone, onClose }: {
-  campaigns: CRMCampaign[]
-  onCampaignCreated: (c: CRMCampaign) => void
-  onDone: () => void
-  onClose: () => void
-}) {
-  // Step 1: campaign selection
-  const [step, setStep] = useState<'campaign' | 'file'>('campaign')
-  const [selectedCampaignId, setSelectedCampaignId] = useState('')
-  const [isNewCampaign, setIsNewCampaign] = useState(false)
-  const [newCampaignName, setNewCampaignName] = useState('')
-  const [creatingCampaign, setCreatingCampaign] = useState(false)
-  const [campaignError, setCampaignError] = useState('')
-
-  // Step 2: file + import
-  const [dragOver, setDragOver] = useState(false)
-  const [phase, setPhase] = useState<'idle' | 'parsing' | 'importing' | 'done' | 'error'>('idle')
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [totalRows, setTotalRows] = useState(0)
-  const [progress, setProgress] = useState(0)
-  const [imported, setImported] = useState(0)
-  const [failed, setFailed] = useState(0)
-  const [errorMsg, setErrorMsg] = useState('')
-  const cancelledRef = useRef(false)
-
-  async function handleCampaignNext() {
-    setCampaignError('')
-    if (isNewCampaign) {
-      if (!newCampaignName.trim()) { setCampaignError('Enter a campaign name.'); return }
-      setCreatingCampaign(true)
-      try {
-        const camp = await createCrmCampaign(newCampaignName.trim())
-        onCampaignCreated(camp)
-        setSelectedCampaignId(camp.id)
-        setStep('file')
-      } catch {
-        setCampaignError('Failed to create campaign.')
-      } finally {
-        setCreatingCampaign(false)
-      }
-    } else {
-      if (!selectedCampaignId) { setCampaignError('Select a campaign or create a new one.'); return }
-      setStep('file')
-    }
-  }
-
-  const selectedCampaignName = isNewCampaign
-    ? newCampaignName
-    : campaigns.find(c => c.id === selectedCampaignId)?.name ?? ''
-
-  function isCSV(f: File) { return f.name.toLowerCase().endsWith('.csv') }
-  function pickFile(f: File) { if (isCSV(f)) setSelectedFile(f) }
-
-  function startImport() {
-    if (!selectedFile) return
-    cancelledRef.current = false
-    setPhase('parsing')
-
-    Papa.parse<Record<string, string>>(selectedFile, {
-      header: true,
-      skipEmptyLines: true,
-      transformHeader: (h: string) => h.trim(),
-      complete: async (results) => {
-        const rows = results.data
-        if (rows.length === 0) {
-          setErrorMsg('CSV appears to be empty or has no data rows.')
-          setPhase('error')
-          return
-        }
-        setTotalRows(rows.length)
-        setPhase('importing')
-
-        let totalImported = 0
-        let totalFailed = 0
-
-        for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
-          if (cancelledRef.current) break
-          const chunk = rows.slice(i, i + CHUNK_SIZE)
-          try {
-            const result = await bulkInsertRows(chunk, selectedCampaignId || undefined)
-            totalImported += result.imported
-            totalFailed += result.skipped
-          } catch (e: unknown) {
-            totalFailed += chunk.length
-          }
-          setProgress(Math.min(i + CHUNK_SIZE, rows.length))
-          setImported(totalImported)
-          setFailed(totalFailed)
-        }
-
-        setPhase('done')
-        onDone()
-      },
-      error: (err: Error) => {
-        setErrorMsg(`Failed to parse CSV: ${err.message}`)
-        setPhase('error')
-      },
-    })
-  }
-
-  const pct = totalRows > 0 ? Math.round((progress / totalRows) * 100) : 0
-  const busy = phase === 'parsing' || phase === 'importing'
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(26,10,46,0.55)' }}>
-      <div className="bg-white rounded-2xl p-6 w-full shadow-xl" style={{ maxWidth: '480px' }}>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="section-heading">Import Pebble CSV</h2>
-          {!busy && step !== 'campaign' && (
-            <button onClick={() => setStep('campaign')} style={{ color: '#9B8AAE', fontSize: '13px' }}>← Back</button>
-          )}
-          {!busy && (
-            <button onClick={onClose} style={{ color: '#9B8AAE', fontSize: '18px', lineHeight: 1 }}>✕</button>
-          )}
-        </div>
-
-        {/* Step 1: Campaign selection */}
-        {step === 'campaign' ? (
-          <>
-            <p className="text-sm mb-4" style={{ color: '#6B5B8A' }}>
-              Which campaign is this import for? Properties will be tagged automatically.
-            </p>
-
-            <div className="mb-4">
-              <label className="text-xs font-semibold mb-2 block" style={{ color: '#3D2B5E' }}>Select existing campaign</label>
-              <select
-                className="input-base w-full text-sm"
-                value={isNewCampaign ? '__new__' : selectedCampaignId}
-                onChange={e => {
-                  if (e.target.value === '__new__') { setIsNewCampaign(true); setSelectedCampaignId('') }
-                  else { setIsNewCampaign(false); setSelectedCampaignId(e.target.value) }
-                }}
-              >
-                <option value="">— Choose a campaign —</option>
-                {campaigns.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-                <option value="__new__">+ Create new campaign…</option>
-              </select>
-            </div>
-
-            {isNewCampaign && (
-              <div className="mb-4">
-                <label className="text-xs font-semibold mb-2 block" style={{ color: '#3D2B5E' }}>New campaign name</label>
-                <input
-                  type="text"
-                  className="input-base w-full text-sm"
-                  placeholder="e.g. Brunswick County April 2026"
-                  value={newCampaignName}
-                  onChange={e => setNewCampaignName(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleCampaignNext()}
-                  maxLength={80}
-                  autoFocus
-                />
-              </div>
-            )}
-
-            {campaignError && (
-              <p className="text-sm mb-3" style={{ color: '#B71C1C' }}>{campaignError}</p>
-            )}
-
-            <div className="flex gap-2">
-              <button className="btn-secondary flex-1" onClick={onClose}>Cancel</button>
-              <button
-                className="btn-primary flex-1"
-                onClick={handleCampaignNext}
-                disabled={creatingCampaign || (!isNewCampaign && !selectedCampaignId)}
-              >
-                {creatingCampaign ? 'Creating…' : 'Next →'}
-              </button>
-            </div>
-          </>
-
-        ) : phase === 'done' ? (
-          <>
-            <div className="grid grid-cols-2 gap-3 mb-4">
-              <div className="p-4 rounded-xl text-center" style={{ background: '#E8F5E9' }}>
-                <div className="text-3xl font-bold" style={{ color: '#2E7D32' }}>{imported.toLocaleString()}</div>
-                <div className="text-xs mt-1 font-medium" style={{ color: '#2E7D32' }}>Imported</div>
-              </div>
-              <div className="p-4 rounded-xl text-center" style={{ background: '#FFF8E1' }}>
-                <div className="text-3xl font-bold" style={{ color: '#F57F17' }}>{failed.toLocaleString()}</div>
-                <div className="text-xs mt-1 font-medium" style={{ color: '#F57F17' }}>Failed</div>
-              </div>
-            </div>
-            <p className="text-sm mb-4 text-center" style={{ color: '#6B5B8A' }}>
-              Import complete — {imported.toLocaleString()} imported, {failed.toLocaleString()} failed.
-            </p>
-            <button className="btn-primary w-full" onClick={onClose}>Done</button>
-          </>
-
-        ) : phase === 'parsing' ? (
-          <div className="text-center py-8">
-            <div className="inline-block w-10 h-10 rounded-full mb-4" style={{
-              border: '3px solid #E8E0F0', borderTopColor: '#5C2977',
-              animation: 'spin 0.8s linear infinite',
-            }} />
-            <div className="text-base font-semibold" style={{ color: '#3D2B5E' }}>Parsing CSV…</div>
-          </div>
-
-        ) : phase === 'importing' ? (
-          <div className="text-center py-4">
-            <div className="text-lg font-semibold mb-1" style={{ color: '#3D2B5E' }}>
-              Importing {progress.toLocaleString()} of {totalRows.toLocaleString()}…
-            </div>
-            <div className="text-sm mb-4" style={{ color: '#9B8AAE' }}>
-              {imported.toLocaleString()} imported · {failed.toLocaleString()} failed
-            </div>
-            <div className="w-full rounded-full overflow-hidden mb-1" style={{ height: '8px', background: '#E8E0F0' }}>
-              <div className="h-full rounded-full transition-all duration-200"
-                style={{ width: `${pct}%`, background: '#5C2977' }} />
-            </div>
-            <div className="text-xs mb-4" style={{ color: '#9B8AAE' }}>{pct}%</div>
-            <button className="btn-secondary text-xs" onClick={() => { cancelledRef.current = true }}>
-              Cancel
-            </button>
-          </div>
-
-        ) : phase === 'error' ? (
-          <>
-            <div className="p-3 rounded-lg mb-4 text-sm" style={{ background: '#FFF0F0', color: '#B71C1C', border: '1px solid #FFCDD2' }}>
-              {errorMsg}
-            </div>
-            <div className="flex gap-2">
-              <button className="btn-secondary flex-1" onClick={() => { setPhase('idle'); setErrorMsg('') }}>Try Again</button>
-              <button className="btn-secondary flex-1" onClick={onClose}>Close</button>
-            </div>
-          </>
-
-        ) : (
-          <>
-            {selectedCampaignName && (
-              <div className="mb-3 px-3 py-2 rounded-lg flex items-center gap-2" style={{ background: '#F0EBF8', border: '1px solid #D4B8E8' }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#5C2977" strokeWidth="2">
-                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-                </svg>
-                <span className="text-xs font-semibold" style={{ color: '#5C2977' }}>{selectedCampaignName}</span>
-              </div>
-            )}
-            <p className="text-sm mb-4" style={{ color: '#6B5B8A' }}>
-              Upload a Pebble REI export CSV. Parsed in the browser and sent in {CHUNK_SIZE}-row chunks — no timeouts possible.
-            </p>
-            <div
-              className={`drop-zone${dragOver ? ' drag-over' : ''}`}
-              onDragOver={e => { e.preventDefault(); setDragOver(true) }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={e => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) pickFile(f) }}
-              onClick={() => document.getElementById('pebble-csv-input')?.click()}
-              style={{ cursor: 'pointer' }}
-            >
-              <div className="drop-zone-icon">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                  <polyline points="7 10 12 15 17 10"/>
-                  <line x1="12" y1="15" x2="12" y2="3"/>
-                </svg>
-              </div>
-              <div className="drop-zone-title">
-                {selectedFile ? selectedFile.name : 'Drop CSV here or click to browse'}
-              </div>
-              <div style={{ fontSize: '13px', color: selectedFile ? '#2E7D32' : '#9B8AAE', marginTop: '6px', fontWeight: selectedFile ? 600 : 400 }}>
-                {selectedFile ? `${(selectedFile.size / 1024 / 1024).toFixed(1)} MB — ready` : '.csv files only'}
-              </div>
-            </div>
-            <input id="pebble-csv-input" type="file" accept=".csv" style={{ display: 'none' }}
-              onChange={e => { const f = e.target.files?.[0]; if (f) pickFile(f); (e.target as HTMLInputElement).value = '' }} />
-            <div className="flex gap-2 mt-4">
-              <button className="btn-primary flex-1" onClick={startImport} disabled={!selectedFile}>
-                {selectedFile ? 'Parse & Import' : 'Select a CSV file first'}
-              </button>
-              {selectedFile && (
-                <button className="btn-secondary" onClick={() => setSelectedFile(null)} title="Clear">✕</button>
-              )}
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  )
-}
+// ── Status badge (standalone, used if needed) ──────────────────────────────
+export { STATUS_COLORS, STATUS_LABELS }

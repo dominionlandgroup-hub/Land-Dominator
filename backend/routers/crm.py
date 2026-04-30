@@ -447,6 +447,31 @@ async def create_crm_campaign(body: CRMCampaignCreate) -> dict:
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+@router.get("/campaigns/{campaign_id}")
+async def get_crm_campaign(campaign_id: str) -> dict:
+    """Return a single campaign with detailed per-status property counts."""
+    try:
+        sb = get_supabase()
+        res = sb.table("crm_campaigns").select("*").eq("id", campaign_id).execute()
+        if not res.data:
+            raise HTTPException(status_code=404, detail="Campaign not found")
+        c = res.data[0]
+        total_res = sb.table("crm_properties").select("*", count="exact").eq("campaign_id", campaign_id).limit(0).execute()
+        c["property_count"] = total_res.count or 0
+        statuses = ["lead", "prospect", "offer_sent", "under_contract",
+                    "due_diligence", "closed_won", "closed_lost", "dead"]
+        by_status: dict = {}
+        for s in statuses:
+            r = sb.table("crm_properties").select("*", count="exact").eq("campaign_id", campaign_id).eq("status", s).limit(0).execute()
+            by_status[s] = r.count or 0
+        c["by_status"] = by_status
+        return c
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 @router.patch("/campaigns/{campaign_id}")
 async def update_crm_campaign(campaign_id: str, body: CRMCampaignUpdate) -> dict:
     try:
@@ -571,8 +596,9 @@ async def list_properties(
     state: Optional[str] = Query(None),
     county: Optional[str] = Query(None),
     campaign_id: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
-    limit: int = Query(50, ge=1, le=500),
+    limit: int = Query(20, ge=1, le=500),
 ) -> dict:
     try:
         sb = get_supabase()
@@ -586,9 +612,11 @@ async def list_properties(
         if state:
             q = q.eq("state", state)
         if county:
-            q = q.eq("county", county)
+            q = q.ilike("county", f"%{county}%")
         if campaign_id:
             q = q.eq("campaign_id", campaign_id)
+        if search:
+            q = q.or_(f"owner_full_name.ilike.%{search}%,apn.ilike.%{search}%")
         result = q.execute()
         return {"data": result.data, "total": result.count or 0, "page": page, "limit": limit}
     except RuntimeError as exc:
