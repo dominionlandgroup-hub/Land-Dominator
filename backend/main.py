@@ -27,7 +27,8 @@ default_origins = (
     "http://localhost:5173,"
     "https://frontend-production-47175.up.railway.app,"
     "https://frontend-production-1224.up.railway.app,"
-    "https://land-parcel-tool-production.up.railway.app"
+    "https://land-parcel-tool-production.up.railway.app,"
+    "https://land-dominator-production.up.railway.app"
 )
 origins = os.getenv("CORS_ORIGINS", default_origins).split(",")
 # Also allow all railway.app subdomains
@@ -60,7 +61,13 @@ async def health_check() -> JSONResponse:
 
 @app.get("/api/health")
 async def health_check_api() -> JSONResponse:
-    return JSONResponse({"status": "ok"})
+    from services.supabase_client import get_supabase
+    try:
+        get_supabase().table("crm_properties").select("id").limit(1).execute()
+        supabase_status = "connected"
+    except Exception:
+        supabase_status = "error"
+    return JSONResponse({"status": "ok", "supabase": supabase_status})
 
 
 @app.get("/")
