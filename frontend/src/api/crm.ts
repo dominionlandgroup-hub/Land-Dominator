@@ -49,6 +49,11 @@ export async function getImportJobStatus(jobId: string): Promise<ImportJobStatus
   return data
 }
 
+export async function bulkInsertRows(rows: Record<string, string>[]): Promise<ImportResult> {
+  const { data } = await api.post<ImportResult>('/crm/properties/bulk', rows)
+  return data
+}
+
 export async function importPropertiesBatch(
   rows: Record<string, string>[],
 ): Promise<ImportResult> {

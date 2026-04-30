@@ -26,6 +26,7 @@ default_origins = (
     "http://localhost:3000,"
     "http://localhost:5173,"
     "https://frontend-production-47175.up.railway.app,"
+    "https://frontend-production-1224.up.railway.app,"
     "https://land-parcel-tool-production.up.railway.app"
 )
 origins = os.getenv("CORS_ORIGINS", default_origins).split(",")
@@ -54,7 +55,12 @@ app.include_router(ai_chat.router)
 # ── Health / Root ─────────────────────────────────────────────────────
 @app.get("/health")
 async def health_check() -> JSONResponse:
-    return JSONResponse({"status": "healthy", "service": "Land Parcel Analysis Tool API"})
+    return JSONResponse({"status": "ok"})
+
+
+@app.get("/api/health")
+async def health_check_api() -> JSONResponse:
+    return JSONResponse({"status": "ok"})
 
 
 @app.get("/")

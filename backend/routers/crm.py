@@ -415,6 +415,49 @@ async def import_properties_batch(
     return ImportResult(imported=imported, skipped=skipped, errors=errors[:20])
 
 
+@router.post("/properties/bulk", response_model=ImportResult)
+async def bulk_insert_properties(
+    rows: List[Dict[str, str]] = Body(...),
+) -> ImportResult:
+    """Accept a chunk of pre-parsed CSV rows from frontend, map columns, insert immediately."""
+    if not rows:
+        return ImportResult(imported=0, skipped=0, errors=[])
+
+    col_to_field: dict[str, str] = {}
+    for raw_col in rows[0].keys():
+        canonical = raw_col.strip().lower()
+        if canonical in PEBBLE_MAP:
+            col_to_field[raw_col] = PEBBLE_MAP[canonical]
+
+    mapped: list[dict] = []
+    skipped = 0
+    errors: list[str] = []
+    now = _now()
+
+    for i, raw_row in enumerate(rows):
+        try:
+            data = _map_pebble_row(raw_row, col_to_field)
+            if not data:
+                skipped += 1
+                continue
+            data["updated_at"] = now
+            mapped.append(data)
+        except Exception as exc:
+            errors.append(f"Row {i + 1}: {exc}")
+            skipped += 1
+
+    imported = 0
+    if mapped:
+        try:
+            sb = get_supabase()
+            sb.table("crm_properties").insert(mapped).execute()
+            imported = len(mapped)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc))
+
+    return ImportResult(imported=imported, skipped=skipped, errors=errors[:5])
+
+
 @router.post("/properties/bulk-delete", status_code=204)
 async def bulk_delete_properties(ids: List[str] = Body(...)) -> None:
     """Delete multiple properties by ID."""
