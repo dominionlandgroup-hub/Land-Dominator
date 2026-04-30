@@ -52,7 +52,8 @@ export default function Properties() {
       setProperties(data)
     } catch (e: unknown) {
       const err = e as { response?: { data?: { detail?: string } } }
-      setError(err?.response?.data?.detail ?? 'Failed to load properties. Check that SUPABASE_URL and SUPABASE_KEY are configured.')
+      const detail = err?.response?.data?.detail ?? ''
+      setError(detail && !detail.includes('SUPABASE') ? detail : 'Failed to load properties. Check that the backend API is reachable.')
     } finally {
       setLoading(false)
     }
@@ -311,9 +312,24 @@ function ImportModal({
   onClose: () => void
 }) {
   const [dragOver, setDragOver] = useState(false)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
 
-  function handleFile(f: File) {
-    if (f.name.toLowerCase().endsWith('.csv')) onImport(f)
+  function isCSV(f: File) { return f.name.toLowerCase().endsWith('.csv') }
+
+  function handleDrop(f: File) {
+    if (!isCSV(f)) return
+    setSelectedFile(f)
+    onImport(f)  // auto-import on drop
+  }
+
+  function handleBrowse(f: File) {
+    if (!isCSV(f)) return
+    setSelectedFile(f)
+    // don't auto-import — user clicks the Import button
+  }
+
+  function triggerImport() {
+    if (selectedFile && !importing) onImport(selectedFile)
   }
 
   return (
@@ -351,12 +367,15 @@ function ImportModal({
               Upload a Pebble REI property export CSV (supports 81-column format).
               Column headers are matched automatically — case-insensitive.
             </p>
+
+            {/* Drop zone */}
             <div
               className={`drop-zone${dragOver ? ' drag-over' : ''}`}
               onDragOver={e => { e.preventDefault(); setDragOver(true) }}
               onDragLeave={() => setDragOver(false)}
-              onDrop={e => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f) }}
-              onClick={() => document.getElementById('pebble-csv-input')?.click()}
+              onDrop={e => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) handleDrop(f) }}
+              onClick={() => !importing && document.getElementById('pebble-csv-input')?.click()}
+              style={{ cursor: importing ? 'not-allowed' : 'pointer' }}
             >
               <div className="drop-zone-icon">
                 {importing
@@ -364,16 +383,43 @@ function ImportModal({
                   : <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                 }
               </div>
-              <div className="drop-zone-title">{importing ? 'Importing…' : 'Drop Pebble CSV here'}</div>
-              <div style={{ fontSize: '13px', color: '#9B8AAE', marginTop: '6px' }}>or click to browse · .csv files only</div>
+              <div className="drop-zone-title">
+                {importing ? 'Importing…' : selectedFile ? selectedFile.name : 'Drop CSV here or click to browse'}
+              </div>
+              {!importing && (
+                <div style={{ fontSize: '13px', color: '#9B8AAE', marginTop: '6px' }}>
+                  {selectedFile ? 'Click below to import, or drop a new file' : '.csv files only'}
+                </div>
+              )}
             </div>
+
             <input
               id="pebble-csv-input"
               type="file"
               accept=".csv"
               style={{ display: 'none' }}
-              onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f) }}
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleBrowse(f); (e.target as HTMLInputElement).value = '' }}
             />
+
+            {/* Import button */}
+            <div className="flex gap-2 mt-4">
+              <button
+                className="btn-primary flex-1"
+                onClick={triggerImport}
+                disabled={!selectedFile || importing}
+              >
+                {importing ? 'Importing…' : selectedFile ? `Import "${selectedFile.name}"` : 'Select a CSV file first'}
+              </button>
+              {selectedFile && !importing && (
+                <button
+                  className="btn-secondary"
+                  onClick={() => setSelectedFile(null)}
+                  title="Clear selection"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
           </>
         )}
       </div>

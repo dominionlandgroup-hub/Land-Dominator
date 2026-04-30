@@ -37,7 +37,8 @@ export default function Deals() {
       setDeals(data)
     } catch (e: unknown) {
       const err = e as { response?: { data?: { detail?: string } } }
-      setError(err?.response?.data?.detail ?? 'Failed to load deals. Check that SUPABASE_URL and SUPABASE_KEY are configured.')
+      const detail = err?.response?.data?.detail ?? ''
+      setError(detail && !detail.includes('SUPABASE') ? detail : 'Failed to load deals. Check that the backend API is reachable.')
     } finally {
       setLoading(false)
     }
