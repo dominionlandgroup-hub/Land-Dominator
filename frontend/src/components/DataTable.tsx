@@ -17,7 +17,8 @@ interface Props<T extends object> {
   emptyMessage?: string
   className?: string
   searchable?: boolean
-  searchKeys?: string[]  // which keys to search; defaults to all string/number fields
+  searchKeys?: string[]
+  onRowClick?: (row: T) => void
 }
 
 type SortDir = 'asc' | 'desc'
@@ -30,6 +31,7 @@ export default function DataTable<T extends object>({
   className = '',
   searchable = false,
   searchKeys,
+  onRowClick,
 }: Props<T>) {
   const [sortKey, setSortKey] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<SortDir>('desc')
@@ -227,7 +229,8 @@ export default function DataTable<T extends object>({
                 {pageData.map((row, i) => (
                   <tr
                     key={i}
-                    className="table-row-hover"
+                    onClick={onRowClick ? () => onRowClick(row) : undefined}
+                    className={`table-row-hover${onRowClick ? ' cursor-pointer' : ''}`}
                     style={{ borderBottom: '1px solid rgba(92,41,119,0.06)', background: i % 2 === 1 ? '#FDFBFF' : undefined }}
                   >
                     {visibleCols.map((col) => {

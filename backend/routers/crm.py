@@ -46,22 +46,28 @@ def _safe_str(val: object) -> Optional[str]:
 # ── Pebble CSV column → internal field mapping ────────────────────────
 
 PEBBLE_MAP: dict[str, str] = {
-    # APN
+    # APN — including Pebble's verbose column name
     "apn": "apn",
     "parcel number": "apn",
     "parcel_number": "apn",
     "assessor parcel number": "apn",
     "assessor_parcel_number": "apn",
+    "property assessor's parcel number (apn)": "apn",
+    "property assessors parcel number (apn)": "apn",
+    "property assessor parcel number": "apn",
     "parcel id": "apn",
     "parcel_id": "apn",
     "tax id": "apn",
 
-    # Location
+    # Location — including Pebble "County name" / "County state" variants
     "county": "county",
+    "county name": "county",
     "state": "state",
+    "county state": "state",
 
-    # Acreage
+    # Acreage — including Pebble "Property acreage"
     "acreage": "acreage",
+    "property acreage": "acreage",
     "lot size (acres)": "acreage",
     "lot_size_acres": "acreage",
     "lot acres": "acreage",
@@ -331,7 +337,7 @@ async def list_properties(
 ) -> list:
     try:
         sb = get_supabase()
-        q = sb.table("crm_properties").select("*").order("created_at", desc=True)
+        q = sb.table("crm_properties").select("*").order("created_at", desc=True).limit(10000)
         if status:
             q = q.eq("status", status)
         if state:

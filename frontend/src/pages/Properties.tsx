@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import DataTable from '../components/DataTable'
 import type { Column } from '../components/DataTable'
-import type { CRMProperty, ImportResult } from '../types/crm'
+import type { CRMProperty, PropertyStatus, ImportResult } from '../types/crm'
 import { listProperties, createProperty, updateProperty, deleteProperty, importProperties } from '../api/crm'
 import PropertyDetail from './PropertyDetail'
 
@@ -122,7 +122,7 @@ export default function Properties() {
       sortable: true,
       render: (val, row) => (
         <button
-          onClick={() => { setSelected(row); setView('detail') }}
+          onClick={e => { e.stopPropagation(); setSelected(row); setView('detail') }}
           className="text-left font-semibold hover:underline"
           style={{ color: '#5C2977' }}
         >
@@ -171,16 +171,15 @@ export default function Properties() {
       key: 'status',
       header: 'Status',
       sortable: true,
-      render: (val) => {
-        const s = String(val || 'lead')
-        const c = STATUS_COLORS[s] || STATUS_COLORS.lead
-        return (
-          <span className="px-2 py-0.5 rounded-full text-xs font-semibold"
-            style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}` }}>
-            {STATUS_LABELS[s] || s}
-          </span>
-        )
-      },
+      render: (val, row) => (
+        <StatusDropdown
+          status={String(val || 'lead') as PropertyStatus}
+          onStatusChange={async (newStatus) => {
+            await updateProperty(row.id, { status: newStatus })
+            setProperties(prev => prev.map(p => p.id === row.id ? { ...p, status: newStatus } : p))
+          }}
+        />
+      ),
     },
     {
       key: 'tags',
@@ -286,6 +285,7 @@ export default function Properties() {
               emptyMessage={statusFilter === 'all'
                 ? 'No properties yet. Import a Pebble CSV or add one manually.'
                 : `No properties with status "${STATUS_LABELS[statusFilter] || statusFilter}".`}
+              onRowClick={(row) => { setSelected(row); setView('detail') }}
             />
           </div>
         )}
@@ -298,6 +298,79 @@ export default function Properties() {
           onImport={handleImport}
           onClose={() => { setShowImport(false); setImportResult(null) }}
         />
+      )}
+    </div>
+  )
+}
+
+// ── Status inline dropdown ─────────────────────────────────────────────────
+
+function StatusDropdown({
+  status,
+  onStatusChange,
+}: {
+  status: PropertyStatus
+  onStatusChange: (s: PropertyStatus) => Promise<void>
+}) {
+  const [open, setOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return
+    function handle(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handle)
+    return () => document.removeEventListener('mousedown', handle)
+  }, [open])
+
+  const c = STATUS_COLORS[status] || STATUS_COLORS.lead
+
+  async function select(s: PropertyStatus) {
+    if (s === status) { setOpen(false); return }
+    setSaving(true)
+    setOpen(false)
+    try { await onStatusChange(s) } finally { setSaving(false) }
+  }
+
+  return (
+    <div ref={ref} className="relative inline-block" onClick={e => e.stopPropagation()}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        disabled={saving}
+        className="px-2 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1 transition-opacity hover:opacity-80"
+        style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}`, opacity: saving ? 0.6 : 1 }}
+      >
+        {saving ? '…' : STATUS_LABELS[status] || status}
+        <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+
+      {open && (
+        <div
+          className="absolute left-0 top-full mt-1 rounded-lg z-50 py-1 min-w-[140px]"
+          style={{ background: '#FFFFFF', border: '1px solid #E8E0F0', boxShadow: '0 4px 16px rgba(61,26,94,0.12)' }}
+        >
+          {(Object.keys(STATUS_LABELS) as PropertyStatus[]).map(s => {
+            const sc = STATUS_COLORS[s] || STATUS_COLORS.lead
+            return (
+              <button
+                key={s}
+                onClick={() => select(s)}
+                className="w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 transition-colors"
+                style={{ color: s === status ? sc.text : '#3D2B5E', fontWeight: s === status ? 600 : 400 }}
+                onMouseEnter={e => (e.currentTarget.style.background = '#F8F5FC')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                <span className="w-2 h-2 rounded-full flex-none" style={{ background: sc.text }} />
+                {STATUS_LABELS[s]}
+              </button>
+            )
+          })}
+        </div>
       )}
     </div>
   )
