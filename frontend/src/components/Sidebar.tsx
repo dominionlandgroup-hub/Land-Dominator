@@ -165,9 +165,8 @@ export default function Sidebar() {
       {/* Nav */}
       <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
 
-        <NavBtn id="crm-dashboard" label="Dashboard"     icon={<IconDashboard />} active={currentPage === 'crm-dashboard'} onClick={() => nav('crm-dashboard')} />
-        <NavBtn id="campaigns"     label="Campaigns"     icon={<IconCampaign />}  active={currentPage === 'campaigns'}     onClick={() => nav('campaigns')} />
-        <NavBtn id="seller-inbox"  label="Seller Inbox"  icon={<IconInbox />}     active={currentPage === 'seller-inbox'}  onClick={() => nav('seller-inbox')} />
+        <NavBtn id="crm-dashboard" label="Dashboard"    icon={<IconDashboard />} active={currentPage === 'crm-dashboard'} onClick={() => nav('crm-dashboard')} />
+        <NavBtn id="seller-inbox"  label="Seller Inbox" icon={<IconInbox />}     active={currentPage === 'seller-inbox'}  onClick={() => nav('seller-inbox')} />
         <NavBtn id="buyer-inbox"   label="Buyer Inbox"   icon={<IconInbox />}     active={currentPage === 'buyer-inbox'}   onClick={() => nav('buyer-inbox')} />
 
         {/* Boards accordion */}

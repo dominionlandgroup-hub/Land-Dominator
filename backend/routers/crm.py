@@ -338,6 +338,8 @@ def _run_import_job(job_id: str, content: bytes) -> None:
                     skipped += 1
                     continue
                 data["updated_at"] = now
+                if not data.get("offer_price") and data.get("lp_estimate"):
+                    data["offer_price"] = round(float(data["lp_estimate"]) * 0.525, 2)
                 batch.append(data)
                 if len(batch) >= 500:
                     sb.table("crm_properties").insert(batch).execute()
@@ -398,6 +400,8 @@ async def import_properties_batch(
                     skipped += 1
                     continue
                 data["updated_at"] = now
+                if not data.get("offer_price") and data.get("lp_estimate"):
+                    data["offer_price"] = round(float(data["lp_estimate"]) * 0.525, 2)
                 batch.append(data)
                 if len(batch) >= 50:
                     sb.table("crm_properties").insert(batch).execute()
@@ -422,13 +426,19 @@ async def import_properties_batch(
 
 @router.get("/campaigns")
 async def list_crm_campaigns() -> list:
-    """List CRM import campaigns with their property counts."""
+    """List CRM import campaigns with their property counts and key status counts."""
     try:
         sb = get_supabase()
         campaigns = sb.table("crm_campaigns").select("*").order("created_at", desc=True).execute().data
+        key_statuses = ["offer_sent", "under_contract", "closed_won"]
         for c in campaigns:
             r = sb.table("crm_properties").select("*", count="exact").eq("campaign_id", c["id"]).limit(0).execute()
             c["property_count"] = r.count or 0
+            by_status: dict = {}
+            for s in key_statuses:
+                rs = sb.table("crm_properties").select("*", count="exact").eq("campaign_id", c["id"]).eq("status", s).limit(0).execute()
+                by_status[s] = rs.count or 0
+            c["by_status"] = by_status
         return campaigns
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
@@ -520,10 +530,26 @@ async def bulk_insert_properties(
         if canonical in PEBBLE_MAP:
             col_to_field[raw_col] = PEBBLE_MAP[canonical]
 
+    # Pre-fetch campaign number and existing record count for auto offer code generation
+    campaign_number: int = 0
+    starting_record: int = 1
+    if campaign_id:
+        try:
+            sb = get_supabase()
+            camp_res = sb.table("crm_campaigns").select("id").order("created_at", desc=False).execute()
+            camp_ids = [r["id"] for r in camp_res.data]
+            campaign_number = camp_ids.index(campaign_id) + 1 if campaign_id in camp_ids else 1
+            count_res = sb.table("crm_properties").select("*", count="exact").eq("campaign_id", campaign_id).limit(0).execute()
+            starting_record = (count_res.count or 0) + 1
+        except Exception:
+            campaign_number = 1
+            starting_record = 1
+
     mapped: list[dict] = []
     skipped = 0
     errors: list[str] = []
     now = _now()
+    valid_index = 0
 
     for i, raw_row in enumerate(rows):
         try:
@@ -534,6 +560,12 @@ async def bulk_insert_properties(
             data["updated_at"] = now
             if campaign_id:
                 data["campaign_id"] = campaign_id
+                if not data.get("campaign_code") and campaign_number:
+                    record_num = starting_record + valid_index
+                    data["campaign_code"] = f"{campaign_number:03d}-{record_num:04d}"
+            if not data.get("offer_price") and data.get("lp_estimate"):
+                data["offer_price"] = round(float(data["lp_estimate"]) * 0.525, 2)
+            valid_index += 1
             mapped.append(data)
         except Exception as exc:
             errors.append(f"Row {i + 1}: {exc}")
@@ -648,7 +680,7 @@ async def list_properties(
         if campaign_id:
             q = q.eq("campaign_id", campaign_id)
         if search:
-            q = q.or_(f"owner_full_name.ilike.%{search}%,apn.ilike.%{search}%")
+            q = q.or_(f"owner_full_name.ilike.%{search}%,apn.ilike.%{search}%,campaign_code.ilike.%{search}%")
         result = q.execute()
         return {"data": result.data, "total": result.count or 0, "page": page, "limit": limit}
     except RuntimeError as exc:

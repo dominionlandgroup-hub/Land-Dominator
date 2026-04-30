@@ -61,7 +61,7 @@ function PageContent() {
     case 'dashboard':        return <Dashboard />
     case 'match-targets':    return <MatchTargets />
     case 'mailing-list':     return <MailingList />
-    case 'campaigns':        return <Campaigns />
+    case 'campaigns':        return <CRMCampaigns />
     case 'crm-campaigns':    return <CRMCampaigns />
     case 'crm-properties':   return <Properties />
     case 'crm-contacts':     return <Contacts />
