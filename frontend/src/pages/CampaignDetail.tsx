@@ -283,7 +283,8 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
             const r = await bulkInsertRows(chunk, campaign.id)
             done += r.imported
             fail += r.skipped
-          } catch { fail += chunk.length }
+            if (r.errors?.length) console.warn('[import] chunk errors:', r.errors)
+          } catch (e) { console.error('[import] chunk request failed:', e); fail += chunk.length }
           setImportProgress(Math.min(i + CHUNK, rows.length))
           setImportedCount(done)
           setImportFailed(fail)

@@ -434,6 +434,46 @@ async def db_migrate() -> dict:
 # Properties
 # ══════════════════════════════════════════════════════════════════════
 
+
+def _safe_batch_insert(sb: Any, rows: list[dict]) -> tuple[int, list[str]]:
+    """Insert a batch into crm_properties, stripping any unmigrated columns on failure.
+
+    Returns (imported_count, warning_messages).
+    If the error is not column-related, falls back to per-row inserts so good rows still land.
+    """
+    if not rows:
+        return 0, []
+
+    current = list(rows)
+    warnings: list[str] = []
+
+    for _ in range(12):  # up to 12 distinct unknown columns before giving up
+        try:
+            sb.table("crm_properties").insert(current).execute()
+            return len(current), warnings
+        except Exception as exc:
+            err_msg = str(exc)
+            col_match = re.search(r'column "([^"]+)" of relation', err_msg)
+            if col_match:
+                bad_col = col_match.group(1)
+                warnings.append(f"Stripped unmigrated column '{bad_col}' (run ALTER TABLE)")
+                print(f"[import] Stripping unmigrated column '{bad_col}' from batch and retrying")
+                current = [{k: v for k, v in d.items() if k != bad_col} for d in current]
+                continue
+            # Not a missing-column error — fall back to per-row inserts
+            print(f"[import] Batch insert error: {err_msg[:300]}")
+            imported = 0
+            row_errors: list[str] = []
+            for j, row_data in enumerate(current):
+                try:
+                    sb.table("crm_properties").insert(row_data).execute()
+                    imported += 1
+                except Exception as row_exc:
+                    row_errors.append(f"Row {j + 1}: {str(row_exc)[:150]}")
+            return imported, warnings + row_errors
+
+    return len(current), warnings
+
 @router.post("/properties/import", status_code=202)
 async def import_properties(
     file: UploadFile = File(...),
@@ -485,16 +525,20 @@ def _run_import_job(job_id: str, content: bytes) -> None:
                     data["offer_price"] = round(float(data["lp_estimate"]) * 0.525, 2)
                 batch.append(data)
                 if len(batch) >= 500:
-                    sb.table("crm_properties").insert(batch).execute()
-                    imported += len(batch)
+                    n, warns = _safe_batch_insert(sb, batch)
+                    imported += n
+                    skipped += len(batch) - n
+                    errors.extend(warns)
                     batch = []
             except Exception as exc:
                 errors.append(f"Row {i + 2}: {exc}")
                 skipped += 1
 
         if batch:
-            sb.table("crm_properties").insert(batch).execute()
-            imported += len(batch)
+            n, warns = _safe_batch_insert(sb, batch)
+            imported += n
+            skipped += len(batch) - n
+            errors.extend(warns)
 
         _import_jobs[job_id] = {
             "status": "done",
@@ -547,16 +591,20 @@ async def import_properties_batch(
                     data["offer_price"] = round(float(data["lp_estimate"]) * 0.525, 2)
                 batch.append(data)
                 if len(batch) >= 50:
-                    sb.table("crm_properties").insert(batch).execute()
-                    imported += len(batch)
+                    n, warns = _safe_batch_insert(sb, batch)
+                    imported += n
+                    skipped += len(batch) - n
+                    errors.extend(warns)
                     batch = []
             except Exception as exc:
                 errors.append(f"Row {i + 1}: {exc}")
                 skipped += 1
 
         if batch:
-            sb.table("crm_properties").insert(batch).execute()
-            imported += len(batch)
+            n, warns = _safe_batch_insert(sb, batch)
+            imported += n
+            skipped += len(batch) - n
+            errors.extend(warns)
 
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
@@ -785,12 +833,14 @@ async def bulk_insert_properties(
         if canonical in PEBBLE_MAP:
             col_to_field[raw_col] = PEBBLE_MAP[canonical]
 
+    print(f"[bulk_insert] {len(rows)} rows received. col_to_field={col_to_field}")
+
     # Pre-fetch campaign number and existing record count for auto offer code generation
     campaign_number: int = 0
     starting_record: int = 1
+    sb = get_supabase()
     if campaign_id:
         try:
-            sb = get_supabase()
             camp_res = sb.table("crm_campaigns").select("id").order("created_at", desc=False).execute()
             camp_ids = [r["id"] for r in camp_res.data]
             campaign_number = camp_ids.index(campaign_id) + 1 if campaign_id in camp_ids else 1
@@ -823,19 +873,21 @@ async def bulk_insert_properties(
             valid_index += 1
             mapped.append(data)
         except Exception as exc:
-            errors.append(f"Row {i + 1}: {exc}")
+            errors.append(f"Row {i + 1} mapping: {exc}")
             skipped += 1
 
-    imported = 0
-    if mapped:
-        try:
-            sb = get_supabase()
-            sb.table("crm_properties").insert(mapped).execute()
-            imported = len(mapped)
-        except Exception as exc:
-            raise HTTPException(status_code=500, detail=str(exc))
+    if not mapped:
+        print(f"[bulk_insert] 0 rows mapped from {len(rows)} input rows. col_to_field keys: {list(col_to_field.keys())}")
+        return ImportResult(imported=0, skipped=skipped, errors=errors[:20])
 
-    return ImportResult(imported=imported, skipped=skipped, errors=errors[:5])
+    print(f"[bulk_insert] First mapped row sample: {dict(list(mapped[0].items())[:8])}")
+
+    imported, insert_warns = _safe_batch_insert(sb, mapped)
+    skipped += len(mapped) - imported
+    errors.extend(insert_warns)
+
+    print(f"[bulk_insert] Done: imported={imported}, skipped={skipped}, errors={errors[:3]}")
+    return ImportResult(imported=imported, skipped=skipped, errors=errors[:20])
 
 
 @router.post("/properties/bulk-delete", status_code=204)
