@@ -53,6 +53,30 @@ app.include_router(crm.router)
 app.include_router(ai_chat.router)
 
 
+# ── Startup migration check ───────────────────────────────────────────
+
+@app.on_event("startup")
+async def check_crm_schema() -> None:
+    """Warn at startup if property_id / fips columns are missing from crm_properties."""
+    try:
+        from services.supabase_client import get_supabase
+        sb = get_supabase()
+        sb.table("crm_properties").select("property_id,fips").limit(1).execute()
+    except Exception as exc:
+        msg = str(exc)
+        if "property_id" in msg or "fips" in msg:
+            print(
+                "\n"
+                "═══════════════════════════════════════════════════════════════\n"
+                "  MISSING DB COLUMNS — Land Portal integration will not work\n"
+                "  Run this SQL in Supabase Dashboard → SQL Editor:\n\n"
+                "  ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS property_id TEXT;\n"
+                "  ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS fips TEXT;\n\n"
+                "  Or call:  POST /crm/db-migrate  to auto-apply.\n"
+                "═══════════════════════════════════════════════════════════════\n"
+            )
+
+
 # ── Health / Root ─────────────────────────────────────────────────────
 @app.get("/health")
 async def health_check() -> JSONResponse:

@@ -301,6 +301,82 @@ def _map_pebble_row(row: dict, col_to_field: dict[str, str]) -> dict:
 
 
 # ══════════════════════════════════════════════════════════════════════
+# DB Migration helpers
+# ══════════════════════════════════════════════════════════════════════
+
+_MIGRATION_SQL = """
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS property_id TEXT;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS fips TEXT;
+""".strip()
+
+
+@router.get("/db-check")
+async def db_check_columns() -> dict:
+    """Verify that the property_id and fips columns exist in crm_properties."""
+    try:
+        sb = get_supabase()
+        row = sb.table("crm_properties").select("property_id,fips").limit(1).execute()
+        return {"property_id_exists": True, "fips_exists": True, "status": "ok"}
+    except Exception as exc:
+        msg = str(exc)
+        return {
+            "property_id_exists": "property_id" not in msg,
+            "fips_exists": "fips" not in msg,
+            "status": "missing_columns",
+            "error": msg,
+            "fix_sql": _MIGRATION_SQL,
+            "instructions": (
+                "Run the SQL below in your Supabase dashboard → SQL Editor → New Query, "
+                "then call POST /crm/db-migrate to confirm."
+            ),
+        }
+
+
+@router.post("/db-migrate")
+async def db_migrate() -> dict:
+    """
+    Add property_id and fips columns to crm_properties if missing.
+    Uses Supabase Management API via SUPABASE_URL + SUPABASE_KEY (service role).
+    If that fails, returns the SQL to run manually.
+    """
+    supabase_url = os.environ.get("SUPABASE_URL", "").rstrip("/")
+    supabase_key = os.environ.get("SUPABASE_KEY", "")
+
+    if not supabase_url or not supabase_key:
+        raise HTTPException(status_code=503, detail="SUPABASE_URL or SUPABASE_KEY not configured")
+
+    # Try Supabase REST pg endpoint (works with service role key on some versions)
+    errors_tried: list[str] = []
+    for sql_url in [
+        f"{supabase_url}/pg/query",
+        f"{supabase_url}/rest/v1/rpc/exec_sql",
+    ]:
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                r = await client.post(
+                    sql_url,
+                    json={"query": _MIGRATION_SQL},
+                    headers={
+                        "apikey": supabase_key,
+                        "Authorization": f"Bearer {supabase_key}",
+                        "Content-Type": "application/json",
+                    },
+                )
+                if r.status_code < 300:
+                    return {"status": "ok", "message": "Columns added successfully"}
+                errors_tried.append(f"{sql_url}: HTTP {r.status_code} — {r.text[:120]}")
+        except Exception as exc:
+            errors_tried.append(f"{sql_url}: {exc}")
+
+    return {
+        "status": "manual_required",
+        "message": "Could not auto-apply migration. Run the SQL below in Supabase dashboard → SQL Editor.",
+        "sql": _MIGRATION_SQL,
+        "errors_tried": errors_tried,
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════
 # Properties
 # ══════════════════════════════════════════════════════════════════════
 
@@ -560,8 +636,10 @@ def _run_lp_pull_job(job_id: str, campaign_id: str) -> None:
         all_props: list[dict] = []
         offset = 0
         while True:
+            # Use select("*") — avoids hard failure if property_id/fips columns
+            # haven't been added to the table yet via ALTER TABLE.
             r = (sb.table("crm_properties")
-                 .select("id,property_id,fips,acreage")
+                 .select("*")
                  .eq("campaign_id", campaign_id)
                  .range(offset, offset + 999)
                  .execute())
@@ -574,6 +652,13 @@ def _run_lp_pull_job(job_id: str, campaign_id: str) -> None:
 
         eligible = [p for p in all_props if p.get("property_id") and p.get("fips")]
         _lp_pull_jobs[job_id]["total"] = len(eligible)
+        # Detect missing column vs just empty values
+        if not eligible and all_props and "property_id" not in all_props[0]:
+            _lp_pull_jobs[job_id] = {
+                "status": "error", "done": 0, "total": 0, "errors": [],
+                "error": "property_id column missing in database — call POST /crm/db-migrate to add it",
+            }
+            return
     except Exception as exc:
         _lp_pull_jobs[job_id] = {"status": "error", "done": 0, "total": 0, "errors": [], "error": str(exc)}
         return
