@@ -38,6 +38,17 @@ export async function importProperties(file: File): Promise<ImportResult> {
   return data
 }
 
+export async function importPropertiesBatch(
+  rows: Record<string, string>[],
+): Promise<ImportResult> {
+  const { data } = await api.post<ImportResult>('/crm/properties/import-batch', rows)
+  return data
+}
+
+export async function deleteProperties(ids: string[]): Promise<void> {
+  await api.post('/crm/properties/bulk-delete', ids)
+}
+
 // ── Contacts ──────────────────────────────────────────────────────────
 
 export async function listContacts(): Promise<CRMContact[]> {

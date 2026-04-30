@@ -6,9 +6,9 @@ import csv
 import io
 import re
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Body, File, HTTPException, Query, UploadFile
 
 from models.crm_schemas import (
     Contact, ContactCreate, ContactUpdate,
@@ -329,6 +329,67 @@ async def import_properties(file: UploadFile = File(...)) -> ImportResult:
     return ImportResult(imported=imported, skipped=skipped, errors=errors[:20])
 
 
+@router.post("/properties/import-batch", response_model=ImportResult)
+async def import_properties_batch(
+    rows: List[Dict[str, str]] = Body(...),
+) -> ImportResult:
+    """Accept pre-parsed CSV rows from frontend batch processing, map columns, insert."""
+    if not rows:
+        return ImportResult(imported=0, skipped=0, errors=[])
+
+    col_to_field: dict[str, str] = {}
+    for raw_col in rows[0].keys():
+        canonical = raw_col.strip().lower()
+        if canonical in PEBBLE_MAP:
+            col_to_field[raw_col] = PEBBLE_MAP[canonical]
+
+    imported = 0
+    skipped = 0
+    errors: list[str] = []
+    now = _now()
+
+    try:
+        sb = get_supabase()
+        batch: list[dict] = []
+
+        for i, raw_row in enumerate(rows):
+            try:
+                data = _map_pebble_row(raw_row, col_to_field)
+                if not data:
+                    skipped += 1
+                    continue
+                data["updated_at"] = now
+                batch.append(data)
+                if len(batch) >= 50:
+                    sb.table("crm_properties").insert(batch).execute()
+                    imported += len(batch)
+                    batch = []
+            except Exception as exc:
+                errors.append(f"Row {i + 1}: {exc}")
+                skipped += 1
+
+        if batch:
+            sb.table("crm_properties").insert(batch).execute()
+            imported += len(batch)
+
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    return ImportResult(imported=imported, skipped=skipped, errors=errors[:20])
+
+
+@router.post("/properties/bulk-delete", status_code=204)
+async def bulk_delete_properties(ids: List[str] = Body(...)) -> None:
+    """Delete multiple properties by ID."""
+    if not ids:
+        return
+    try:
+        sb = get_supabase()
+        sb.table("crm_properties").delete().in_("id", ids).execute()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 @router.get("/properties", response_model=List[Property])
 async def list_properties(
     status: Optional[str] = Query(None),
@@ -337,7 +398,7 @@ async def list_properties(
 ) -> list:
     try:
         sb = get_supabase()
-        q = sb.table("crm_properties").select("*").order("created_at", desc=True).limit(10000)
+        q = sb.table("crm_properties").select("*").order("created_at", desc=True).limit(50000)
         if status:
             q = q.eq("status", status)
         if state:

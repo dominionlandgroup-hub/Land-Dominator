@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react'
 
 export interface Column<T> {
   key: string
-  header: string
+  header: React.ReactNode
   render?: (value: unknown, row: T) => React.ReactNode
   sortable?: boolean
   align?: 'left' | 'right' | 'center'
@@ -19,6 +19,11 @@ interface Props<T extends object> {
   searchable?: boolean
   searchKeys?: string[]
   onRowClick?: (row: T) => void
+  // Bulk selection
+  selectable?: boolean
+  selectedKeys?: Set<string>
+  getRowKey?: (row: T) => string
+  onSelectionChange?: (keys: Set<string>) => void
 }
 
 type SortDir = 'asc' | 'desc'
@@ -32,6 +37,10 @@ export default function DataTable<T extends object>({
   searchable = false,
   searchKeys,
   onRowClick,
+  selectable = false,
+  selectedKeys,
+  getRowKey,
+  onSelectionChange,
 }: Props<T>) {
   const [sortKey, setSortKey] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<SortDir>('desc')
@@ -77,6 +86,40 @@ export default function DataTable<T extends object>({
   const totalPages = Math.ceil(sorted.length / pageSize)
   const pageData = sorted.slice(page * pageSize, (page + 1) * pageSize)
 
+  // Selection helpers
+  const allFilteredKeys = useMemo(
+    () => (selectable && getRowKey ? searchFiltered.map(getRowKey) : []),
+    [searchFiltered, selectable, getRowKey]
+  )
+  const allSelected =
+    selectable && allFilteredKeys.length > 0 &&
+    allFilteredKeys.every((k) => selectedKeys?.has(k))
+  const someSelected =
+    selectable && !allSelected && allFilteredKeys.some((k) => selectedKeys?.has(k))
+
+  function toggleSelectAll(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (!onSelectionChange) return
+    if (allSelected) {
+      const next = new Set(selectedKeys)
+      allFilteredKeys.forEach((k) => next.delete(k))
+      onSelectionChange(next)
+    } else {
+      const next = new Set(selectedKeys)
+      allFilteredKeys.forEach((k) => next.add(k))
+      onSelectionChange(next)
+    }
+  }
+
+  function toggleRowKey(e: React.MouseEvent, key: string) {
+    e.stopPropagation()
+    if (!onSelectionChange || !selectedKeys) return
+    const next = new Set(selectedKeys)
+    if (next.has(key)) next.delete(key)
+    else next.add(key)
+    onSelectionChange(next)
+  }
+
   function handleSort(key: string) {
     if (sortKey === key) {
       setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
@@ -100,8 +143,6 @@ export default function DataTable<T extends object>({
     setSearch(val)
     setPage(0)
   }
-
-  const hiddenCount = columns.filter((c) => c.defaultHidden).length
 
   return (
     <div className={`flex flex-col gap-2 ${className}`}>
@@ -174,7 +215,9 @@ export default function DataTable<T extends object>({
                         className="w-3.5 h-3.5"
                         style={{ accentColor: '#5C2977' }}
                       />
-                      <span className="text-xs" style={{ color: '#3D2B5E' }}>{col.header}</span>
+                      <span className="text-xs" style={{ color: '#3D2B5E' }}>
+                        {typeof col.header === 'string' ? col.header : col.key}
+                      </span>
                     </label>
                   ))}
                 </div>
@@ -199,6 +242,21 @@ export default function DataTable<T extends object>({
             <table className="w-full text-sm min-w-max">
               <thead className="sticky top-0 z-10" style={{ background: '#F0EBF8', borderBottom: '2px solid #D4B8E8' }}>
                 <tr>
+                  {/* Select-all checkbox column */}
+                  {selectable && (
+                    <th className="px-3 py-3 w-10" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        ref={(el) => { if (el) el.indeterminate = someSelected }}
+                        onChange={() => {}}
+                        onClick={toggleSelectAll}
+                        className="w-3.5 h-3.5 cursor-pointer"
+                        style={{ accentColor: '#5C2977' }}
+                        title={allSelected ? 'Deselect all' : 'Select all'}
+                      />
+                    </th>
+                  )}
                   {visibleCols.map((col) => (
                     <th
                       key={String(col.key)}
@@ -226,34 +284,56 @@ export default function DataTable<T extends object>({
                 </tr>
               </thead>
               <tbody style={{ background: '#FFFFFF' }}>
-                {pageData.map((row, i) => (
-                  <tr
-                    key={i}
-                    onClick={onRowClick ? () => onRowClick(row) : undefined}
-                    className={`table-row-hover${onRowClick ? ' cursor-pointer' : ''}`}
-                    style={{ borderBottom: '1px solid rgba(92,41,119,0.06)', background: i % 2 === 1 ? '#FDFBFF' : undefined }}
-                  >
-                    {visibleCols.map((col) => {
-                      const val = (row as Record<string, unknown>)[col.key]
-                      return (
-                        <td
-                          key={String(col.key)}
-                          className={`
-                            px-4 py-2.5 whitespace-nowrap
-                            ${col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : ''}
-                          `}
-                          style={{ color: '#3D2B5E' }}
-                        >
-                          {col.render
-                            ? col.render(val as unknown, row)
-                            : val == null
-                            ? <span style={{ color: '#9B8AAE' }}>—</span>
-                            : String(val)}
+                {pageData.map((row, i) => {
+                  const rowKey = selectable && getRowKey ? getRowKey(row) : ''
+                  const isSelected = selectable && selectedKeys?.has(rowKey)
+                  return (
+                    <tr
+                      key={i}
+                      onClick={onRowClick ? () => onRowClick(row) : undefined}
+                      className={`table-row-hover${onRowClick ? ' cursor-pointer' : ''}`}
+                      style={{
+                        borderBottom: '1px solid rgba(92,41,119,0.06)',
+                        background: isSelected
+                          ? 'rgba(92,41,119,0.06)'
+                          : i % 2 === 1 ? '#FDFBFF' : undefined,
+                      }}
+                    >
+                      {/* Row checkbox */}
+                      {selectable && (
+                        <td className="px-3 py-2.5 w-10" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected ?? false}
+                            onChange={() => {}}
+                            onClick={(e) => toggleRowKey(e, rowKey)}
+                            className="w-3.5 h-3.5 cursor-pointer"
+                            style={{ accentColor: '#5C2977' }}
+                          />
                         </td>
-                      )
-                    })}
-                  </tr>
-                ))}
+                      )}
+                      {visibleCols.map((col) => {
+                        const val = (row as Record<string, unknown>)[col.key]
+                        return (
+                          <td
+                            key={String(col.key)}
+                            className={`
+                              px-4 py-2.5 whitespace-nowrap
+                              ${col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : ''}
+                            `}
+                            style={{ color: '#3D2B5E' }}
+                          >
+                            {col.render
+                              ? col.render(val as unknown, row)
+                              : val == null
+                              ? <span style={{ color: '#9B8AAE' }}>—</span>
+                              : String(val)}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -268,6 +348,11 @@ export default function DataTable<T extends object>({
                 {Math.min((page + 1) * pageSize, sorted.length).toLocaleString()}
               </strong>{' '}
               of <strong style={{ color: '#1A0A2E' }}>{sorted.length.toLocaleString()}</strong> rows
+              {selectable && selectedKeys && selectedKeys.size > 0 && (
+                <span className="ml-3" style={{ color: '#5C2977' }}>
+                  · {selectedKeys.size.toLocaleString()} selected
+                </span>
+              )}
             </span>
             {totalPages > 1 && (
               <div className="flex items-center gap-1">

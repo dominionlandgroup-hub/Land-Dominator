@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react'
 import DataTable from '../components/DataTable'
 import type { Column } from '../components/DataTable'
-import type { CRMProperty, PropertyStatus, ImportResult } from '../types/crm'
-import { listProperties, createProperty, updateProperty, deleteProperty, importProperties } from '../api/crm'
+import type { CRMProperty, PropertyStatus } from '../types/crm'
+import { listProperties, createProperty, updateProperty, deleteProperty, importPropertiesBatch, deleteProperties } from '../api/crm'
 import PropertyDetail from './PropertyDetail'
 
 type View = 'list' | 'detail' | 'new'
@@ -31,6 +31,53 @@ const STATUS_LABELS: Record<string, string> = {
 
 const ALL_STATUSES = ['all', 'lead', 'prospect', 'offer_sent', 'under_contract', 'due_diligence', 'closed_won', 'closed_lost']
 
+// ── CSV parser ─────────────────────────────────────────────────────────────
+
+function parseCSV(text: string): Record<string, string>[] {
+  const t = text.startsWith('﻿') ? text.slice(1) : text
+
+  const rows: string[][] = []
+  let current: string[] = []
+  let field = ''
+  let inQuotes = false
+  let i = 0
+
+  while (i < t.length) {
+    const ch = t[i]
+    if (inQuotes) {
+      if (ch === '"') {
+        if (t[i + 1] === '"') { field += '"'; i += 2 }
+        else { inQuotes = false; i++ }
+      } else { field += ch; i++ }
+    } else {
+      if (ch === '"') { inQuotes = true; i++ }
+      else if (ch === ',') { current.push(field); field = ''; i++ }
+      else if (ch === '\r') {
+        if (t[i + 1] === '\n') i++
+        current.push(field); field = ''; rows.push(current); current = []; i++
+      } else if (ch === '\n') {
+        current.push(field); field = ''; rows.push(current); current = []; i++
+      } else { field += ch; i++ }
+    }
+  }
+  if (field || current.length > 0) {
+    current.push(field)
+    if (current.some(f => f.trim())) rows.push(current)
+  }
+
+  if (rows.length < 2) return []
+  const headers = rows[0]
+  return rows.slice(1)
+    .filter(row => row.some(f => f.trim()))
+    .map(row => {
+      const record: Record<string, string> = {}
+      headers.forEach((h, idx) => { record[h] = row[idx] ?? '' })
+      return record
+    })
+}
+
+// ── Main component ─────────────────────────────────────────────────────────
+
 export default function Properties() {
   const [view, setView] = useState<View>('list')
   const [selected, setSelected] = useState<CRMProperty | null>(null)
@@ -38,9 +85,10 @@ export default function Properties() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showImport, setShowImport] = useState(false)
-  const [importing, setImporting] = useState(false)
-  const [importResult, setImportResult] = useState<ImportResult | null>(null)
   const [statusFilter, setStatusFilter] = useState('all')
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => { fetchProperties() }, [])
 
@@ -59,17 +107,18 @@ export default function Properties() {
     }
   }
 
-  async function handleImport(file: File) {
-    setImporting(true)
+  async function handleBulkDelete() {
+    setDeleting(true)
     try {
-      const result = await importProperties(file)
-      setImportResult(result)
+      await deleteProperties(Array.from(selectedIds))
+      setSelectedIds(new Set())
+      setShowDeleteConfirm(false)
       await fetchProperties()
-    } catch (e: unknown) {
-      const err = e as { response?: { data?: { detail?: string } } }
-      setError(err?.response?.data?.detail ?? 'Import failed')
+    } catch {
+      setError('Failed to delete selected properties.')
+      setShowDeleteConfirm(false)
     } finally {
-      setImporting(false)
+      setDeleting(false)
     }
   }
 
@@ -210,6 +259,20 @@ export default function Properties() {
           <p className="page-subtitle">{properties.length.toLocaleString()} properties in CRM</p>
         </div>
         <div className="flex items-center gap-2">
+          {selectedIds.size > 0 && (
+            <button
+              className="px-4 py-2 rounded-lg text-sm font-semibold text-white transition-colors flex items-center gap-2"
+              style={{ background: '#B71C1C' }}
+              onClick={() => setShowDeleteConfirm(true)}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                <path d="M10 11v6M14 11v6"/>
+              </svg>
+              Delete Selected ({selectedIds.size.toLocaleString()})
+            </button>
+          )}
           <button className="btn-secondary" onClick={() => setShowImport(true)}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -286,6 +349,10 @@ export default function Properties() {
                 ? 'No properties yet. Import a Pebble CSV or add one manually.'
                 : `No properties with status "${STATUS_LABELS[statusFilter] || statusFilter}".`}
               onRowClick={(row) => { setSelected(row); setView('detail') }}
+              selectable
+              selectedKeys={selectedIds}
+              getRowKey={(row) => row.id}
+              onSelectionChange={setSelectedIds}
             />
           </div>
         )}
@@ -293,11 +360,33 @@ export default function Properties() {
 
       {showImport && (
         <ImportModal
-          importing={importing}
-          result={importResult}
-          onImport={handleImport}
-          onClose={() => { setShowImport(false); setImportResult(null) }}
+          onDone={fetchProperties}
+          onClose={() => setShowImport(false)}
         />
+      )}
+
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(26,10,46,0.55)' }}>
+          <div className="bg-white rounded-2xl p-6 w-full shadow-xl" style={{ maxWidth: '400px' }}>
+            <h2 className="section-heading mb-3">Delete {selectedIds.size.toLocaleString()} Properties?</h2>
+            <p className="text-sm mb-6" style={{ color: '#6B5B8A' }}>
+              This will permanently delete {selectedIds.size.toLocaleString()} selected {selectedIds.size === 1 ? 'property' : 'properties'}. This action cannot be undone.
+            </p>
+            <div className="flex gap-3">
+              <button className="btn-secondary flex-1" onClick={() => setShowDeleteConfirm(false)} disabled={deleting}>
+                Cancel
+              </button>
+              <button
+                className="flex-1 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-opacity disabled:opacity-60"
+                style={{ background: '#B71C1C' }}
+                onClick={handleBulkDelete}
+                disabled={deleting}
+              >
+                {deleting ? 'Deleting…' : `Delete ${selectedIds.size.toLocaleString()} ${selectedIds.size === 1 ? 'Property' : 'Properties'}`}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
@@ -316,7 +405,6 @@ function StatusDropdown({
   const [saving, setSaving] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
-  // Close on outside click
   useEffect(() => {
     if (!open) return
     function handle(e: MouseEvent) {
@@ -376,93 +464,167 @@ function StatusDropdown({
   )
 }
 
-function ImportModal({
-  importing, result, onImport, onClose,
-}: {
-  importing: boolean
-  result: ImportResult | null
-  onImport: (f: File) => void
+// ── Import modal ───────────────────────────────────────────────────────────
+
+function ImportModal({ onDone, onClose }: {
+  onDone: () => void
   onClose: () => void
 }) {
   const [dragOver, setDragOver] = useState(false)
+  const [phase, setPhase] = useState<'idle' | 'ready' | 'importing' | 'done'>('idle')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [rowCount, setRowCount] = useState(0)
+  const [progress, setProgress] = useState(0)
+  const [imported, setImported] = useState(0)
+  const [failed, setFailed] = useState(0)
+  const [parsedRows, setParsedRows] = useState<Record<string, string>[]>([])
+  const cancelledRef = useRef(false)
 
   function isCSV(f: File) { return f.name.toLowerCase().endsWith('.csv') }
 
-  function handleDrop(f: File) {
+  async function handleFile(f: File) {
     if (!isCSV(f)) return
     setSelectedFile(f)
-    onImport(f)  // auto-import on drop
+    const text = await f.text()
+    const rows = parseCSV(text)
+    setParsedRows(rows)
+    setRowCount(rows.length)
+    setPhase('ready')
   }
 
-  function handleBrowse(f: File) {
-    if (!isCSV(f)) return
-    setSelectedFile(f)
-    // don't auto-import — user clicks the Import button
+  async function startImport() {
+    if (!parsedRows.length) return
+    cancelledRef.current = false
+    setPhase('importing')
+    setProgress(0)
+    setImported(0)
+    setFailed(0)
+
+    const BATCH_SIZE = 100
+    let totalImported = 0
+    let totalFailed = 0
+
+    for (let i = 0; i < parsedRows.length; i += BATCH_SIZE) {
+      if (cancelledRef.current) break
+      const batch = parsedRows.slice(i, i + BATCH_SIZE)
+      let succeeded = false
+
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const result = await importPropertiesBatch(batch)
+          totalImported += result.imported
+          totalFailed += result.skipped
+          succeeded = true
+          break
+        } catch {
+          if (attempt === 1) totalFailed += batch.length
+        }
+      }
+
+      if (!succeeded) {
+        // already counted failed above
+      }
+
+      const done = Math.min(i + BATCH_SIZE, parsedRows.length)
+      setProgress(done)
+      setImported(totalImported)
+      setFailed(totalFailed)
+
+      if (i + BATCH_SIZE < parsedRows.length) {
+        await new Promise(r => setTimeout(r, 50))
+      }
+    }
+
+    setPhase('done')
+    onDone()
   }
 
-  function triggerImport() {
-    if (selectedFile && !importing) onImport(selectedFile)
+  function cancel() {
+    cancelledRef.current = true
+    onClose()
   }
+
+  const pct = rowCount > 0 ? Math.round((progress / rowCount) * 100) : 0
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(26,10,46,0.55)' }}>
       <div className="bg-white rounded-2xl p-6 w-full shadow-xl" style={{ maxWidth: '480px' }}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="section-heading">Import Pebble CSV</h2>
-          <button onClick={onClose} style={{ color: '#9B8AAE', fontSize: '18px', lineHeight: 1 }}>✕</button>
+          <button
+            onClick={phase === 'importing' ? cancel : onClose}
+            style={{ color: '#9B8AAE', fontSize: '18px', lineHeight: 1 }}
+          >✕</button>
         </div>
 
-        {result ? (
+        {phase === 'done' ? (
           <>
             <div className="grid grid-cols-2 gap-3 mb-4">
               <div className="p-4 rounded-xl text-center" style={{ background: '#E8F5E9' }}>
-                <div className="text-3xl font-bold" style={{ color: '#2E7D32' }}>{result.imported}</div>
+                <div className="text-3xl font-bold" style={{ color: '#2E7D32' }}>{imported.toLocaleString()}</div>
                 <div className="text-xs mt-1 font-medium" style={{ color: '#2E7D32' }}>Imported</div>
               </div>
               <div className="p-4 rounded-xl text-center" style={{ background: '#FFF8E1' }}>
-                <div className="text-3xl font-bold" style={{ color: '#F57F17' }}>{result.skipped}</div>
-                <div className="text-xs mt-1 font-medium" style={{ color: '#F57F17' }}>Skipped</div>
+                <div className="text-3xl font-bold" style={{ color: '#F57F17' }}>{failed.toLocaleString()}</div>
+                <div className="text-xs mt-1 font-medium" style={{ color: '#F57F17' }}>Failed</div>
               </div>
             </div>
-            {result.errors.length > 0 && (
-              <div className="p-3 rounded-lg mb-4 text-xs" style={{ background: '#FFF0F0', color: '#B71C1C', border: '1px solid #FFCDD2' }}>
-                <div className="font-semibold mb-1">Row errors ({result.errors.length}):</div>
-                {result.errors.slice(0, 5).map((e, i) => <div key={i}>{e}</div>)}
-                {result.errors.length > 5 && <div>…and {result.errors.length - 5} more</div>}
-              </div>
-            )}
+            <p className="text-sm mb-4 text-center" style={{ color: '#6B5B8A' }}>
+              Import complete. {imported.toLocaleString()} imported, {failed.toLocaleString()} failed.
+            </p>
             <button className="btn-primary w-full" onClick={onClose}>Done</button>
+          </>
+        ) : phase === 'importing' ? (
+          <>
+            <div className="text-center py-6">
+              <div className="text-lg font-semibold mb-1" style={{ color: '#3D2B5E' }}>
+                Importing {progress.toLocaleString()} of {rowCount.toLocaleString()}…
+              </div>
+              <div className="text-sm mb-4" style={{ color: '#9B8AAE' }}>
+                {imported.toLocaleString()} imported · {failed.toLocaleString()} failed
+              </div>
+              <div className="w-full rounded-full overflow-hidden" style={{ height: '8px', background: '#E8E0F0' }}>
+                <div
+                  className="h-full rounded-full transition-all duration-200"
+                  style={{ width: `${pct}%`, background: '#5C2977' }}
+                />
+              </div>
+              <div className="text-xs mt-2" style={{ color: '#9B8AAE' }}>{pct}%</div>
+            </div>
+            <button className="btn-secondary w-full" onClick={cancel}>Cancel</button>
           </>
         ) : (
           <>
             <p className="text-sm mb-4" style={{ color: '#6B5B8A' }}>
               Upload a Pebble REI property export CSV (supports 81-column format).
-              Column headers are matched automatically — case-insensitive.
+              Columns are matched automatically — case-insensitive.
             </p>
 
-            {/* Drop zone */}
             <div
               className={`drop-zone${dragOver ? ' drag-over' : ''}`}
               onDragOver={e => { e.preventDefault(); setDragOver(true) }}
               onDragLeave={() => setDragOver(false)}
-              onDrop={e => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) handleDrop(f) }}
-              onClick={() => !importing && document.getElementById('pebble-csv-input')?.click()}
-              style={{ cursor: importing ? 'not-allowed' : 'pointer' }}
+              onDrop={e => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f) }}
+              onClick={() => document.getElementById('pebble-csv-input')?.click()}
+              style={{ cursor: 'pointer' }}
             >
               <div className="drop-zone-icon">
-                {importing
-                  ? <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-                  : <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                }
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/>
+                  <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
               </div>
               <div className="drop-zone-title">
-                {importing ? 'Importing…' : selectedFile ? selectedFile.name : 'Drop CSV here or click to browse'}
+                {selectedFile ? selectedFile.name : 'Drop CSV here or click to browse'}
               </div>
-              {!importing && (
-                <div style={{ fontSize: '13px', color: '#9B8AAE', marginTop: '6px' }}>
-                  {selectedFile ? 'Click below to import, or drop a new file' : '.csv files only'}
+              {phase === 'ready' && rowCount > 0 && (
+                <div style={{ fontSize: '13px', color: '#2E7D32', marginTop: '6px', fontWeight: 600 }}>
+                  {rowCount.toLocaleString()} rows ready to import
                 </div>
+              )}
+              {phase === 'idle' && (
+                <div style={{ fontSize: '13px', color: '#9B8AAE', marginTop: '6px' }}>.csv files only</div>
               )}
             </div>
 
@@ -471,26 +633,25 @@ function ImportModal({
               type="file"
               accept=".csv"
               style={{ display: 'none' }}
-              onChange={e => { const f = e.target.files?.[0]; if (f) handleBrowse(f); (e.target as HTMLInputElement).value = '' }}
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); (e.target as HTMLInputElement).value = '' }}
             />
 
-            {/* Import button */}
             <div className="flex gap-2 mt-4">
               <button
                 className="btn-primary flex-1"
-                onClick={triggerImport}
-                disabled={!selectedFile || importing}
+                onClick={startImport}
+                disabled={phase !== 'ready'}
               >
-                {importing ? 'Importing…' : selectedFile ? `Import "${selectedFile.name}"` : 'Select a CSV file first'}
+                {phase === 'ready'
+                  ? `Import ${rowCount.toLocaleString()} rows`
+                  : 'Select a CSV file first'}
               </button>
-              {selectedFile && !importing && (
+              {selectedFile && (
                 <button
                   className="btn-secondary"
-                  onClick={() => setSelectedFile(null)}
+                  onClick={() => { setSelectedFile(null); setPhase('idle'); setParsedRows([]); setRowCount(0) }}
                   title="Clear selection"
-                >
-                  ✕
-                </button>
+                >✕</button>
               )}
             </div>
           </>
