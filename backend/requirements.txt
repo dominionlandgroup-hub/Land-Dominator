@@ -9,3 +9,4 @@ aiofiles>=23.2.1
 gunicorn>=22.0.0
 python-dotenv>=1.0.0
 haversine>=2.8.1
+supabase>=2.4.0

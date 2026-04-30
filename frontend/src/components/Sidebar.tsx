@@ -5,11 +5,12 @@ import type { AppPage } from '../types'
 interface NavItem {
   id: AppPage
   label: string
-  step: number
+  step?: number
   icon: React.ReactNode
   requiresComps?: boolean
   requiresTargets?: boolean
   requiresMatch?: boolean
+  isCRM?: boolean
 }
 
 // ── SVG Icons ──────────────────────────────────────────────────────────────
@@ -57,12 +58,40 @@ const IconCheck = () => (
   </svg>
 )
 
+const IconHome = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+    <polyline points="9 22 9 12 15 12 15 22"/>
+  </svg>
+)
+
+const IconPerson = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+    <circle cx="12" cy="7" r="4"/>
+  </svg>
+)
+
+const IconPipeline = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2" y="3" width="6" height="18" rx="1"/>
+    <rect x="9" y="7" width="6" height="14" rx="1"/>
+    <rect x="16" y="11" width="6" height="10" rx="1"/>
+  </svg>
+)
+
 const NAV_ITEMS: NavItem[] = [
   { id: 'upload-comps',  label: 'Upload Comps',  step: 1, icon: <IconUpload /> },
   { id: 'dashboard',     label: 'ZIP Dashboard', step: 2, icon: <IconChart />,  requiresComps: true },
   { id: 'match-targets', label: 'Match Targets', step: 3, icon: <IconTarget />, requiresComps: true },
   { id: 'mailing-list',  label: 'Mailing List',  step: 4, icon: <IconMail />,   requiresMatch: true },
   { id: 'campaigns',     label: 'Campaigns',     step: 5, icon: <IconFolder /> },
+]
+
+const CRM_ITEMS: NavItem[] = [
+  { id: 'crm-properties', label: 'Properties',     icon: <IconHome />,     isCRM: true },
+  { id: 'crm-contacts',   label: 'Contacts',       icon: <IconPerson />,   isCRM: true },
+  { id: 'crm-deals',      label: 'Deals Pipeline', icon: <IconPipeline />, isCRM: true },
 ]
 
 export default function Sidebar() {
@@ -94,7 +123,7 @@ export default function Sidebar() {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-3 space-y-1">
+      <nav className="flex-1 px-3 py-3 space-y-1 overflow-y-auto">
         {NAV_ITEMS.map((item) => {
           const status = getStatus(item)
           const locked = status === 'locked'
@@ -152,6 +181,63 @@ export default function Sidebar() {
             </button>
           )
         })}
+
+        {/* CRM section */}
+        <div style={{ borderTop: '1px solid rgba(213,169,64,0.15)', margin: '10px 0 6px', paddingTop: '10px' }}>
+          <div className="px-3 pb-1">
+            <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#9B8AAE' }}>
+              CRM
+            </span>
+          </div>
+          {CRM_ITEMS.map((item) => {
+            const active = currentPage === item.id
+            return (
+              <button
+                key={item.id}
+                onClick={() => setCurrentPage(item.id)}
+                className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all duration-150 relative"
+                style={{
+                  background: active ? 'linear-gradient(90deg, rgba(213,169,64,0.2) 0%, transparent 100%)' : 'transparent',
+                  color: active ? '#D5A940' : '#E8D5F5',
+                  borderLeft: active ? '3px solid #D5A940' : '3px solid transparent',
+                }}
+                onMouseEnter={(e) => {
+                  if (!active) {
+                    (e.currentTarget as HTMLElement).style.background = 'rgba(213,169,64,0.12)'
+                    ;(e.currentTarget as HTMLElement).style.color = '#E8D5F5'
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!active) {
+                    (e.currentTarget as HTMLElement).style.background = 'transparent'
+                    ;(e.currentTarget as HTMLElement).style.color = '#E8D5F5'
+                  }
+                }}
+              >
+                {/* Dot indicator */}
+                <span
+                  className="flex-none w-5 h-5 rounded-full flex items-center justify-center"
+                  style={{
+                    background: active ? '#D5A940' : 'rgba(232,213,245,0.15)',
+                    boxShadow: active ? '0 0 0 3px rgba(213,169,64,0.35)' : 'none',
+                  }}
+                >
+                  <span style={{
+                    width: '6px', height: '6px', borderRadius: '50%',
+                    background: active ? '#3D1A5C' : 'rgba(232,213,245,0.4)',
+                    display: 'block',
+                  }} />
+                </span>
+
+                {/* Icon */}
+                <span className="flex-none opacity-80">{item.icon}</span>
+
+                {/* Label */}
+                <span className="text-sm font-medium truncate">{item.label}</span>
+              </button>
+            )
+          })}
+        </div>
       </nav>
 
       {/* Status footer */}

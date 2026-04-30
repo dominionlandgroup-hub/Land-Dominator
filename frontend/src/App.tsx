@@ -7,12 +7,13 @@ import Dashboard from './pages/Dashboard'
 import MatchTargets from './pages/MatchTargets'
 import MailingList from './pages/MailingList'
 import Campaigns from './pages/Campaigns'
+import Properties from './pages/Properties'
+import Contacts from './pages/Contacts'
+import Deals from './pages/Deals'
 
 function PageContent() {
-  const { currentPage, compsStats } = useApp()
+  const { currentPage } = useApp()
 
-  // Show welcome screen only on the dedicated welcome page.
-  // Upload Comps must remain reachable even when there is no data yet.
   if (currentPage === 'welcome') {
     return <WelcomeScreen />
   }
@@ -28,6 +29,12 @@ function PageContent() {
       return <MailingList />
     case 'campaigns':
       return <Campaigns />
+    case 'crm-properties':
+      return <Properties />
+    case 'crm-contacts':
+      return <Contacts />
+    case 'crm-deals':
+      return <Deals />
     default:
       return <WelcomeScreen />
   }

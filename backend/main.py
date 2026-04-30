@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 
-from routers import upload, dashboard, matching, mailing, campaigns
+from routers import upload, dashboard, matching, mailing, campaigns, crm
 
 load_dotenv()
 
@@ -47,6 +47,7 @@ app.include_router(dashboard.router)
 app.include_router(matching.router)
 app.include_router(mailing.router)
 app.include_router(campaigns.router)
+app.include_router(crm.router)
 
 
 # ── Health / Root ─────────────────────────────────────────────────────

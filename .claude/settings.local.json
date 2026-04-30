@@ -28,7 +28,24 @@
       "Bash(curl -s -o /dev/null -w '%{http_code}' https://frontend-production-47175.up.railway.app)",
       "Bash(curl -s https://frontend-production-47175.up.railway.app)",
       "Bash(curl -s https://frontend-production-47175.up.railway.app/assets/index-qVY_foQn.js)",
-      "Bash(curl -s https://frontend-production-47175.up.railway.app/assets/index-*.js)"
+      "Bash(curl -s https://frontend-production-47175.up.railway.app/assets/index-*.js)",
+      "Bash(npm install *)",
+      "Bash(sudo chown *)",
+      "Bash(curl -fsSL https://raw.githubusercontent.com/supabase/cli/main/install.sh)",
+      "Bash(curl -L \"https://github.com/supabase/cli/releases/latest/download/supabase_darwin_arm64.tar.gz\" -o /tmp/supabase.tar.gz)",
+      "Bash(tar -xzf /tmp/supabase.tar.gz -C /tmp)",
+      "Bash(/tmp/supabase --version)",
+      "Bash(curl -L \"https://github.com/supabase/cli/releases/latest/download/supabase_darwin_amd64.tar.gz\" -o /tmp/supabase-amd.tar.gz)",
+      "Bash(tar -xzf /tmp/supabase-amd.tar.gz -C /tmp/supabase-amd)",
+      "Bash(mkdir -p /tmp/supabase-amd)",
+      "Bash(/tmp/supabase-amd/supabase --version)",
+      "Bash(/tmp/supabase-amd/supabase db *)",
+      "Bash(python3 -c \"import ast; ast.parse\\(open\\('/Users/damiendupee/Desktop/Land-Dominator/backend/routers/crm.py'\\).read\\(\\)\\); print\\('crm.py: syntax OK'\\)\")",
+      "Bash(python3 -c \"import ast; ast.parse\\(open\\('/Users/damiendupee/Desktop/Land-Dominator/backend/models/crm_schemas.py'\\).read\\(\\)\\); print\\('crm_schemas.py: syntax OK'\\)\")",
+      "Bash(python3 -c \"import ast; ast.parse\\(open\\('/Users/damiendupee/Desktop/Land-Dominator/backend/main.py'\\).read\\(\\)\\); print\\('main.py: syntax OK'\\)\")",
+      "Bash(python3 -c \"import ast; ast.parse\\(open\\('/Users/damiendupee/Desktop/Land-Dominator/backend/services/supabase_client.py'\\).read\\(\\)\\); print\\('supabase_client.py: syntax OK'\\)\")",
+      "Bash(node *)",
+      "Bash(git add *)"
     ]
   }
 }

@@ -187,6 +187,9 @@ export type AppPage =
   | 'match-targets'
   | 'mailing-list'
   | 'campaigns'
+  | 'crm-properties'
+  | 'crm-contacts'
+  | 'crm-deals'
 
 // ─── Confidence ────────────────────────────────────────────────────────────
 
