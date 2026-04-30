@@ -117,6 +117,38 @@ export async function deleteProperties(ids: string[]): Promise<void> {
   await api.post('/crm/properties/bulk-delete', ids)
 }
 
+export async function deletePropertiesFiltered(params: {
+  status?: string
+  campaign_id?: string
+  county?: string
+  state?: string
+  search?: string
+}): Promise<void> {
+  await api.post('/crm/properties/bulk-delete-filtered', null, { params })
+}
+
+export async function exportPropertiesCsv(params: {
+  status?: string
+  campaign_id?: string
+  county?: string
+  state?: string
+  search?: string
+  fmt?: 'full' | 'mailhouse'
+  filename?: string
+}): Promise<void> {
+  const { filename, ...queryParams } = params
+  const { data } = await api.get('/crm/properties/export-csv', {
+    params: queryParams,
+    responseType: 'blob',
+  })
+  const url = URL.createObjectURL(new Blob([data], { type: 'text/csv' }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename ?? `properties-export-${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 // ── Contacts ──────────────────────────────────────────────────────────
 
 export async function listContacts(): Promise<CRMContact[]> {

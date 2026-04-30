@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Body, File, HTTPException, Query, UploadFile
+from fastapi.responses import StreamingResponse
 
 from models.crm_schemas import (
     Contact, ContactCreate, ContactUpdate,
@@ -562,6 +563,37 @@ async def bulk_delete_properties(ids: List[str] = Body(...)) -> None:
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+@router.post("/properties/bulk-delete-filtered", status_code=204)
+async def bulk_delete_filtered_properties(
+    status: Optional[str] = Query(None),
+    state: Optional[str] = Query(None),
+    county: Optional[str] = Query(None),
+    campaign_id: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+) -> None:
+    """Delete all properties matching the given filters (or all properties if no filters provided)."""
+    try:
+        sb = get_supabase()
+        has_filters = any([status, state, county, campaign_id, search])
+        if not has_filters:
+            sb.table("crm_properties").delete().gte("created_at", "1900-01-01T00:00:00+00:00").execute()
+        else:
+            q = sb.table("crm_properties").delete().gte("created_at", "1900-01-01T00:00:00+00:00")
+            if status:
+                q = q.eq("status", status)
+            if state:
+                q = q.eq("state", state)
+            if county:
+                q = q.ilike("county", f"%{county}%")
+            if campaign_id:
+                q = q.eq("campaign_id", campaign_id)
+            if search:
+                q = q.or_(f"owner_full_name.ilike.%{search}%,apn.ilike.%{search}%")
+            q.execute()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 @router.get("/properties/counts")
 async def get_property_counts() -> dict:
     """Return total and per-status counts without loading all data."""
@@ -633,6 +665,101 @@ async def create_property(body: PropertyCreate) -> dict:
         data["updated_at"] = _now()
         res = sb.table("crm_properties").insert(data).execute()
         return res.data[0]
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/properties/export-csv")
+async def export_properties_csv(
+    status: Optional[str] = Query(None),
+    state: Optional[str] = Query(None),
+    county: Optional[str] = Query(None),
+    campaign_id: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    fmt: str = Query("full"),
+) -> StreamingResponse:
+    """Export all matching properties as a CSV file download."""
+    try:
+        sb = get_supabase()
+        page_size = 1000
+        all_rows: List[dict] = []
+        page = 0
+        while True:
+            q = (sb.table("crm_properties")
+                 .select("*")
+                 .order("created_at", desc=True)
+                 .range(page * page_size, (page + 1) * page_size - 1))
+            if status:
+                q = q.eq("status", status)
+            if state:
+                q = q.eq("state", state)
+            if county:
+                q = q.ilike("county", f"%{county}%")
+            if campaign_id:
+                q = q.eq("campaign_id", campaign_id)
+            if search:
+                q = q.or_(f"owner_full_name.ilike.%{search}%,apn.ilike.%{search}%")
+            result = q.execute()
+            batch = result.data or []
+            all_rows.extend(batch)
+            if len(batch) < page_size:
+                break
+            page += 1
+
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        output = io.StringIO()
+        writer = csv.writer(output)
+
+        if fmt == "mailhouse":
+            writer.writerow(["Owner Name", "Mailing Address", "APN", "County", "Offer Price", "Campaign Code"])
+            for row in all_rows:
+                writer.writerow([
+                    row.get("owner_full_name", ""),
+                    row.get("owner_mailing_address", ""),
+                    row.get("apn", ""),
+                    row.get("county", ""),
+                    row.get("offer_price", ""),
+                    row.get("campaign_code", ""),
+                ])
+            safe_name = (status or campaign_id or "export").replace(" ", "_").lower()
+            filename = f"{safe_name}-maillist-{today}.csv"
+        else:
+            writer.writerow([
+                "APN", "County", "State", "Acreage", "Owner Name", "Owner Phone",
+                "Owner Email", "Mailing Address", "Campaign Code", "Campaign Price",
+                "Offer Price", "Status", "Tags",
+            ])
+            for row in all_rows:
+                tags = row.get("tags") or []
+                if isinstance(tags, list):
+                    tags_str = ",".join(str(t) for t in tags)
+                else:
+                    tags_str = str(tags)
+                writer.writerow([
+                    row.get("apn", ""),
+                    row.get("county", ""),
+                    row.get("state", ""),
+                    row.get("acreage", ""),
+                    row.get("owner_full_name", ""),
+                    row.get("owner_phone", ""),
+                    row.get("owner_email", ""),
+                    row.get("owner_mailing_address", ""),
+                    row.get("campaign_code", ""),
+                    row.get("campaign_price", ""),
+                    row.get("offer_price", ""),
+                    row.get("status", ""),
+                    tags_str,
+                ])
+            filename = f"properties-export-{today}.csv"
+
+        csv_bytes = output.getvalue().encode("utf-8")
+        return StreamingResponse(
+            iter([csv_bytes]),
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     except Exception as exc:

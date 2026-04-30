@@ -2,14 +2,15 @@ import React, { useEffect, useRef, useState } from 'react'
 import type { CRMProperty, CRMCampaign, PropertyStatus } from '../types/crm'
 import {
   listProperties, createProperty, updateProperty, deleteProperty,
-  deleteProperties, getPropertyCounts, listCrmCampaigns,
+  deleteProperties, deletePropertiesFiltered, exportPropertiesCsv,
+  getPropertyCounts, listCrmCampaigns,
 } from '../api/crm'
 import PropertyDetail from './PropertyDetail'
 import { useApp } from '../context/AppContext'
 
 type View = 'list' | 'detail' | 'new'
 
-const PAGE_SIZE = 20
+const PAGE_SIZE = 50
 
 const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   lead:           { bg: '#FFF3E0', text: '#E65100', border: '#FFCC80' },
@@ -54,8 +55,10 @@ export default function Properties() {
 
   // Selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [allPagesSelected, setAllPagesSelected] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [exporting, setExporting] = useState(false)
 
   useEffect(() => {
     const initCampaign = propertyCampaignId ?? ''
@@ -101,37 +104,75 @@ export default function Properties() {
     loadPage(p, sf, cf, county, state, sq)
   }
 
-  function handleStatusChange(s: string) { setStatusFilter(s); setSelectedIds(new Set()); reload({ sf: s }) }
-  function handleCampaignChange(v: string) { setCampaignFilter(v); setSelectedIds(new Set()); reload({ cf: v }) }
+  function clearSelection() { setSelectedIds(new Set()); setAllPagesSelected(false) }
+
+  function handleStatusChange(s: string) { setStatusFilter(s); clearSelection(); reload({ sf: s }) }
+  function handleCampaignChange(v: string) { setCampaignFilter(v); clearSelection(); reload({ cf: v }) }
   function handleCountyChange(v: string) {
     setCountyFilter(v)
+    clearSelection()
     if (searchDebounce.current) clearTimeout(searchDebounce.current)
     searchDebounce.current = setTimeout(() => reload({ county: v }), 400)
   }
   function handleStateChange(v: string) {
     setStateFilter(v)
+    clearSelection()
     if (searchDebounce.current) clearTimeout(searchDebounce.current)
     searchDebounce.current = setTimeout(() => reload({ state: v }), 400)
   }
   function handleSearchChange(v: string) {
     setSearchQuery(v)
+    clearSelection()
     if (searchDebounce.current) clearTimeout(searchDebounce.current)
     searchDebounce.current = setTimeout(() => reload({ sq: v }), 400)
   }
   function clearFilters() {
     setStatusFilter('all'); setCampaignFilter(''); setCountyFilter(''); setStateFilter(''); setSearchQuery('')
+    clearSelection()
     loadPage(1, 'all', '', '', '', '')
   }
 
   async function handleBulkDelete() {
     setDeleting(true)
     try {
-      await deleteProperties(Array.from(selectedIds))
-      setSelectedIds(new Set())
+      if (allPagesSelected) {
+        await deletePropertiesFiltered({
+          status: statusFilter !== 'all' ? statusFilter : undefined,
+          campaign_id: campaignFilter || undefined,
+          county: countyFilter.trim() || undefined,
+          state: stateFilter.trim() || undefined,
+          search: searchQuery.trim() || undefined,
+        })
+      } else {
+        await deleteProperties(Array.from(selectedIds))
+      }
+      clearSelection()
       setShowDeleteConfirm(false)
-      reload({ p: page })
+      reload({ p: 1 })
     } catch { setError('Failed to delete selected properties.') }
     finally { setDeleting(false) }
+  }
+
+  async function handleExport() {
+    setExporting(true)
+    try {
+      if (!allPagesSelected && selectedIds.size > 0) {
+        // Export only the selected records visible on this page
+        const sel = properties.filter(p => selectedIds.has(p.id))
+        downloadCsvLocally(sel, campaigns)
+      } else {
+        // Export ALL records matching current filters
+        await exportPropertiesCsv({
+          status: statusFilter !== 'all' ? statusFilter : undefined,
+          campaign_id: campaignFilter || undefined,
+          county: countyFilter.trim() || undefined,
+          state: stateFilter.trim() || undefined,
+          search: searchQuery.trim() || undefined,
+          fmt: 'full',
+        })
+      }
+    } catch { setError('Export failed. Please try again.') }
+    finally { setExporting(false) }
   }
 
   if (view === 'detail' && selected) {
@@ -168,6 +209,13 @@ export default function Properties() {
   }
   const hasActiveFilter = campaignFilter || countyFilter || stateFilter || searchQuery || statusFilter !== 'all'
 
+  // Header checkbox states
+  const allPageSelected = properties.length > 0 && selectedIds.size === properties.length && !allPagesSelected
+  const someSelected = !allPagesSelected && selectedIds.size > 0 && selectedIds.size < properties.length
+  const deleteCount = allPagesSelected ? totalCount : selectedIds.size
+  const showSelectAllBanner = allPageSelected && totalCount > properties.length
+  const anySelection = allPagesSelected || selectedIds.size > 0
+
   return (
     <div className="page-content">
       <div className="page-header">
@@ -176,7 +224,7 @@ export default function Properties() {
           <p className="page-subtitle">{allCounts.total.toLocaleString()} total · showing {totalCount.toLocaleString()}</p>
         </div>
         <div className="flex items-center gap-2">
-          {selectedIds.size > 0 && (
+          {anySelection && (
             <button
               className="px-4 py-2 rounded-lg text-sm font-semibold text-white flex items-center gap-2"
               style={{ background: '#B71C1C' }}
@@ -187,9 +235,21 @@ export default function Properties() {
                 <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
                 <path d="M10 11v6M14 11v6"/>
               </svg>
-              Delete ({selectedIds.size.toLocaleString()})
+              Delete ({deleteCount.toLocaleString()})
             </button>
           )}
+          <button
+            className="btn-secondary flex items-center gap-1.5"
+            onClick={handleExport}
+            disabled={exporting}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            {exporting ? 'Exporting…' : anySelection && !allPagesSelected ? `Export (${selectedIds.size})` : 'Export CSV'}
+          </button>
           <button className="btn-primary" onClick={() => setView('new')}>+ New Property</button>
         </div>
       </div>
@@ -213,7 +273,6 @@ export default function Properties() {
 
         {/* Filter bar */}
         <div className="flex items-center gap-2 mb-4 flex-wrap">
-          {/* Campaign */}
           {campaigns.length > 0 && (
             <select
               className="input-base text-sm py-1.5"
@@ -225,7 +284,6 @@ export default function Properties() {
               {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           )}
-          {/* County */}
           <input
             type="text"
             className="input-base text-sm py-1.5"
@@ -234,7 +292,6 @@ export default function Properties() {
             value={countyFilter}
             onChange={e => handleCountyChange(e.target.value)}
           />
-          {/* State */}
           <input
             type="text"
             className="input-base text-sm py-1.5"
@@ -243,7 +300,6 @@ export default function Properties() {
             value={stateFilter}
             onChange={e => handleStateChange(e.target.value)}
           />
-          {/* Search */}
           <div className="relative">
             <svg className="absolute left-3 top-1/2 -translate-y-1/2" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9B8AAE" strokeWidth="2">
               <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -301,6 +357,42 @@ export default function Properties() {
           </div>
         ) : (
           <>
+            {/* Select-all-pages banner */}
+            {showSelectAllBanner && (
+              <div
+                className="flex items-center justify-between px-4 py-2.5 rounded-lg mb-3 text-sm"
+                style={{ background: 'rgba(92,41,119,0.07)', border: '1px solid #D4B8E8' }}
+              >
+                <span style={{ color: '#3D2B5E' }}>
+                  All {properties.length} properties on this page are selected.
+                </span>
+                <button
+                  className="font-semibold text-sm ml-3"
+                  style={{ color: '#5C2977' }}
+                  onClick={() => setAllPagesSelected(true)}
+                >
+                  Select all {totalCount.toLocaleString()} properties →
+                </button>
+              </div>
+            )}
+            {allPagesSelected && (
+              <div
+                className="flex items-center justify-between px-4 py-2.5 rounded-lg mb-3 text-sm"
+                style={{ background: 'rgba(183,28,28,0.06)', border: '1px solid rgba(183,28,28,0.25)' }}
+              >
+                <span style={{ color: '#B71C1C', fontWeight: 600 }}>
+                  All {totalCount.toLocaleString()} properties are selected.
+                </span>
+                <button
+                  className="font-semibold text-sm ml-3"
+                  style={{ color: '#B71C1C' }}
+                  onClick={clearSelection}
+                >
+                  Clear selection ×
+                </button>
+              </div>
+            )}
+
             <div className="bg-white rounded-xl overflow-hidden" style={{ border: '1px solid #EDE8F5' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                 <thead>
@@ -308,11 +400,12 @@ export default function Properties() {
                     <th style={{ width: '36px', padding: '10px 12px' }}>
                       <input
                         type="checkbox"
-                        checked={selectedIds.size === properties.length && properties.length > 0}
-                        ref={el => { if (el) el.indeterminate = selectedIds.size > 0 && selectedIds.size < properties.length }}
+                        checked={allPagesSelected || allPageSelected}
+                        ref={el => { if (el) el.indeterminate = someSelected }}
                         onChange={() => {
-                          if (selectedIds.size === properties.length) setSelectedIds(new Set())
-                          else setSelectedIds(new Set(properties.map(p => p.id)))
+                          if (allPagesSelected) { clearSelection(); return }
+                          if (selectedIds.size > 0) { clearSelection(); return }
+                          setSelectedIds(new Set(properties.map(p => p.id)))
                         }}
                         style={{ cursor: 'pointer' }}
                       />
@@ -330,8 +423,9 @@ export default function Properties() {
                       </td>
                     </tr>
                   ) : properties.map((p, i) => {
-                    const isSelected = selectedIds.has(p.id)
+                    const isSelected = allPagesSelected || selectedIds.has(p.id)
                     const sc = STATUS_COLORS[p.status ?? 'lead'] ?? STATUS_COLORS.lead
+                    const campaignName = campaigns.find(c => c.id === p.campaign_id)?.name ?? p.campaign_code
                     return (
                       <tr
                         key={p.id}
@@ -342,7 +436,7 @@ export default function Properties() {
                         }}
                         onClick={() => { setSelected(p); setView('detail') }}
                       >
-                        <td style={{ padding: '10px 12px' }} onClick={e => { e.stopPropagation(); setSelectedIds(prev => { const n = new Set(prev); n.has(p.id) ? n.delete(p.id) : n.add(p.id); return n }) }}>
+                        <td style={{ padding: '10px 12px' }} onClick={e => { e.stopPropagation(); if (!allPagesSelected) { setSelectedIds(prev => { const n = new Set(prev); n.has(p.id) ? n.delete(p.id) : n.add(p.id); return n }) } }}>
                           <input type="checkbox" checked={isSelected} onChange={() => {}} style={{ cursor: 'pointer' }} />
                         </td>
                         <td style={{ padding: '10px 12px', fontWeight: 500, color: '#1A0A2E', maxWidth: '180px' }}>
@@ -363,8 +457,8 @@ export default function Properties() {
                         <td style={{ padding: '10px 12px', textAlign: 'right', color: '#3D2B5E', fontWeight: 500 }}>
                           {p.offer_price != null ? `$${p.offer_price.toLocaleString()}` : <span style={{ color: '#C4B5D8' }}>—</span>}
                         </td>
-                        <td style={{ padding: '10px 12px', fontSize: '11px', color: '#9B8AAE' }}>
-                          {p.campaign_code ?? <span style={{ color: '#C4B5D8' }}>—</span>}
+                        <td style={{ padding: '10px 12px', fontSize: '11px', color: '#9B8AAE', maxWidth: '140px' }}>
+                          <div className="truncate">{campaignName ?? <span style={{ color: '#C4B5D8' }}>—</span>}</div>
                         </td>
                         <td style={{ padding: '10px 12px' }}>
                           <span
@@ -422,8 +516,18 @@ export default function Properties() {
       {/* Bulk delete confirm */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(26,10,46,0.55)' }}>
-          <div className="bg-white rounded-2xl p-6 shadow-xl" style={{ maxWidth: '400px', width: '100%' }}>
-            <h2 className="section-heading mb-3">Delete {selectedIds.size.toLocaleString()} {selectedIds.size === 1 ? 'Property' : 'Properties'}?</h2>
+          <div className="bg-white rounded-2xl p-6 shadow-xl" style={{ maxWidth: '420px', width: '100%' }}>
+            <h2 className="section-heading mb-3">
+              {allPagesSelected
+                ? `Delete all ${totalCount.toLocaleString()} properties?`
+                : `Delete ${selectedIds.size.toLocaleString()} ${selectedIds.size === 1 ? 'Property' : 'Properties'}?`
+              }
+            </h2>
+            {allPagesSelected && (
+              <p className="text-sm mb-2" style={{ color: '#B71C1C' }}>
+                This will delete every property matching the current filters.
+              </p>
+            )}
             <p className="text-sm mb-6" style={{ color: '#6B5B8A' }}>This cannot be undone.</p>
             <div className="flex gap-3">
               <button className="btn-secondary flex-1" onClick={() => setShowDeleteConfirm(false)} disabled={deleting}>Cancel</button>
@@ -443,5 +547,34 @@ export default function Properties() {
   )
 }
 
-// ── Status badge (standalone, used if needed) ──────────────────────────────
+function downloadCsvLocally(records: CRMProperty[], camps: CRMCampaign[]) {
+  const headers = ['APN', 'County', 'State', 'Acreage', 'Owner Name', 'Owner Phone', 'Owner Email', 'Mailing Address', 'Campaign Code', 'Campaign Price', 'Offer Price', 'Status', 'Tags']
+  const rows = records.map(p => {
+    const campName = camps.find(c => c.id === p.campaign_id)?.name
+    return [
+      p.apn ?? '',
+      p.county ?? '',
+      p.state ?? '',
+      p.acreage?.toFixed(2) ?? '',
+      p.owner_full_name ?? '',
+      p.owner_phone ?? '',
+      p.owner_email ?? '',
+      p.owner_mailing_address ?? '',
+      campName ?? p.campaign_code ?? '',
+      p.campaign_price?.toString() ?? '',
+      p.offer_price?.toString() ?? '',
+      p.status ?? 'lead',
+      (p.tags ?? []).join(', '),
+    ]
+  })
+  const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `properties-export-${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 export { STATUS_COLORS, STATUS_LABELS }

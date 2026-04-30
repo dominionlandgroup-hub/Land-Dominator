@@ -3,6 +3,7 @@ import Papa from 'papaparse'
 import type { CRMProperty, CRMCampaign, PropertyStatus } from '../types/crm'
 import {
   listProperties, updateProperty, deleteProperties, bulkInsertRows, getCrmCampaign,
+  exportPropertiesCsv,
 } from '../api/crm'
 
 const PAGE_SIZE = 20
@@ -48,6 +49,8 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
   const [showAdjustPrice, setShowAdjustPrice] = useState(false)
   const [newPrice, setNewPrice] = useState('')
   const [adjusting, setAdjusting] = useState(false)
+
+  const [exportingAll, setExportingAll] = useState(false)
 
   // Import
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -172,6 +175,19 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
     URL.revokeObjectURL(url)
   }
 
+  // ── Export all (mail house format) ─────────────────────────────────
+  async function handleExportAll() {
+    setExportingAll(true)
+    try {
+      const safeName = campaign.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()
+      await exportPropertiesCsv({
+        campaign_id: campaign.id,
+        fmt: 'mailhouse',
+        filename: `${safeName}-maillist-${new Date().toISOString().slice(0, 10)}.csv`,
+      })
+    } catch {} finally { setExportingAll(false) }
+  }
+
   // ── Import ──────────────────────────────────────────────────────────
   function triggerImport() {
     cancelledRef.current = false
@@ -261,6 +277,18 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
             </span>
           )}
           <input ref={fileInputRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={handleFileSelected} />
+          <button
+            className="btn-secondary text-sm"
+            onClick={handleExportAll}
+            disabled={exportingAll}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            {exportingAll ? 'Exporting…' : 'Export All'}
+          </button>
           <button
             className="btn-secondary text-sm"
             onClick={triggerImport}
