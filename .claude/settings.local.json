@@ -65,7 +65,9 @@
       "Bash(export PATH=\"$HOME/.local/bin:$PATH\")",
       "Bash(npx tsc *)",
       "Bash(node_modules/.bin/tsc --noEmit)",
-      "Bash(./node_modules/.bin/tsc --noEmit)"
+      "Bash(./node_modules/.bin/tsc --noEmit)",
+      "Bash(npx --yes tsc --noEmit)",
+      "Bash(yarn tsc *)"
     ]
   }
 }
