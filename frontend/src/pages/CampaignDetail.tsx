@@ -159,21 +159,38 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
   // ── Export CSV ──────────────────────────────────────────────────────
   function handleExport() {
     const selected = properties.filter(p => selectedIds.has(p.id))
-    const headers = ['Owner Name', 'Mailing Address', 'City', 'State', 'Zip', 'APN', 'County', 'Acreage', 'Campaign Code', 'Offer Price', 'Status']
+    const headers = [
+      'Owner Full Name', 'Owner First Name', 'Owner Last Name',
+      'Owner Phone', 'Owner Email',
+      'Owner Address Line 1', 'Owner Address City', 'Owner Address State', 'Owner Address Zip',
+      'APN', 'County', 'State', 'Acreage',
+      'Campaign Code', 'Campaign Price', 'Offer Price', 'LP Estimate',
+      'Status', 'Tags', 'Property ID', 'FIPS',
+    ]
     const rows = selected.map(p => [
       p.owner_full_name ?? '',
+      p.owner_first_name ?? '',
+      p.owner_last_name ?? '',
+      p.owner_phone ?? '',
+      p.owner_email ?? '',
       p.owner_mailing_address ?? '',
       p.owner_mailing_city ?? '',
       p.owner_mailing_state ?? '',
       p.owner_mailing_zip ?? '',
       p.apn ?? '',
       p.county ?? '',
+      p.state ?? '',
       p.acreage?.toFixed(2) ?? '',
       p.campaign_code ?? '',
+      p.campaign_price?.toString() ?? '',
       p.offer_price?.toString() ?? '',
+      p.lp_estimate?.toString() ?? '',
       p.status ?? 'lead',
+      (p.tags ?? []).join(','),
+      p.property_id ?? '',
+      p.fips ?? '',
     ])
-    const csv = [headers, ...rows].map(r => r.map(v => `"${v.replace(/"/g, '""')}"`).join(',')).join('\n')
+    const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')

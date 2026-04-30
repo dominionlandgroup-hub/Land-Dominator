@@ -139,14 +139,21 @@ PEBBLE_MAP: dict[str, str] = {
     "mailing zip": "owner_mailing_zip",
     "owner address zip code": "owner_mailing_zip",
 
-    # Land Portal IDs
+    # Land Portal / Pebble IDs
     "property id": "property_id",
     "property_id": "property_id",
     "propertyid": "property_id",
+    "prop id": "property_id",
+    "prop_id": "property_id",
+    "lp property id": "property_id",
+    "land portal id": "property_id",
     "county code (fips)": "fips",
     "county code": "fips",
     "fips": "fips",
     "fips code": "fips",
+    "fips_code": "fips",
+    "county fips": "fips",
+    "county_fips": "fips",
 
     # Campaign
     "campaign code": "campaign_code",
@@ -763,7 +770,7 @@ async def bulk_insert_properties(
                 data["campaign_id"] = campaign_id
                 if not data.get("campaign_code") and campaign_number:
                     record_num = starting_record + valid_index
-                    data["campaign_code"] = f"{campaign_number:03d}-{record_num:04d}"
+                    data["campaign_code"] = f"{campaign_number:03d}-{record_num:05d}"
             if not data.get("offer_price") and data.get("lp_estimate"):
                 data["offer_price"] = round(float(data["lp_estimate"]) * 0.525, 2)
             valid_index += 1
@@ -945,46 +952,42 @@ async def export_properties_csv(
         output = io.StringIO()
         writer = csv.writer(output)
 
+        # Shared full column set for both export types
+        HEADERS = [
+            "Owner Full Name", "Owner First Name", "Owner Last Name",
+            "Owner Phone", "Owner Email",
+            "Owner Address Line 1", "Owner Address City", "Owner Address State", "Owner Address Zip",
+            "APN", "County", "State", "Acreage",
+            "Campaign Code", "Campaign Price", "Offer Price", "LP Estimate",
+            "Status", "Tags", "Property ID", "FIPS",
+        ]
+        FIELDS = [
+            "owner_full_name", "owner_first_name", "owner_last_name",
+            "owner_phone", "owner_email",
+            "owner_mailing_address", "owner_mailing_city", "owner_mailing_state", "owner_mailing_zip",
+            "apn", "county", "state", "acreage",
+            "campaign_code", "campaign_price", "offer_price", "lp_estimate",
+            "status", "_tags", "property_id", "fips",
+        ]
+
+        def _row_values(row: dict) -> list:
+            out = []
+            for f in FIELDS:
+                if f == "_tags":
+                    tags = row.get("tags") or []
+                    out.append(",".join(str(t) for t in tags) if isinstance(tags, list) else str(tags))
+                else:
+                    out.append(row.get(f, "") or "")
+            return out
+
+        writer.writerow(HEADERS)
+        for row in all_rows:
+            writer.writerow(_row_values(row))
+
         if fmt == "mailhouse":
-            writer.writerow(["Owner Name", "Mailing Address", "APN", "County", "Offer Price", "Campaign Code"])
-            for row in all_rows:
-                writer.writerow([
-                    row.get("owner_full_name", ""),
-                    row.get("owner_mailing_address", ""),
-                    row.get("apn", ""),
-                    row.get("county", ""),
-                    row.get("offer_price", ""),
-                    row.get("campaign_code", ""),
-                ])
-            safe_name = (status or campaign_id or "export").replace(" ", "_").lower()
+            safe_name = (campaign_id or status or "export").replace(" ", "_").lower()
             filename = f"{safe_name}-maillist-{today}.csv"
         else:
-            writer.writerow([
-                "APN", "County", "State", "Acreage", "Owner Name", "Owner Phone",
-                "Owner Email", "Mailing Address", "Campaign Code", "Campaign Price",
-                "Offer Price", "Status", "Tags",
-            ])
-            for row in all_rows:
-                tags = row.get("tags") or []
-                if isinstance(tags, list):
-                    tags_str = ",".join(str(t) for t in tags)
-                else:
-                    tags_str = str(tags)
-                writer.writerow([
-                    row.get("apn", ""),
-                    row.get("county", ""),
-                    row.get("state", ""),
-                    row.get("acreage", ""),
-                    row.get("owner_full_name", ""),
-                    row.get("owner_phone", ""),
-                    row.get("owner_email", ""),
-                    row.get("owner_mailing_address", ""),
-                    row.get("campaign_code", ""),
-                    row.get("campaign_price", ""),
-                    row.get("offer_price", ""),
-                    row.get("status", ""),
-                    tags_str,
-                ])
             filename = f"properties-export-{today}.csv"
 
         csv_bytes = output.getvalue().encode("utf-8")

@@ -547,26 +547,38 @@ export default function Properties() {
   )
 }
 
-function downloadCsvLocally(records: CRMProperty[], camps: CRMCampaign[]) {
-  const headers = ['APN', 'County', 'State', 'Acreage', 'Owner Name', 'Owner Phone', 'Owner Email', 'Mailing Address', 'Campaign Code', 'Campaign Price', 'Offer Price', 'Status', 'Tags']
-  const rows = records.map(p => {
-    const campName = camps.find(c => c.id === p.campaign_id)?.name
-    return [
-      p.apn ?? '',
-      p.county ?? '',
-      p.state ?? '',
-      p.acreage?.toFixed(2) ?? '',
-      p.owner_full_name ?? '',
-      p.owner_phone ?? '',
-      p.owner_email ?? '',
-      p.owner_mailing_address ?? '',
-      campName ?? p.campaign_code ?? '',
-      p.campaign_price?.toString() ?? '',
-      p.offer_price?.toString() ?? '',
-      p.status ?? 'lead',
-      (p.tags ?? []).join(', '),
-    ]
-  })
+function downloadCsvLocally(records: CRMProperty[], _camps: CRMCampaign[]) {
+  const headers = [
+    'Owner Full Name', 'Owner First Name', 'Owner Last Name',
+    'Owner Phone', 'Owner Email',
+    'Owner Address Line 1', 'Owner Address City', 'Owner Address State', 'Owner Address Zip',
+    'APN', 'County', 'State', 'Acreage',
+    'Campaign Code', 'Campaign Price', 'Offer Price', 'LP Estimate',
+    'Status', 'Tags', 'Property ID', 'FIPS',
+  ]
+  const rows = records.map(p => [
+    p.owner_full_name ?? '',
+    p.owner_first_name ?? '',
+    p.owner_last_name ?? '',
+    p.owner_phone ?? '',
+    p.owner_email ?? '',
+    p.owner_mailing_address ?? '',
+    p.owner_mailing_city ?? '',
+    p.owner_mailing_state ?? '',
+    p.owner_mailing_zip ?? '',
+    p.apn ?? '',
+    p.county ?? '',
+    p.state ?? '',
+    p.acreage?.toFixed(2) ?? '',
+    p.campaign_code ?? '',
+    p.campaign_price?.toString() ?? '',
+    p.offer_price?.toString() ?? '',
+    p.lp_estimate?.toString() ?? '',
+    p.status ?? 'lead',
+    (p.tags ?? []).join(','),
+    p.property_id ?? '',
+    p.fips ?? '',
+  ])
   const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
   const blob = new Blob([csv], { type: 'text/csv' })
   const url = URL.createObjectURL(blob)
