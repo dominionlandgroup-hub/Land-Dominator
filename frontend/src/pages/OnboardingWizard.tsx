@@ -14,6 +14,13 @@ import {
 } from '../api/crm'
 import type { UploadStats } from '../types'
 
+const SQFT_PER_ACRE = 43560
+
+function fmtAcreageWithSqft(acres: number): string {
+  const sqft = Math.round(acres * SQFT_PER_ACRE)
+  return `${acres} acres (${sqft.toLocaleString()} sq ft)`
+}
+
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const US_STATES = [
@@ -423,17 +430,23 @@ function Step3Research({
 // ── Step 4 — Upload Comps ─────────────────────────────────────────────────────
 
 function Step4Comps({
-  state, strategy, onNext, onBack, onSkip,
+  state, strategy, county, onNext, onBack, onSkip,
 }: {
-  state: string; strategy: Strategy; onNext: (stats: UploadStats) => void; onBack: () => void; onSkip: () => void
+  state: string; strategy: Strategy; county?: CountyRecommendation | null; onNext: (stats: UploadStats) => void; onBack: () => void; onSkip: () => void
 }) {
   const [uploading, setUploading] = useState(false)
   const [stats, setStats] = useState<UploadStats | null>(null)
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const acreageRange = strategy === 'infill_lots' ? '0.1 to 2 acres' : strategy === 'rural_acreage' ? '5 to 100 acres' : '10 to 500 acres'
   const propType = strategy === 'infill_lots' ? 'Lots and Land' : 'Land'
+
+  // Use AI-researched county acreage if available, else fall back to strategy defaults
+  const defaultMin = strategy === 'infill_lots' ? 0.1 : strategy === 'rural_acreage' ? 5 : 10
+  const defaultMax = strategy === 'infill_lots' ? 2 : strategy === 'rural_acreage' ? 100 : 500
+  const acreageMin = county?.recommended_acreage_min ?? defaultMin
+  const acreageMax = county?.recommended_acreage_max ?? defaultMax
+  const acreageRange = `${fmtAcreageWithSqft(acreageMin)} minimum to ${fmtAcreageWithSqft(acreageMax)} maximum`
 
   async function handleFile(file: File) {
     setUploading(true); setError(null)
@@ -592,7 +605,7 @@ function Step5Market({
                 `Set State: ${state}`,
                 `Set County: ${county.county}`,
                 'Set Property Type: Vacant Land / Lots',
-                `Set Acreage: ${acreageMin} to ${acreageMax}`,
+                `Set Acreage: ${fmtAcreageWithSqft(acreageMin)} minimum to ${fmtAcreageWithSqft(acreageMax)} maximum`,
                 'Set Owner Type: Individual',
                 'Export and upload the file on the next step',
               ].map((step, i) => (
@@ -837,6 +850,7 @@ export default function OnboardingWizard({ onComplete }: WizardProps) {
               <Step4Comps
                 state={selectedState || 'your state'}
                 strategy={strategy}
+                county={selectedCounty || researchResult?.counties?.[0]}
                 onNext={() => setStep(5)}
                 onBack={() => setStep(3)}
                 onSkip={() => setStep(5)}
