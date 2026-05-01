@@ -21,6 +21,8 @@ COMP_COLS_REQUIRED = [
     'Current Sale Buyer 1 Full Name', 'Current Sale Seller 1 Full Name',
     'FL FEMA Flood Zone', 'Buildability total (%)', 'TLP Estimate',
     'Lot Sq Ft', 'Calc Acreage', 'Parcel Address County',
+    # Quality fields — present in some LP comp exports; preserved when available
+    'Road Frontage', 'Slope', 'Average Slope', 'Wetlands Coverage',
 ]
 
 TARGET_COLS_REQUIRED = [

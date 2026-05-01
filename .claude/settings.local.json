@@ -68,7 +68,19 @@
       "Bash(./node_modules/.bin/tsc --noEmit)",
       "Bash(npx --yes tsc --noEmit)",
       "Bash(yarn tsc *)",
-      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\({**d.get\\('dependencies',{}\\), **d.get\\('devDependencies',{}\\)}, indent=2\\)\\)\")"
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\({**d.get\\('dependencies',{}\\), **d.get\\('devDependencies',{}\\)}, indent=2\\)\\)\")",
+      "Bash(npm run *)",
+      "Bash(kill %1)",
+      "Bash(python -c \"import routers.crm; print\\('OK'\\)\")",
+      "Bash(ssh-add -l)",
+      "Bash(ssh-add /Users/damiendupee/.ssh/id_ed25519)",
+      "Bash(git fetch *)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('routers/communications.py'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(python3 -c \"import ast; ast.parse\\(open\\('routers/communications.py'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(python3 -c ' *)",
+      "Bash(grep -E \"\\\\.\\(py|tsx?|jsx?\\)$\")",
+      "Bash(grep -E \"\\\\.\\(tsx?|jsx?\\)$\")",
+      "Bash(grep -E \"\\\\.\\(tsx|ts|jsx|js\\)$\")"
     ]
   }
 }

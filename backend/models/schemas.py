@@ -52,6 +52,18 @@ class SweetSpot(BaseModel):
     expected_offer_low: float
     expected_offer_high: float
 
+class LandQualityStats(BaseModel):
+    buildability_min: Optional[float] = None
+    buildability_median: Optional[float] = None
+    buildability_count: int = 0
+    road_frontage_p25: Optional[float] = None
+    road_frontage_count: int = 0
+    slope_p75: Optional[float] = None
+    slope_count: int = 0
+    wetlands_p75: Optional[float] = None
+    wetlands_count: int = 0
+
+
 class DashboardResponse(BaseModel):
     zip_stats: List[ZipStats]
     total_comps: int
@@ -65,6 +77,7 @@ class DashboardResponse(BaseModel):
     sweet_spot: Optional[SweetSpot] = None
     top_states: List[str] = []
     top_counties: List[str] = []
+    land_quality: Optional[LandQualityStats] = None
 
 
 class MatchFilters(BaseModel):

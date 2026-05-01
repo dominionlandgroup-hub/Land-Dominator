@@ -31,6 +31,18 @@ export interface ZipStats {
   acreage_band_gt10: number
 }
 
+export interface LandQualityStats {
+  buildability_min: number | null
+  buildability_median: number | null
+  buildability_count: number
+  road_frontage_p25: number | null
+  road_frontage_count: number
+  slope_p75: number | null
+  slope_count: number
+  wetlands_p75: number | null
+  wetlands_count: number
+}
+
 export interface DashboardData {
   zip_stats: ZipStats[]
   total_comps: number
@@ -44,6 +56,7 @@ export interface DashboardData {
   sweet_spot?: SweetSpot | null
   top_states: string[]
   top_counties: string[]
+  land_quality?: LandQualityStats | null
 }
 
 export interface CompLocation {

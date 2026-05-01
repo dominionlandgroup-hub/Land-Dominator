@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Query
 from typing import Optional, List
 
 from models.schemas import DashboardResponse, CompLocation, SweetSpot
-from services.analytics import compute_zip_stats, compute_summary, generate_insight, get_comp_locations, compute_sweet_spot
+from services.analytics import compute_zip_stats, compute_summary, generate_insight, get_comp_locations, compute_sweet_spot, compute_land_quality_stats
 from storage.session_store import get_comps
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
@@ -42,6 +42,7 @@ async def get_dashboard_stats(
     sweet_spot = compute_sweet_spot(filtered_df)
     insight = generate_insight(zip_stats, summary, sweet_spot)
     comp_locations = get_comp_locations(filtered_df, zip_filter=zip_filter)
+    land_quality = compute_land_quality_stats(filtered_df)
 
     return DashboardResponse(
         zip_stats=zip_stats,
@@ -56,6 +57,7 @@ async def get_dashboard_stats(
         sweet_spot=sweet_spot,
         top_states=summary.get("top_states", []),
         top_counties=summary.get("top_counties", []),
+        land_quality=land_quality,
     )
 
 

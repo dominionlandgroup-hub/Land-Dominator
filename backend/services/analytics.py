@@ -390,3 +390,66 @@ def _safe_float(val: Any) -> "float | None":
         return round(f, 4)
     except (TypeError, ValueError):
         return None
+
+
+def compute_land_quality_stats(df: pd.DataFrame) -> Dict[str, Any]:
+    """Derive data-driven land quality thresholds from sold comp data.
+
+    Returns percentile-based recommendations for each quality dimension, plus
+    the number of comps that had data for each field. When a column is absent
+    or has no valid rows the count is 0 and the value is None (caller shows
+    a sensible default instead).
+    """
+
+    def _pct(series: pd.Series, pct: float) -> "float | None":
+        valid = series.dropna()
+        valid = valid[np.isfinite(valid)]
+        if len(valid) == 0:
+            return None
+        return _safe_float(np.percentile(valid, pct))
+
+    def _median(series: pd.Series) -> "float | None":
+        valid = series.dropna()
+        valid = valid[np.isfinite(valid)]
+        if len(valid) == 0:
+            return None
+        return _safe_float(float(valid.median()))
+
+    def _count(series: pd.Series) -> int:
+        return int(series.dropna().pipe(lambda s: s[np.isfinite(s)]).shape[0])
+
+    # Buildability — column: 'Buildability total (%)'
+    build_col = pd.to_numeric(df.get("Buildability total (%)"), errors="coerce") if "Buildability total (%)" in df.columns else pd.Series(dtype=float)
+    build_median = _median(build_col)
+    build_count = _count(build_col)
+    # Round down to nearest 10 for the minimum recommendation
+    build_min: "float | None" = (max(0.0, (build_median // 10) * 10)) if build_median is not None else None
+
+    # Road Frontage — column: 'Road Frontage'
+    rf_col = pd.to_numeric(df.get("Road Frontage"), errors="coerce") if "Road Frontage" in df.columns else pd.Series(dtype=float)
+    rf_p25 = _pct(rf_col, 25)
+    rf_count = _count(rf_col)
+
+    # Slope — column: 'Slope' or 'Average Slope'
+    slope_col_name = next((c for c in ["Slope", "Average Slope", "Slope (%)", "Avg Slope"] if c in df.columns), None)
+    slope_col = pd.to_numeric(df[slope_col_name], errors="coerce") if slope_col_name else pd.Series(dtype=float)
+    slope_p75 = _pct(slope_col, 75)
+    slope_count = _count(slope_col)
+
+    # Wetlands — column: 'Wetlands Coverage' or 'FEMA Flood Coverage' (proxy)
+    wet_col_name = next((c for c in ["Wetlands Coverage", "Wetlands (%)", "Wetland Coverage"] if c in df.columns), None)
+    wet_col = pd.to_numeric(df[wet_col_name], errors="coerce") if wet_col_name else pd.Series(dtype=float)
+    wetlands_p75 = _pct(wet_col, 75)
+    wetlands_count = _count(wet_col)
+
+    return {
+        "buildability_min": build_min,
+        "buildability_median": build_median,
+        "buildability_count": build_count,
+        "road_frontage_p25": rf_p25,
+        "road_frontage_count": rf_count,
+        "slope_p75": slope_p75,
+        "slope_count": slope_count,
+        "wetlands_p75": wetlands_p75,
+        "wetlands_count": wetlands_count,
+    }
