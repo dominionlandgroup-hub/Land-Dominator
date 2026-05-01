@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { listCommunications, sendSms } from '../api/crm'
-import type { Communication, LeadScore } from '../types/crm'
+import type { Communication } from '../types/crm'
 import { useApp } from '../context/AppContext'
+import CommDetailModal, { ScoreBadge, TypeBadge, fmtTalk } from '../components/CommDetailModal'
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -9,13 +10,6 @@ function fmtDate(iso: string) {
   try {
     return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
   } catch { return iso }
-}
-
-function fmtTalk(secs?: number) {
-  if (!secs) return '—'
-  const m = Math.floor(secs / 60)
-  const s = secs % 60
-  return m > 0 ? `${m}m ${s}s` : `${s}s`
 }
 
 function fmtPrice(v?: number | null) {
@@ -27,36 +21,6 @@ function ownerName(c: Communication) {
   const p = c.property
   if (!p) return c.phone_number || 'Unknown'
   return p.owner_full_name || [p.owner_first_name, p.owner_last_name].filter(Boolean).join(' ') || c.phone_number || 'Unknown'
-}
-
-// ── Badges ───────────────────────────────────────────────────────────────────
-
-function ScoreBadge({ score }: { score?: LeadScore | null }) {
-  if (!score) return null
-  const map: Record<string, { bg: string; text: string; label: string }> = {
-    hot:  { bg: '#FFF0E0', text: '#E65100', label: '🔥 HOT' },
-    warm: { bg: '#FFF9E6', text: '#B8860B', label: '🌡 WARM' },
-    cold: { bg: '#E8F5E9', text: '#2E7D32', label: '❄ COLD' },
-  }
-  const s = map[score] ?? { bg: '#EDE8F5', text: '#5C2977', label: score.toUpperCase() }
-  return (
-    <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: s.bg, color: s.text }}>
-      {s.label}
-    </span>
-  )
-}
-
-function TypeBadge({ type }: { type: Communication['type'] }) {
-  const isCall = type.startsWith('call')
-  const isIn = type.endsWith('inbound')
-  const label = isCall ? (isIn ? '📞 Inbound' : '📱 Outbound') : (isIn ? '💬 SMS In' : '📤 SMS Out')
-  const bg = isCall ? '#E3F2FD' : '#F3E5F5'
-  const color = isCall ? '#1565C0' : '#6A1B9A'
-  return (
-    <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: bg, color }}>
-      {label}
-    </span>
-  )
 }
 
 type Filter = 'all' | 'calls' | 'texts' | 'hot' | 'warm'
@@ -132,6 +96,7 @@ export default function SellerInbox() {
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<Filter>('all')
   const [replyTo, setReplyTo] = useState<Communication | null>(null)
+  const [detailComm, setDetailComm] = useState<Communication | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
 
   useEffect(() => { load() }, [])
@@ -274,17 +239,15 @@ export default function SellerInbox() {
                   const hasProperty = !!prop.id
                   return (
                     <tr key={c.id}
-                      style={{ background: idx % 2 === 0 ? '#fff' : '#FAF8FD', borderBottom: '1px solid #EDE8F5', cursor: hasProperty ? 'pointer' : 'default' }}
-                      onClick={() => hasProperty && openProperty(c)}
-                      onMouseEnter={e => { if (hasProperty) (e.currentTarget as HTMLTableRowElement).style.background = '#F0EBF8' }}
+                      style={{ background: idx % 2 === 0 ? '#fff' : '#FAF8FD', borderBottom: '1px solid #EDE8F5', cursor: 'pointer' }}
+                      onClick={() => setDetailComm(c)}
+                      onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = '#F0EBF8' }}
                       onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = idx % 2 === 0 ? '#fff' : '#FAF8FD' }}
                     >
                       {/* Owner */}
                       <td style={{ padding: '10px 14px', maxWidth: 150 }}>
-                        <span className="text-sm font-semibold" style={{ color: hasProperty ? '#5C2977' : '#1A0A2E' }}
-                          title={hasProperty ? 'Click to open property' : ''}>
+                        <span className="text-sm font-semibold" style={{ color: '#5C2977' }} title="Click to view details">
                           {name}
-                          {hasProperty && <span style={{ marginLeft: 4, fontSize: 10, opacity: 0.6 }}>↗</span>}
                         </span>
                       </td>
 
@@ -384,6 +347,14 @@ export default function SellerInbox() {
             setSuccessMsg('SMS sent successfully.')
             load()
           }}
+        />
+      )}
+
+      {detailComm && (
+        <CommDetailModal
+          comm={detailComm}
+          onClose={() => setDetailComm(null)}
+          onOpenProperty={detailComm.property?.id ? (id) => { openProperty(detailComm); setDetailComm(null) } : undefined}
         />
       )}
     </div>

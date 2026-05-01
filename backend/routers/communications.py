@@ -97,7 +97,13 @@ async def _tts_generate(text: str, cache_key: str) -> bool:
                 json={
                     "text": text,
                     "model_id": "eleven_turbo_v2_5",
-                    "voice_settings": {"stability": 0.5, "similarity_boost": 0.8},
+                    "voice_settings": {
+                        "stability": 0.3,
+                        "similarity_boost": 0.8,
+                        "style": 0.0,
+                        "use_speaker_boost": True,
+                        "speed": 1.15,
+                    },
                 },
                 headers={
                     "xi-api-key": api_key,
@@ -179,7 +185,7 @@ def _say(text: str, audio_url: Optional[str] = None) -> str:
     if audio_url:
         return f'<Play>{audio_url}</Play>'
     safe = _xml_escape(text)
-    return f'<Say voice="Polly.Joanna-Neural">{safe}</Say>'
+    return f'<Say voice="Polly.Joanna-Neural"><prosody rate="fast">{safe}</prosody></Say>'
 
 
 def _texml_gather(
@@ -542,7 +548,7 @@ def _score_interest(speech: str) -> str:
 
 
 async def _score_with_claude(transcript_parts: list[dict]) -> tuple[str, str]:
-    """Return (score, summary) using Claude to analyze the full call."""
+    """Return (score, summary_with_next_action) using Claude to analyze the full call."""
     try:
         import anthropic
         api_key = os.getenv("ANTHROPIC_API_KEY", "")
@@ -555,21 +561,30 @@ async def _score_with_claude(transcript_parts: list[dict]) -> tuple[str, str]:
         client = anthropic.Anthropic(api_key=api_key)
         rsp = client.messages.create(
             model="claude-sonnet-4-5",
-            max_tokens=400,
+            max_tokens=500,
             messages=[{
                 "role": "user",
                 "content": (
-                    "Analyze this land seller call. Score the lead and write a brief summary.\n\n"
+                    "Analyze this land seller call. Score the lead, write a brief summary, and recommend a next action.\n\n"
                     "HOT: seller is ready to sell at or near the offered price\n"
                     "WARM: seller is interested but has questions or wants to negotiate\n"
                     "COLD: seller is not interested or property is not available\n\n"
+                    "Next action examples:\n"
+                    "- HOT: 'Call back within 24 hours to discuss closing timeline'\n"
+                    "- WARM: 'Send follow-up text with offer details within 48 hours'\n"
+                    "- COLD: 'Remove from active list, do not contact'\n\n"
                     f"Transcript:\n{transcript_text}\n\n"
-                    'Respond ONLY with JSON: {"score": "hot|warm|cold", "summary": "2-3 sentence summary"}'
+                    'Respond ONLY with JSON: {"score": "hot|warm|cold", "summary": "2-3 sentence summary", "next_action": "one sentence recommended action"}'
                 ),
             }],
         )
         result = json.loads(rsp.content[0].text.strip())
-        return result.get("score", "warm").lower(), result.get("summary", "Call completed.")
+        score = result.get("score", "warm").lower()
+        summary = result.get("summary", "Call completed.")
+        next_action = result.get("next_action", "")
+        if next_action:
+            summary = f"{summary} Next action: {next_action}"
+        return score, summary
     except Exception as exc:
         print(f"[comms] Claude scoring error: {exc}")
         return "warm", "Call completed."
@@ -800,6 +815,16 @@ async def _finalize_call(call_sid: str) -> None:
     )
     caller_name = state.get("caller_name", "")
 
+    # Compute call duration
+    duration_seconds: Optional[int] = None
+    started_at = state.get("started_at")
+    if started_at:
+        try:
+            start = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+            duration_seconds = max(0, int((datetime.now(timezone.utc) - start).total_seconds()))
+        except Exception:
+            pass
+
     transcript_text = "\n".join(
         f"[{t['step'].upper()}] Agent: {_PHRASES.get(t['step'], t['step'])}\n"
         f"Caller: {t.get('speech', '[no response]')}"
@@ -824,6 +849,7 @@ async def _finalize_call(call_sid: str) -> None:
         summary=summary,
         lead_score=score,
         call_id=call_sid,
+        duration_seconds=duration_seconds,
         caller_offer_code=caller_offer_code,
     )
 
@@ -890,6 +916,17 @@ async def _finalize_unmatched_call(call_sid: str) -> None:
         f"[{t['step'].upper()}] Caller: {t.get('speech', '[no response]')}"
         for t in transcript
     )
+
+    # Compute call duration
+    duration_seconds: Optional[int] = None
+    started_at = state.get("started_at")
+    if started_at:
+        try:
+            start = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+            duration_seconds = max(0, int((datetime.now(timezone.utc) - start).total_seconds()))
+        except Exception:
+            pass
+
     prop = await _create_unmatched_lead(caller, property_address=info)
     property_id = prop.get("id")
     await _log_comm(
@@ -898,9 +935,10 @@ async def _finalize_unmatched_call(call_sid: str) -> None:
         phone=caller,
         direction="inbound",
         transcript=transcript_text,
-        summary=f"Unmatched code. Seller provided: {info or 'N/A'}",
+        summary=f"Unmatched code. Seller provided: {info or 'N/A'}. Next action: Remove from active list.",
         lead_score="cold",
         call_id=call_sid,
+        duration_seconds=duration_seconds,
         caller_offer_code=caller_offer_code,
     )
 

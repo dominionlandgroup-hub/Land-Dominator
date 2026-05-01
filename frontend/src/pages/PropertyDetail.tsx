@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import type { CRMProperty, PropertyStatus, Communication } from '../types/crm'
 import type { PropertyDocument } from '../api/crm'
 import { pullLpData, sendSms, listPropertyCommunications, listPropertyDocuments, uploadPropertyDocument, deleteDocument, getDocumentDownloadUrl } from '../api/crm'
+import CommDetailModal, { ScoreBadge, TypeBadge, fmtTalk } from '../components/CommDetailModal'
 
 // ── Display helpers ───────────────────────────────────────────────────────────
 function fmtLandLocked(v: string | null | undefined): string {
@@ -130,6 +131,7 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
   const [docsLoading, setDocsLoading] = useState(false)
   const [docUploading, setDocUploading] = useState(false)
   const [docError, setDocError] = useState<string | null>(null)
+  const [detailComm, setDetailComm] = useState<Communication | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const isNew = !property
 
@@ -781,35 +783,37 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
               ) : (
                 <div className="space-y-2">
                   {comms.map(c => {
-                    const isIn = c.direction === 'inbound'
-                    const isSms = c.type.startsWith('sms')
-                    const scoreColors: Record<string, string> = { hot: '#E65100', warm: '#B8860B', cold: '#2E7D32' }
+                    const isCall = c.type.startsWith('call')
+                    const previewText = c.summary
+                      ? c.summary.replace(/Next action:.+$/i, '').trim().slice(0, 100) + (c.summary.length > 100 ? '…' : '')
+                      : c.message_body?.slice(0, 100) ?? ''
                     return (
-                      <div key={c.id} className="rounded-lg p-3" style={{ background: '#F8F5FC', border: '1px solid #EDE8F5' }}>
-                        <div className="flex items-center justify-between mb-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{
-                              background: isSms ? '#F3E5F5' : '#E3F2FD',
-                              color: isSms ? '#6A1B9A' : '#1565C0',
-                            }}>
-                              {isSms ? (isIn ? '💬 SMS In' : '📤 SMS Out') : (isIn ? '📞 Call In' : '📱 Call Out')}
-                            </span>
-                            {c.lead_score && (
-                              <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{
-                                background: '#FFF0E0',
-                                color: scoreColors[c.lead_score] || '#5C2977',
-                              }}>
-                                {c.lead_score.toUpperCase()}
-                              </span>
+                      <button
+                        key={c.id}
+                        type="button"
+                        className="w-full text-left rounded-lg p-3"
+                        style={{ background: '#F8F5FC', border: '1px solid #EDE8F5', cursor: 'pointer', transition: 'background 0.1s' }}
+                        onClick={() => setDetailComm(c)}
+                        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#EDE8F5' }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = '#F8F5FC' }}
+                      >
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <TypeBadge type={c.type} />
+                            <ScoreBadge score={c.lead_score} />
+                            {isCall && c.duration_seconds != null && (
+                              <span className="text-[11px]" style={{ color: '#9B8AAE' }}>{fmtTalk(c.duration_seconds)}</span>
                             )}
                           </div>
-                          <span className="text-xs" style={{ color: '#9B8AAE' }}>
+                          <span className="text-[11px] flex-shrink-0 ml-2" style={{ color: '#9B8AAE' }}>
                             {new Date(c.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                           </span>
                         </div>
-                        {c.message_body && <p className="text-xs mt-1" style={{ color: '#1A0A2E' }}>{c.message_body}</p>}
-                        {c.summary && <p className="text-xs mt-1" style={{ color: '#6B5B8A' }}>{c.summary}</p>}
-                      </div>
+                        {previewText && (
+                          <p className="text-xs" style={{ color: '#6B5B8A' }}>{previewText}</p>
+                        )}
+                        <p className="text-[10px] mt-1" style={{ color: '#9B8AAE' }}>Click to view full details →</p>
+                      </button>
                     )
                   })}
                 </div>
@@ -852,6 +856,10 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
             </div>
           </div>
         </div>
+      )}
+
+      {detailComm && (
+        <CommDetailModal comm={detailComm} onClose={() => setDetailComm(null)} />
       )}
 
       {confirmDelete && (
