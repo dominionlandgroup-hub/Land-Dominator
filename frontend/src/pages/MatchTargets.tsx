@@ -5,7 +5,7 @@ import LoadingSpinner from '../components/LoadingSpinner'
 import LoadingOverlay from '../components/LoadingOverlay'
 import { useApp } from '../context/AppContext'
 import { uploadTargets, runMatch, getMailingDownloadUrl, getMatchedLeadsDownloadUrl } from '../api/client'
-import { listCrmCampaigns, autoCreateCampaign, addMatchResultsToCampaign, saveMatchPricing } from '../api/crm'
+import { listCrmCampaigns, autoCreateCampaign, addMatchResultsToCampaign } from '../api/crm'
 import type { Column } from '../components/DataTable'
 import type { MatchedParcel, MatchFilters } from '../types'
 import { getConfidence } from '../types'
@@ -54,11 +54,6 @@ export default function MatchTargets() {
   const [mailingSuccess, setMailingSuccess] = useState<string | null>(null)
   const [mailingError, setMailingError] = useState<string | null>(null)
   const [mailingExportType, setMailingExportType] = useState<'mailable' | 'matched'>('mailable')
-
-  // Save to CRM state
-  const [savingToCrm, setSavingToCrm] = useState(false)
-  const [saveCrmSuccess, setSaveCrmSuccess] = useState<string | null>(null)
-  const [saveCrmError, setSaveCrmError] = useState<string | null>(null)
 
   // Pre-fill acreage from sweet spot when no saved filters
   useEffect(() => {
@@ -250,15 +245,15 @@ export default function MatchTargets() {
       <LoadingOverlay visible={matchLoading} title="Running matching engine…" />
 
       <div className="page-header">
-        <div>
-          <h1 className="text-lg font-semibold" style={{ color: '#1A0A2E' }}>Match Targets</h1>
-          <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>Upload target parcels and run the matching engine with smart filters</p>
-        </div>
-        {matchResult && (
-          <button className="btn-primary text-sm" onClick={() => setCurrentPage('mailing-list')}>
-            Mailing List →
+        <div className="flex items-center gap-3">
+          <button className="btn-secondary text-sm" onClick={() => setCurrentPage('dashboard')}>
+            ← Market Analysis
           </button>
-        )}
+          <div>
+            <h1 className="text-lg font-semibold" style={{ color: '#1A0A2E' }}>Match Targets</h1>
+            <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>Upload target parcels and run the matching engine with smart filters</p>
+          </div>
+        </div>
       </div>
 
       <div className="p-8 max-w-[1400px] mx-auto w-full">
@@ -487,52 +482,14 @@ export default function MatchTargets() {
                 <div className="card mb-6">
                   <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
                     <h2 className="font-semibold" style={{ color: '#1A0A2E' }}>Download Results</h2>
-                    <div className="flex gap-2 flex-wrap">
-                      <button
-                        className="btn-secondary text-sm"
-                        style={{ padding: '8px 16px' }}
-                        disabled={savingToCrm}
-                        onClick={async () => {
-                          const matchId = matchResult?.match_id
-                          if (!matchId) return
-                          setSavingToCrm(true)
-                          setSaveCrmSuccess(null)
-                          setSaveCrmError(null)
-                          try {
-                            const res = await saveMatchPricing(matchId, 'all', matchResult?.results)
-                            if (res.updated > 0) {
-                              setSaveCrmSuccess(`Pricing saved to ${res.updated.toLocaleString()} existing CRM properties. (${res.not_found} not found in CRM)`)
-                            } else {
-                              setSaveCrmSuccess(`No matching CRM records found by APN (${res.not_found} parcels not in CRM yet — use "Add to Mailing List" to import them first).`)
-                            }
-                          } catch {
-                            setSaveCrmError('Failed to save pricing to CRM.')
-                          } finally {
-                            setSavingToCrm(false)
-                          }
-                        }}
-                      >
-                        {savingToCrm ? 'Saving…' : 'Save Pricing to CRM'}
-                      </button>
-                      <button
-                        className="btn-primary text-sm"
-                        style={{ padding: '8px 16px' }}
-                        onClick={() => setShowMailingModal(true)}
-                      >
-                        + Add to Mailing List
-                      </button>
-                    </div>
+                    <button
+                      className="btn-primary text-sm"
+                      style={{ padding: '8px 16px' }}
+                      onClick={() => setShowMailingModal(true)}
+                    >
+                      + Add to Mailing List
+                    </button>
                   </div>
-                  {saveCrmSuccess && (
-                    <div className="mb-3 text-xs rounded-lg px-3 py-2" style={{ background: '#E8F5E9', color: '#2D7A4F' }}>
-                      {saveCrmSuccess}
-                    </div>
-                  )}
-                  {saveCrmError && (
-                    <div className="mb-3 text-xs rounded-lg px-3 py-2" style={{ background: '#FFF0F0', color: '#B71C1C' }}>
-                      {saveCrmError}
-                    </div>
-                  )}
                   <div className="flex flex-wrap gap-2">
                     <a href={getMailingDownloadUrl(matchId, 'mailable-records', 'mailable')} download className="btn-primary text-sm no-underline" style={{ padding: '8px 16px' }}>
                       Mailable Records ({(matchResult.mailable_count ?? 0).toLocaleString()})
@@ -643,11 +600,6 @@ export default function MatchTargets() {
               )}
             </div>
 
-            <div className="mt-6 flex justify-end">
-              <button className="btn-primary" onClick={() => setCurrentPage('mailing-list')}>
-                Generate Mailing List →
-              </button>
-            </div>
           </>
         )}
       </div>
@@ -701,7 +653,18 @@ export default function MatchTargets() {
             </div>
 
             {mailingError && <p className="text-xs mb-3" style={{ color: '#B71C1C' }}>{mailingError}</p>}
-            {mailingSuccess && <p className="text-xs mb-3 font-medium" style={{ color: '#2D7A4F' }}>{mailingSuccess}</p>}
+            {mailingSuccess && (
+              <div className="mb-3 rounded-lg px-3 py-2" style={{ background: '#E8F5E9' }}>
+                <p className="text-xs font-medium" style={{ color: '#2D7A4F' }}>{mailingSuccess}</p>
+                <button
+                  className="text-xs mt-1 underline"
+                  style={{ color: '#5C2977', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                  onClick={() => { setShowMailingModal(false); setMailingSuccess(null); setMailingError(null); setCurrentPage('crm-campaigns') }}
+                >
+                  Go to Campaign →
+                </button>
+              </div>
+            )}
 
             <div className="flex gap-3">
               <button className="btn-secondary flex-1" onClick={() => { setShowMailingModal(false); setMailingSuccess(null); setMailingError(null) }} disabled={mailingLoading}>Cancel</button>
@@ -729,7 +692,7 @@ export default function MatchTargets() {
                       mailingExportType,
                       matchResult.results,
                     )
-                    setMailingSuccess(`${result.imported.toLocaleString()} records added to "${campaignName}". Go to Campaigns to view.`)
+                    setMailingSuccess(`${result.imported.toLocaleString()} records added to "${campaignName}" with pricing saved.`)
                     setSelectedCampaignId(campaignId)
                   } catch (e: unknown) {
                     const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail

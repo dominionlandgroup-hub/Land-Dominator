@@ -238,7 +238,6 @@ export type AppPage =
   | 'upload-comps'
   | 'dashboard'
   | 'match-targets'
-  | 'mailing-list'
   | 'campaigns'
   | 'crm-dashboard'
   | 'crm-campaigns'

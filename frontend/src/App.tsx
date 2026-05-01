@@ -6,8 +6,6 @@ import WelcomeScreen from './pages/WelcomeScreen'
 import UploadComps from './pages/UploadComps'
 import Dashboard from './pages/Dashboard'
 import MatchTargets from './pages/MatchTargets'
-import MailingList from './pages/MailingList'
-import Campaigns from './pages/Campaigns'
 import Properties from './pages/Properties'
 import CRMCampaigns from './pages/CRMCampaigns'
 import Contacts from './pages/Contacts'
@@ -63,7 +61,6 @@ function PageContent() {
     case 'upload-comps':     return <UploadComps />
     case 'dashboard':        return <Dashboard />
     case 'match-targets':    return <MatchTargets />
-    case 'mailing-list':     return <MailingList />
     case 'campaigns':        return <CRMCampaigns />
     case 'crm-campaigns':    return <CRMCampaigns />
     case 'crm-properties':   return <Properties />

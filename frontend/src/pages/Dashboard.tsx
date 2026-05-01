@@ -51,11 +51,16 @@ export default function Dashboard() {
   return (
     <div className="flex flex-col min-h-screen">
       <div className="page-header">
-        <div>
-          <h1 className="text-lg" style={{ color: '#1A0A2E', fontWeight: 700 }}>Market Analysis</h1>
-          <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>
-            {compsStats.valid_rows.toLocaleString()} valid sold comps · {dashboardData?.available_zips.length ?? '…'} ZIP codes
-          </p>
+        <div className="flex items-center gap-3">
+          <button className="btn-secondary text-sm" onClick={() => setCurrentPage('upload-comps')}>
+            ← Upload Comps
+          </button>
+          <div>
+            <h1 className="text-lg" style={{ color: '#1A0A2E', fontWeight: 700 }}>Market Analysis</h1>
+            <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>
+              {compsStats.valid_rows.toLocaleString()} valid sold comps · {dashboardData?.available_zips.length ?? '…'} ZIP codes
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <button className="btn-secondary text-sm" onClick={load} disabled={loading}>

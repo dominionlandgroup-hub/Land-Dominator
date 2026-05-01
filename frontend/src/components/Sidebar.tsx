@@ -226,7 +226,7 @@ export default function Sidebar() {
 
         <div style={{ borderTop: '1px solid rgba(213,169,64,0.1)', margin: '6px 4px' }} />
 
-        <NavBtn id="upload-comps" label="Upload Comps" icon={<IconUpload />}   active={currentPage === 'upload-comps' || currentPage === 'dashboard' || currentPage === 'match-targets' || currentPage === 'mailing-list'} onClick={() => nav('upload-comps')} />
+        <NavBtn id="upload-comps" label="Upload Comps" icon={<IconUpload />}   active={currentPage === 'upload-comps' || currentPage === 'dashboard' || currentPage === 'match-targets'} onClick={() => nav('upload-comps')} />
         <NavBtn id="settings"     label="Settings"     icon={<IconSettings />} active={currentPage === 'settings'}     onClick={() => nav('settings')} />
       </nav>
 
