@@ -60,11 +60,28 @@ export default function MatchTargets() {
     else if (b === '10+') { setMinAcreage('10'); setMaxAcreage('40') }
   }, [dashboardData])
 
-  // Top 10 ZIPs from dashboard for "Use Buy Box ZIPs"
-  const top10Zips = [...(dashboardData?.zip_stats ?? [])]
-    .sort((a, b) => b.sales_count - a.sales_count)
-    .slice(0, 10)
-    .map(z => z.zip_code)
+  // Top 10 ZIPs from dashboard for "Use Buy Box ZIPs" — exclude outliers (ppa > 3x market median)
+  const top10Zips = React.useMemo(() => {
+    const stats = dashboardData?.zip_stats ?? []
+    const ppas = stats
+      .map(z => z.median_price_per_acre)
+      .filter((v): v is number => v != null && Number.isFinite(v) && v > 0)
+    const ppaSorted = [...ppas].sort((a, b) => a - b)
+    const mid = Math.floor(ppaSorted.length / 2)
+    const mktMedian = ppaSorted.length === 0 ? 0
+      : ppaSorted.length % 2 === 0 ? (ppaSorted[mid - 1] + ppaSorted[mid]) / 2
+      : ppaSorted[mid]
+    const outlierCodes = new Set(
+      mktMedian > 0
+        ? stats.filter(z => (z.median_price_per_acre ?? 0) > 3 * mktMedian).map(z => z.zip_code)
+        : []
+    )
+    return stats
+      .filter(z => !outlierCodes.has(z.zip_code))
+      .sort((a, b) => b.sales_count - a.sales_count)
+      .slice(0, 10)
+      .map(z => z.zip_code)
+  }, [dashboardData?.zip_stats])
 
   function handleZipInput(text: string) {
     setZipInputText(text)

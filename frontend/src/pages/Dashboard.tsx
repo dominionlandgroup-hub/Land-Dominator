@@ -165,10 +165,7 @@ function TopMarketsCard({ zipStats, comps }: { zipStats: ZipStats[]; comps: Comp
   const [showOutliers, setShowOutliers] = useState(false)
   const [showThin, setShowThin] = useState(false)
 
-  const sorted = [...zipStats].sort((a, b) => b.sales_count - a.sales_count)
-  const top10 = sorted.slice(0, 10)
-  const top10Zips = top10.map(z => z.zip_code)
-
+  // Compute outlier set FIRST so we can exclude them from the top-10 ranking
   const ppas = zipStats.map(z => z.median_price_per_acre).filter((v): v is number => v != null && Number.isFinite(v) && v > 0)
   const overallMedian = median(ppas)
   const outlierSet = new Set<string>(
@@ -178,6 +175,13 @@ function TopMarketsCard({ zipStats, comps }: { zipStats: ZipStats[]; comps: Comp
   )
   const thinZips = zipStats.filter(z => z.sales_count < 10).map(z => z.zip_code)
   const avoidZips = [...outlierSet, ...thinZips]
+
+  // Top 10: exclude outliers first, then rank by sales count
+  const sorted = [...zipStats]
+    .filter(z => !outlierSet.has(z.zip_code))
+    .sort((a, b) => b.sales_count - a.sales_count)
+  const top10 = sorted.slice(0, 10)
+  const top10Zips = top10.map(z => z.zip_code)
 
   return (
     <div className="card mb-6">
