@@ -463,7 +463,7 @@ function BuyBoxRecipe({
     '1. LOCATION — Pull by County (not ZIP)',
     topStates.length ? `   State: ${topStates.join(', ')}` : '',
     sortedCounties.length ? `   PULL BY COUNTY: ${sortedCounties.join(', ')} (Land Portal → Location → County)` : '',
-    '   Why: County pulls capture more deals than ZIP filtering.',
+    sortedCounties.length ? '   Why: County pulls capture more deals than ZIP filtering.' : '',
     topZips.length ? `   Reference ZIPs (don't filter in LP): ${topZips.join(', ')}` : '',
     '',
     '2. PROPERTY TYPE',

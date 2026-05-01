@@ -54,7 +54,7 @@ export default function MatchTargets() {
   const [mailingLoading, setMailingLoading] = useState(false)
   const [mailingSuccess, setMailingSuccess] = useState<string | null>(null)
   const [mailingError, setMailingError] = useState<string | null>(null)
-  const [mailingExportType, setMailingExportType] = useState<'mailable' | 'matched'>('mailable')
+  const [mailingExportType, setMailingExportType] = useState<'mailable' | 'matched'>('matched')
   const [mailingDone, setMailingDone] = useState(false)
 
   // Pre-fill acreage from sweet spot — runs once when dashboardData first loads, never overrides user edits
@@ -495,20 +495,18 @@ export default function MatchTargets() {
                     </button>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <a href={getMailingDownloadUrl(matchId, 'mailable-records', 'mailable')} download className="btn-primary text-sm no-underline" style={{ padding: '8px 16px' }}>
-                      ✓ Comp-Matched Mailable Records ({(matchResult.mailable_count ?? 0).toLocaleString()}) <span style={{ fontSize: 10, opacity: 0.75, marginLeft: 2 }}>recommended</span>
+                    <a href={getMatchedLeadsDownloadUrl(matchId, 'comp-matched-mailable')} download className="btn-primary text-sm no-underline" style={{ padding: '8px 16px' }}>
+                      ✓ Comp-Matched Mailable Records ({matchResult.matched_count.toLocaleString()}) <span style={{ fontSize: 10, opacity: 0.75, marginLeft: 2 }}>recommended</span>
                     </a>
                     <a href={getMailingDownloadUrl(matchId, 'high-confidence', 'high-confidence')} download className="btn-secondary text-sm no-underline">High Confidence Only</a>
-                    <a href={getMatchedLeadsDownloadUrl(matchId, 'matched-leads')} download className="btn-secondary text-sm no-underline">Comp-Matched Only ({matchResult.matched_count.toLocaleString()})</a>
-                    {(matchResult.lp_fallback_count ?? 0) > 0 && (
-                      <a href={getMailingDownloadUrl(matchId, 'full-list', 'full')} download className="btn-secondary text-sm no-underline" style={{ borderColor: '#D5A940', color: '#856A20' }}>
-                        ⚠ LP Estimate Only — review before mailing ({(matchResult.lp_fallback_count ?? 0).toLocaleString()})
-                      </a>
-                    )}
+                    <a href={getMailingDownloadUrl(matchId, 'all-mailable', 'mailable')} download className="btn-secondary text-sm no-underline">
+                      All Mailable Records ({(matchResult.mailable_count ?? 0).toLocaleString()})
+                    </a>
+                    <a href={getMailingDownloadUrl(matchId, 'full-list', 'full')} download className="btn-secondary text-sm no-underline">Full List</a>
                   </div>
                   <p className="text-[10px] mt-2" style={{ color: '#9B8AAE' }}>
-                    <span style={{ color: '#2D7A4F', fontWeight: 600 }}>Comp-Matched</span> = priced from local sold comps · ready for mail house.
-                    {(matchResult.lp_fallback_count ?? 0) > 0 && <span style={{ color: '#D5A940', fontWeight: 600 }}> LP Fallback ({(matchResult.lp_fallback_count ?? 0).toLocaleString()} records) = LP estimate only, no local comps — review pricing before mailing.</span>}
+                    <span style={{ color: '#2D7A4F', fontWeight: 600 }}>Comp-Matched</span> = priced from local sold comps · recommended for mailing.
+                    {(matchResult.lp_fallback_count ?? 0) > 0 && <span style={{ color: '#D5A940', fontWeight: 600 }}> All Mailable includes {(matchResult.lp_fallback_count ?? 0).toLocaleString()} LP Fallback records (LP estimate only, no local comps) — review before mailing.</span>}
                   </p>
                 </div>
               )
