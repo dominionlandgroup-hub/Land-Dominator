@@ -48,6 +48,9 @@ export default function MatchTargets() {
   const [vacantOnly, setVacantOnly] = useState<boolean>(Boolean(init?.vacant_only))
   const [requireTlp, setRequireTlp] = useState<boolean>(Boolean(init?.require_tlp_estimate || init?.require_tlp))
   const [priceCeiling, setPriceCeiling] = useState<string>(init?.price_ceiling != null ? String(init.price_ceiling) : '')
+  const [minOfferFloor, setMinOfferFloor] = useState<string>('10000')
+  const [minLpEstimate, setMinLpEstimate] = useState<string>('20000')
+  const [assignmentFee, setAssignmentFee] = useState<string>('5000')
 
   // Pre-fill acreage from sweet spot when no saved filters
   useEffect(() => {
@@ -145,6 +148,8 @@ export default function MatchTargets() {
       exclude_with_buildings: true,
       min_road_frontage: 50.0,
       max_retail_price: 200000,
+      min_offer_floor: minOfferFloor ? parseFloat(minOfferFloor) : 10000,
+      min_lp_estimate: minLpEstimate ? parseFloat(minLpEstimate) : 20000,
     }
 
     try {
@@ -422,6 +427,26 @@ export default function MatchTargets() {
                 <button className="px-4 py-2 text-xs transition-all" style={!requireRoadFrontage ? { background: '#5C2977', color: 'white' } : { background: '#FFFFFF', color: '#6B5B8A' }} onClick={() => setRequireRoadFrontage(false)}>Optional</button>
               </div>
             </div>
+
+            {/* Min Offer Floor */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B5B8A' }}>Minimum Offer Floor</p>
+              <input type="number" step="1000" min="0" placeholder="e.g. 10000"
+                className="input-base text-xs py-2 w-full"
+                value={minOfferFloor}
+                onChange={e => setMinOfferFloor(e.target.value)} />
+              <p className="text-[10px] mt-1" style={{ color: '#9B8AAE' }}>Below this → flagged LOW_OFFER (kept in results)</p>
+            </div>
+
+            {/* Min Retail Value */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B5B8A' }}>Minimum Retail Value</p>
+              <input type="number" step="1000" min="0" placeholder="e.g. 20000"
+                className="input-base text-xs py-2 w-full"
+                value={minLpEstimate}
+                onChange={e => setMinLpEstimate(e.target.value)} />
+              <p className="text-[10px] mt-1" style={{ color: '#9B8AAE' }}>Below this → flagged LOW_VALUE (kept in results)</p>
+            </div>
           </div>
 
           {/* Advanced toggles */}
@@ -485,26 +510,94 @@ export default function MatchTargets() {
 
         {matchResult && (
           <>
+            {/* Smart floor recommendation */}
+            {matchResult.smart_floor_recommendation != null && (
+              <div className="mb-5 px-4 py-3 rounded-xl flex items-center justify-between" style={{ background: 'rgba(45,122,79,0.06)', border: '1px solid rgba(45,122,79,0.25)' }}>
+                <div>
+                  <p className="text-sm font-medium" style={{ color: '#2D7A4F' }}>
+                    Recommended minimum offer: <strong>${Math.round(matchResult.smart_floor_recommendation).toLocaleString()}</strong>
+                  </p>
+                  <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>10th percentile of all matched offers — based on this market's comp data</p>
+                </div>
+                <button
+                  className="btn-secondary text-xs"
+                  style={{ padding: '6px 12px', flexShrink: 0 }}
+                  onClick={() => setMinOfferFloor(String(Math.round(matchResult.smart_floor_recommendation!)))}
+                >
+                  Use this floor
+                </button>
+              </div>
+            )}
+
+            {/* Download exports */}
             {(() => {
               const matchId = matchResult.match_id
               return (
                 <div className="card mb-6">
                   <h2 className="font-semibold mb-4" style={{ color: '#1A0A2E' }}>Download Results</h2>
                   <div className="flex flex-wrap gap-2">
-                    <a href={getMatchedLeadsDownloadUrl(matchId, 'matched-leads')} download className="btn-secondary text-sm no-underline">Download Matched Leads</a>
+                    <a href={getMailingDownloadUrl(matchId, 'mailable-records', 'mailable')} download className="btn-primary text-sm no-underline" style={{ padding: '8px 16px' }}>
+                      Mailable Records ({(matchResult.mailable_count ?? 0).toLocaleString()})
+                    </a>
                     <a href={getMailingDownloadUrl(matchId, 'top-500', 'top500')} download className="btn-secondary text-sm no-underline">Top 500</a>
-                    <a href={getMailingDownloadUrl(matchId, 'high-confidence', 'high-confidence')} download className="btn-secondary text-sm no-underline">High Confidence Only</a>
+                    <a href={getMailingDownloadUrl(matchId, 'high-confidence', 'high-confidence')} download className="btn-secondary text-sm no-underline">High Confidence</a>
+                    <a href={getMatchedLeadsDownloadUrl(matchId, 'matched-leads')} download className="btn-secondary text-sm no-underline">Matched Only</a>
                     <a href={getMailingDownloadUrl(matchId, 'full-list', 'full')} download className="btn-secondary text-sm no-underline">Full List</a>
                   </div>
+                  <p className="text-[10px] mt-2" style={{ color: '#9B8AAE' }}>Mailable Records = MATCHED + LP_FALLBACK above offer floor · ready for mail house</p>
                 </div>
               )
             })()}
 
-            <div className="grid grid-cols-3 gap-4 mb-6">
-              <ResultCard label="Total Targets" value={matchResult.total_targets.toLocaleString()} accent="#5C2977" />
-              <ResultCard label="Matched" value={matchResult.matched_count.toLocaleString()} accent="#2D7A4F" />
-              <ResultCard label="Match Rate" value={`${matchResult.total_targets > 0 ? Math.round((matchResult.matched_count / matchResult.total_targets) * 100) : 0}%`} accent="#8B4DB8" />
+            {/* Result summary cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+              <ResultCard label="Mailable" value={(matchResult.mailable_count ?? 0).toLocaleString()} accent="#2D7A4F" sub="Priced · above floor" />
+              <ResultCard label="Low Offer" value={(matchResult.low_offer_count ?? 0).toLocaleString()} accent="#f59e0b" sub="Below min offer" />
+              <ResultCard label="Low Value" value={(matchResult.low_value_count ?? 0).toLocaleString()} accent="#f97316" sub="Retail too low" />
+              <ResultCard label="Unpriced" value={(matchResult.unpriced_count ?? 0).toLocaleString()} accent="#6B5B8A" sub="No comps / LP data" />
             </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+              <ResultCard label="Total Targets" value={matchResult.total_targets.toLocaleString()} accent="#5C2977" />
+              <ResultCard label="Comp-Matched" value={matchResult.matched_count.toLocaleString()} accent="#2D7A4F" />
+              <ResultCard label="LP Fallback" value={(matchResult.lp_fallback_count ?? 0).toLocaleString()} accent="#8B4DB8" sub="Priced from LP Est." />
+            </div>
+
+            {/* Assignment fee calculator */}
+            {(() => {
+              const fee = parseFloat(assignmentFee) || 0
+              const closingCosts = 2000
+              const supporting = matchResult.results.filter(r => {
+                const retail = r.retail_estimate
+                const offer = r.suggested_offer_mid
+                return retail != null && offer != null && retail >= offer + fee + closingCosts
+              }).length
+              return (
+                <div className="card mb-6">
+                  <h2 className="font-semibold mb-3" style={{ color: '#1A0A2E' }}>Assignment Fee Calculator</h2>
+                  <div className="flex items-end gap-4 flex-wrap">
+                    <div>
+                      <label className="text-xs block mb-1" style={{ color: '#6B5B8A' }}>Target Assignment Fee</label>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm" style={{ color: '#6B5B8A' }}>$</span>
+                        <input type="number" min="0" step="500" placeholder="5000"
+                          className="input-base text-sm py-2"
+                          style={{ width: 120 }}
+                          value={assignmentFee}
+                          onChange={e => setAssignmentFee(e.target.value)} />
+                      </div>
+                    </div>
+                    <div className="rounded-xl px-4 py-3" style={{ background: supporting > 0 ? 'rgba(45,122,79,0.08)' : 'rgba(239,68,68,0.08)', border: `1px solid ${supporting > 0 ? 'rgba(45,122,79,0.25)' : 'rgba(239,68,68,0.25)'}` }}>
+                      <p className="text-sm font-semibold" style={{ color: supporting > 0 ? '#2D7A4F' : '#dc2626' }}>
+                        {supporting.toLocaleString()} record{supporting !== 1 ? 's' : ''} support a ${Number(assignmentFee || 0).toLocaleString()} assignment fee
+                      </p>
+                      <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>
+                        Formula: retail ≥ offer + ${Number(assignmentFee || 0).toLocaleString()} fee + $2,000 closing
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
 
             {matchResult.warnings && matchResult.warnings.filter(w => w.includes('Excluded') || w.includes('WARNING')).length > 0 && (
               <div className="mb-4 p-3 rounded-lg" style={{ background: '#FEF3C7', border: '1px solid #F59E0B' }}>
@@ -625,11 +718,12 @@ function ScoreBadge({ score }: { score: number }) {
   )
 }
 
-function ResultCard({ label, value, accent }: { label: string; value: string; accent: string }) {
+function ResultCard({ label, value, accent, sub }: { label: string; value: string; accent: string; sub?: string }) {
   return (
     <div className="rounded-xl p-4" style={{ background: '#F8F6FB', border: '1px solid #E8E0F0' }}>
       <p className="text-xs uppercase tracking-wider mb-1" style={{ color: '#6B5B8A' }}>{label}</p>
       <p className="text-2xl font-bold" style={{ color: accent }}>{value}</p>
+      {sub && <p className="text-[10px] mt-0.5" style={{ color: '#9B8AAE' }}>{sub}</p>}
     </div>
   )
 }

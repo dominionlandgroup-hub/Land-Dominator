@@ -106,6 +106,8 @@ export interface MatchFilters {
   exclude_with_buildings: boolean     // Exclude if Building Sq Ft > 0 (default: true)
   min_road_frontage: number           // Minimum 50ft road frontage (default: 50.0)
   max_retail_price: number            // Price ceiling $200K - filters premium/waterfront (default: 200000)
+  min_offer_floor: number             // Flag as LOW_OFFER if offer < this (default: 10000)
+  min_lp_estimate: number             // Flag as LOW_VALUE if retail < this (default: 20000)
 }
 
 export type MatchFiltersPartial = Partial<MatchFilters>
@@ -167,6 +169,12 @@ export interface MatchResult {
   match_id: string
   total_targets: number
   matched_count: number
+  mailable_count?: number
+  lp_fallback_count?: number
+  low_offer_count?: number
+  low_value_count?: number
+  unpriced_count?: number
+  smart_floor_recommendation?: number | null
   results: MatchedParcel[]
   warnings?: string[]
 }

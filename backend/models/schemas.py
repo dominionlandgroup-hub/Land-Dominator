@@ -107,6 +107,9 @@ class MatchFilters(BaseModel):
     exclude_with_buildings: bool = True     # Exclude if Building Sq Ft > 0
     min_road_frontage: float = 50.0         # Minimum 50ft road frontage
     max_retail_price: float = 200000.0      # Price ceiling ($200K default) - filters premium/waterfront
+    # Offer floor filters (flag only, do not exclude)
+    min_offer_floor: float = 10000.0        # Flag as LOW_OFFER if offer_mid < this
+    min_lp_estimate: float = 20000.0        # Flag as LOW_VALUE if retail_estimate < this
     debug_apn: Optional[str] = None         # APN to debug
 
 
@@ -183,6 +186,12 @@ class MatchResponse(BaseModel):
     match_id: str
     total_targets: int
     matched_count: int
+    mailable_count: int = 0
+    lp_fallback_count: int = 0
+    low_offer_count: int = 0
+    low_value_count: int = 0
+    unpriced_count: int = 0
+    smart_floor_recommendation: Optional[float] = None
     results: List[MatchedParcel]
     warnings: List[str] = []
 

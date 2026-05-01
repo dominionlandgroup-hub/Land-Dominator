@@ -87,6 +87,8 @@ async def run_match(filters: MatchFilters) -> Response:
                 exclude_with_buildings=getattr(filters, 'exclude_with_buildings', True),
                 min_road_frontage=getattr(filters, 'min_road_frontage', 50.0),
                 max_retail_price=getattr(filters, 'max_retail_price', 200000.0),
+                min_offer_floor=getattr(filters, 'min_offer_floor', 10000.0),
+                min_lp_estimate=getattr(filters, 'min_lp_estimate', 20000.0),
             ),
         )
     except Exception:
@@ -104,6 +106,12 @@ async def run_match(filters: MatchFilters) -> Response:
             "match_id": result["match_id"],
             "total_targets": result["total_targets"],
             "matched_count": result["matched_count"],
+            "mailable_count": result.get("mailable_count", 0),
+            "lp_fallback_count": result.get("lp_fallback_count", 0),
+            "low_offer_count": result.get("low_offer_count", 0),
+            "low_value_count": result.get("low_value_count", 0),
+            "unpriced_count": result.get("unpriced_count", 0),
+            "smart_floor_recommendation": result.get("smart_floor_recommendation"),
             "results": result["results"],
             "warnings": result.get("warnings", []),
         }, ignore_nan=True, default=str)
@@ -136,6 +144,12 @@ async def run_match(filters: MatchFilters) -> Response:
             "match_id": result["match_id"],
             "total_targets": result["total_targets"],
             "matched_count": result["matched_count"],
+            "mailable_count": result.get("mailable_count", 0),
+            "lp_fallback_count": result.get("lp_fallback_count", 0),
+            "low_offer_count": result.get("low_offer_count", 0),
+            "low_value_count": result.get("low_value_count", 0),
+            "unpriced_count": result.get("unpriced_count", 0),
+            "smart_floor_recommendation": result.get("smart_floor_recommendation"),
             "results": result["results"],
             "warnings": result.get("warnings", []),
         })

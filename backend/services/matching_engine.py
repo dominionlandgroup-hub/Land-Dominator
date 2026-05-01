@@ -897,7 +897,10 @@ def run_matching(
     # New filters per Damien (March 2026)
     exclude_with_buildings: bool = True,  # Exclude if Building Sq Ft > 0
     min_road_frontage: float = 50.0,      # Minimum 50ft road frontage
-    max_retail_price: Optional[float] = None,  # Price ceiling - None = disabled (filters matched parcels only)
+    max_retail_price: Optional[float] = None,  # Price ceiling - None = disabled
+    # Offer floor filters (flag only, do not exclude)
+    min_offer_floor: float = 10000.0,     # Flag as LOW_OFFER if offer_mid < this
+    min_lp_estimate: float = 20000.0,     # Flag as LOW_VALUE if retail_estimate < this
 ) -> Dict[str, Any]:
     """
     Run the full matching pipeline with cleaned comps and acreage band pricing.
@@ -1507,6 +1510,23 @@ def run_matching(
         if cross_county_match and pricing.get('pricing_flag') == 'NO_COMPS':
             pricing['no_match_reason'] = 'NO_LOCAL_COMPS'
 
+        # ── LP_FALLBACK: no comps but target has a TLP/LP Estimate ──
+        # Use lp_estimate × pricing percentages as fallback pricing
+        if pricing['pricing_flag'] == 'NO_COMPS' and tlp_val and tlp_val > 0:
+            lp_retail = float(tlp_val)
+            pricing.update({
+                'pricing_flag': 'LP_FALLBACK',
+                'pricing_source': 'LP_FALLBACK',
+                'retail_estimate': round(lp_retail),
+                'offer_low': round(lp_retail * LOW_PCT),
+                'offer_mid': round(lp_retail * MID_PCT),
+                'offer_high': round(lp_retail * HIGH_PCT),
+                'confidence': 'EST',
+                'no_match_reason': None,
+                'radius_label': 'LP_FALLBACK',
+            })
+            # score stays 0 — no comp evidence, LP estimate only
+
         if debug:
             print(f"[DEBUG {target_apn}] PRICING RESULT:", flush=True)
             print(f"[DEBUG {target_apn}]   comp_count={pricing['comp_count']}, clean_comp_count={pricing['clean_comp_count']}", flush=True)
@@ -1719,6 +1739,16 @@ def run_matching(
                 results[-1]['clean_comp_count'] = 0
                 results[-1]['closest_comp_distance'] = None
 
+        # ── Floor checks: flag below-minimum records (do not remove) ──
+        _flag = results[-1].get('pricing_flag')
+        if _flag in ('MATCHED', 'LP_FALLBACK'):
+            _offer_mid = results[-1].get('suggested_offer_mid')
+            _retail = results[-1].get('retail_estimate')
+            if _offer_mid is not None and min_offer_floor and float(_offer_mid) < float(min_offer_floor):
+                results[-1]['pricing_flag'] = 'LOW_OFFER'
+            elif _retail is not None and min_lp_estimate and float(_retail) < float(min_lp_estimate):
+                results[-1]['pricing_flag'] = 'LOW_VALUE'
+
     # Process targets WITH coordinates in chunks to save memory
     import gc
     CHUNK_SIZE = 1000
@@ -1755,12 +1785,35 @@ def run_matching(
         print("  OK: All fields populated correctly", flush=True)
         print("")
 
-    matched_count = sum(1 for r in results if r.get("pricing_flag") == "MATCHED")
+    matched_count     = sum(1 for r in results if r.get("pricing_flag") == "MATCHED")
+    lp_fallback_count = sum(1 for r in results if r.get("pricing_flag") == "LP_FALLBACK")
+    low_offer_count   = sum(1 for r in results if r.get("pricing_flag") == "LOW_OFFER")
+    low_value_count   = sum(1 for r in results if r.get("pricing_flag") == "LOW_VALUE")
+    unpriced_count    = sum(1 for r in results if r.get("pricing_flag") in ("NO_COMPS", None))
+    mailable_count    = matched_count + lp_fallback_count
+
+    # Smart floor: 10th percentile of all priced offer_mid values
+    _priced_offers = sorted([
+        float(r['suggested_offer_mid']) for r in results
+        if r.get('suggested_offer_mid') is not None
+        and r.get('pricing_flag') in ('MATCHED', 'LP_FALLBACK', 'LOW_OFFER', 'LOW_VALUE')
+    ])
+    if _priced_offers:
+        _idx = max(0, int(len(_priced_offers) * 0.10) - 1)
+        smart_floor_recommendation: Optional[float] = _priced_offers[_idx]
+    else:
+        smart_floor_recommendation = None
 
     return {
         "match_id": str(uuid.uuid4()),
         "total_targets": total_targets,
         "matched_count": matched_count,
+        "mailable_count": mailable_count,
+        "lp_fallback_count": lp_fallback_count,
+        "low_offer_count": low_offer_count,
+        "low_value_count": low_value_count,
+        "unpriced_count": unpriced_count,
+        "smart_floor_recommendation": smart_floor_recommendation,
         "results": results,
         "warnings": warnings,
         "filter_counts": filter_counts,

@@ -796,6 +796,45 @@ async def recording_status(request: Request) -> dict:
     return {"status": "ok"}
 
 
+# ── Telnyx call hangup webhook ───────────────────────────────────────────────────
+
+@router.post("/api/calls/hangup")
+async def call_hangup(request: Request) -> dict:
+    """
+    Receive Telnyx call.hangup event.
+    Updates duration_seconds in crm_communications if not already set.
+    This covers calls that end before _finalize_call runs (abrupt hangups).
+    """
+    call_sid = ""
+    billing_secs: Optional[int] = None
+    try:
+        body = await request.json()
+        payload = body.get("data", {}).get("payload", {})
+        call_sid = payload.get("call_control_id", payload.get("call_session_id", ""))
+        billing_secs = payload.get("billing_duration_secs") or payload.get("duration_secs")
+        if billing_secs is not None:
+            billing_secs = int(billing_secs)
+    except Exception as exc:
+        print(f"[comms] hangup parse error: {exc}")
+        return {"status": "ok"}
+
+    if call_sid and billing_secs is not None and billing_secs > 0:
+        try:
+            sb = get_supabase()
+            # Only update if duration_seconds is currently null/0
+            existing = sb.table("crm_communications").select("id, duration_seconds").eq("call_id", call_sid).execute()
+            if existing.data:
+                row = existing.data[0]
+                if not row.get("duration_seconds"):
+                    sb.table("crm_communications").update(
+                        {"duration_seconds": billing_secs}
+                    ).eq("call_id", call_sid).execute()
+        except Exception as exc:
+            print(f"[comms] hangup DB error: {exc}")
+
+    return {"status": "ok"}
+
+
 # ── Call finalization ────────────────────────────────────────────────────────────
 
 async def _finalize_call(call_sid: str) -> None:
