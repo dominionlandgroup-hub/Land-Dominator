@@ -42,19 +42,34 @@ _PHRASES: dict[str, str] = {
     "greeting": (
         "Thank you for calling Dominion Land Group. "
         "Do you have the offer code from the letter we sent you? "
-        "It's located just below your mailing address on the letter."
+        "It's located just below your mailing address. "
+        "The code is usually two numbers, a dash, then one to three more numbers. "
+        "For example zero-two dash thirty-seven."
     ),
     "code_found": (
         "Perfect, I found your file. "
         "Are you calling because you're interested in our offer?"
     ),
-    "code_not_found": (
-        "I'm sorry, I was not able to find that code. "
-        "Can you repeat it slowly?"
+    "confirm_wrong": (
+        "My apologies. Let me look that up again. "
+        "Can you repeat the offer code from the letter?"
     ),
-    "code_retry_failed": (
-        "No problem. "
-        "Can I get your name and the property address from our letter?"
+    "confirm_yes": (
+        "Great. Are you calling because you're interested in our offer?"
+    ),
+    "code_not_found_1": (
+        "I want to make sure I get that right. "
+        "Can you say each part slowly? "
+        "First the numbers before the dash, pause, then the numbers after the dash."
+    ),
+    "code_not_found_2": (
+        "Let me try one more time. "
+        "What are the numbers before the dash?"
+    ),
+    "code_not_found_3": (
+        "No problem at all. "
+        "Let me get your information another way. "
+        "Can I get your first and last name?"
     ),
     "ask_name": "Can I get your name please?",
     "ask_callback": "Is the best number to reach you back at this number?",
@@ -129,6 +144,24 @@ async def warmup() -> None:
     results = await asyncio.gather(*tasks, return_exceptions=True)
     ok = sum(1 for r in results if r is True)
     print(f"[comms] TTS warmup complete — {ok}/{len(_PHRASES)} phrases cached")
+
+
+async def _tts_confirm(prop: dict) -> tuple[str, Optional[str]]:
+    """Build and cache a property-specific confirmation phrase."""
+    county = (prop.get("county") or "").strip()
+    state = (prop.get("state") or "").strip()
+    prop_id = (prop.get("id") or "unknown")[:8]
+    if county and state:
+        text = (
+            f"Perfect I found your file. "
+            f"Just to confirm, your property is in {county} County {state}. "
+            "Is that correct?"
+        )
+    else:
+        text = _PHRASES["code_found"]
+    key = f"confirm_{prop_id}"
+    url = await _tts_url(key, text)
+    return text, url
 
 
 # ── TeXML helpers ────────────────────────────────────────────────────────────────
@@ -207,53 +240,113 @@ _SPOKEN_DIGITS = {
     "eighty": "80", "ninety": "90",
 }
 
+_TENS_VALUES = {"twenty": 20, "thirty": 30, "forty": 40, "fifty": 50,
+                "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90}
+_UNITS_VALUES = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+                 "six": 6, "seven": 7, "eight": 8, "nine": 9, "for": 4, "to": 2, "too": 2}
+_SKIP_WORDS = {"dash", "hyphen", "minus", "and", "my", "code", "is", "the",
+               "it", "number", "offer", "letter", "that", "at", "a"}
+
 
 def _normalize_code(code: str) -> str:
     return re.sub(r"[\s\-_]", "", code).lower()
 
 
 def _speech_to_digits(speech: str) -> str:
-    """Convert spoken words/numbers to a digit string."""
+    """Convert spoken words/numbers to a digit string.
+
+    Handles compound numbers: 'thirty seven' → '37', 'oh two' → '02'.
+    """
     words = re.split(r"[\s,]+", speech.lower())
-    parts = []
-    for w in words:
-        clean = re.sub(r"[^\w]", "", w)
-        if clean in _SPOKEN_DIGITS:
-            parts.append(_SPOKEN_DIGITS[clean])
-        elif re.match(r"^\d+$", clean):
-            parts.append(clean)
-        # skip non-digit words like "dash", "minus", "my", "code", "is"
+    parts: list[str] = []
+    i = 0
+    while i < len(words):
+        w = re.sub(r"[^\w]", "", words[i])
+        if not w or w in _SKIP_WORDS:
+            i += 1
+            continue
+        if w in _TENS_VALUES:
+            tens_val = _TENS_VALUES[w]
+            if i + 1 < len(words):
+                nw = re.sub(r"[^\w]", "", words[i + 1])
+                if nw in _UNITS_VALUES:
+                    # "thirty seven" → 37
+                    parts.append(str(tens_val + _UNITS_VALUES[nw]))
+                    i += 2
+                    continue
+            parts.append(str(tens_val))
+            i += 1
+            continue
+        if w in _SPOKEN_DIGITS:
+            parts.append(_SPOKEN_DIGITS[w])
+        elif re.match(r"^\d+$", w):
+            parts.append(w)
+        i += 1
     return "".join(parts)
 
 
 def _extract_code_candidates(speech: str) -> list[str]:
-    candidates = []
-    # Direct digit sequences from speech (e.g. "02-37", "02 37")
+    """Generate all plausible code strings from spoken input.
+
+    Tries explicit dash splits, raw digit sequences, and spoken-word conversion.
+    For each digit string, tries all campaign-record split points (1 or 2 digits
+    for campaign) with zero-padded campaign number.
+    """
+    candidates: list[str] = []
+
+    def _add_splits(digit_str: str) -> None:
+        if not digit_str:
+            return
+        candidates.append(digit_str)
+        for split in range(1, min(3, len(digit_str))):
+            campaign_part = digit_str[:split]
+            record_part = digit_str[split:]
+            if record_part:
+                try:
+                    padded = f"{int(campaign_part):02d}-{record_part}"
+                    candidates.append(padded)
+                except ValueError:
+                    pass
+                candidates.append(f"{campaign_part}-{record_part}")
+
+    # Strategy 1: explicit spoken dash separates campaign from record
+    dash_parts = re.split(r"\b(?:dash|hyphen|minus)\b", speech.lower(), maxsplit=1)
+    if len(dash_parts) == 2:
+        p1 = _speech_to_digits(dash_parts[0])
+        p2 = _speech_to_digits(dash_parts[1])
+        if p1 and p2:
+            try:
+                candidates.append(f"{int(p1):02d}-{p2}")
+            except ValueError:
+                pass
+            candidates.append(f"{p1}-{p2}")
+
+    # Strategy 2: raw digit sequences already in speech text
     raw_patterns = re.findall(r"\d[\d\s\-]*\d|\d", speech)
     for p in raw_patterns:
         norm = _normalize_code(p)
-        if norm:
-            candidates.append(norm)
-            # Also try splitting as XX-YY
-            if len(norm) >= 3:
-                candidates.append(f"{norm[:2]}-{norm[2:]}")
-    # Spoken digits conversion
+        _add_splits(norm)
+
+    # Strategy 3: full spoken-word → digit conversion
     spoken = _speech_to_digits(speech)
-    if spoken:
-        candidates.append(spoken)
-        if len(spoken) >= 3:
-            candidates.append(f"{spoken[:2]}-{spoken[2:]}")
-    return list(dict.fromkeys(candidates))  # dedup, preserve order
+    _add_splits(spoken)
+
+    return list(dict.fromkeys(candidates))
 
 
 async def _lookup_offer_code(speech: str) -> Optional[dict]:
-    """Look up a property by offer code extracted from speech."""
+    """Look up a property by offer code extracted from speech.
+
+    Tries multiple strategies: exact ILIKE, normalized string match, and
+    digit-only match that ignores leading zeros on the campaign number.
+    """
     candidates = _extract_code_candidates(speech)
     if not candidates:
         return None
     sb = get_supabase()
+
+    # Pass 1 — ILIKE exact match for each candidate
     for candidate in candidates:
-        # ILIKE exact
         try:
             r = (
                 sb.table("crm_properties")
@@ -266,8 +359,18 @@ async def _lookup_offer_code(speech: str) -> Optional[dict]:
                 return r.data[0]
         except Exception:
             pass
-    # Fallback: load all codes and compare normalized
-    normalized_candidates = {_normalize_code(c) for c in candidates}
+
+    # Pass 2 — load all codes, compare by normalized string and digit-only
+    norm_candidates = {_normalize_code(c) for c in candidates}
+    digit_candidates = {re.sub(r"[^\d]", "", c) for c in candidates}
+    # also add versions without leading zero on campaign (e.g. "237" matches "0237")
+    expanded_digits: set[str] = set(digit_candidates)
+    for d in list(digit_candidates):
+        if d and d[0] == "0":
+            expanded_digits.add(d[1:])
+        elif len(d) >= 1:
+            expanded_digits.add(f"0{d}")
+
     try:
         r = (
             sb.table("crm_properties")
@@ -276,8 +379,18 @@ async def _lookup_offer_code(speech: str) -> Optional[dict]:
             .execute()
         )
         for p in r.data or []:
-            if _normalize_code(p.get("campaign_code") or "") in normalized_candidates:
+            code = p.get("campaign_code") or ""
+            norm = _normalize_code(code)
+            digits = re.sub(r"[^\d]", "", code)
+            if norm in norm_candidates:
                 return p
+            if digits in digit_candidates or digits in expanded_digits:
+                return p
+            # strip leading zero from campaign part and retry
+            if len(digits) >= 2 and digits[0] == "0":
+                stripped = digits[1:]
+                if stripped in digit_candidates or stripped in expanded_digits:
+                    return p
     except Exception:
         pass
     return None
@@ -489,6 +602,7 @@ async def inbound_call(request: Request) -> Response:
         "offer_price": None,
         "owner_name": "",
         "caller_offer_code": None,
+        "attempted_codes": [],
         "caller_name": None,
         "interest_score": "warm",
         "code_attempts": 0,
@@ -519,6 +633,11 @@ async def call_gather(step: str, request: Request, background_tasks: BackgroundT
     # ── Step: greeting (seller provides offer code) ──────────────────────
     if step == "greeting":
         if speech and not timed_out:
+            # Log every attempted code
+            if call_sid in _call_states:
+                _call_states[call_sid].setdefault("attempted_codes", []).append(speech.strip())
+            state.setdefault("attempted_codes", []).append(speech.strip())
+
             prop = await _lookup_offer_code(speech)
             if prop:
                 state["property_id"] = prop.get("id")
@@ -527,26 +646,28 @@ async def call_gather(step: str, request: Request, background_tasks: BackgroundT
                 state["caller_offer_code"] = speech.strip()
                 if call_sid in _call_states:
                     _call_states[call_sid].update(state)
-                # Pre-fetch name audio in background while code_found plays
-                background_tasks.add_task(_tts_generate, _PHRASES["ask_name"], "ask_name")
-                text = _PHRASES["code_found"]
-                audio_url = await _tts_url("code_found")
-                return _texml_gather("interest", text, call_sid, audio_url)
+                # Build dynamic county/state confirmation
+                confirm_text, audio_url = await _tts_confirm(prop)
+                return _texml_gather("confirm", confirm_text, call_sid, audio_url)
             else:
                 attempts = state.get("code_attempts", 0)
                 state["code_attempts"] = attempts + 1
                 if call_sid in _call_states:
                     _call_states[call_sid]["code_attempts"] = attempts + 1
-                if attempts < 1:
-                    text = _PHRASES["code_not_found"]
-                    audio_url = await _tts_url("code_not_found")
+                if attempts == 0:
+                    text = _PHRASES["code_not_found_1"]
+                    audio_url = await _tts_url("code_not_found_1")
+                    return _texml_gather("greeting", text, call_sid, audio_url)
+                elif attempts == 1:
+                    text = _PHRASES["code_not_found_2"]
+                    audio_url = await _tts_url("code_not_found_2")
                     return _texml_gather("greeting", text, call_sid, audio_url)
                 else:
-                    text = _PHRASES["code_retry_failed"]
-                    audio_url = await _tts_url("code_retry_failed")
+                    text = _PHRASES["code_not_found_3"]
+                    audio_url = await _tts_url("code_not_found_3")
                     return _texml_gather("unmatched", text, call_sid, audio_url)
         else:
-            # Timed out or no speech — retry once
+            # Timed out or no speech — replay greeting once, then fall to name fallback
             attempts = state.get("code_attempts", 0)
             if attempts < 1:
                 state["code_attempts"] = 1
@@ -555,9 +676,31 @@ async def call_gather(step: str, request: Request, background_tasks: BackgroundT
                 text = _PHRASES["greeting"]
                 audio_url = await _tts_url("greeting")
                 return _texml_gather("greeting", text, call_sid, audio_url)
-            text = _PHRASES["code_retry_failed"]
-            audio_url = await _tts_url("code_retry_failed")
+            text = _PHRASES["code_not_found_3"]
+            audio_url = await _tts_url("code_not_found_3")
             return _texml_gather("unmatched", text, call_sid, audio_url)
+
+    # ── Step: confirm (verify county/state with seller) ──────────────────
+    elif step == "confirm":
+        speech_up = (speech or "").upper()
+        confirmed = any(w in speech_up for w in [
+            "YES", "YEAH", "YEP", "SURE", "CORRECT", "RIGHT", "THAT'S RIGHT",
+            "THATS RIGHT", "ABSOLUTELY", "THAT IS CORRECT", "YUP", "UH HUH",
+        ])
+        denied = any(w in speech_up for w in [
+            "NO", "NOPE", "WRONG", "INCORRECT", "NOT RIGHT", "THAT'S NOT",
+        ])
+        if confirmed or (speech and not denied):
+            # Treat ambiguous/no-response as yes (common for confused callers)
+            background_tasks.add_task(_tts_generate, _PHRASES["ask_name"], "ask_name")
+            text = _PHRASES["confirm_yes"]
+            audio_url = await _tts_url("confirm_yes")
+            return _texml_gather("interest", text, call_sid, audio_url)
+        else:
+            # Caller said no — let them retry the code
+            text = _PHRASES["confirm_wrong"]
+            audio_url = await _tts_url("confirm_wrong")
+            return _texml_gather("greeting", text, call_sid, audio_url)
 
     # ── Step: interest (are you interested in our offer?) ────────────────
     elif step == "interest":
@@ -649,7 +792,12 @@ async def _finalize_call(call_sid: str) -> None:
     property_id = state.get("property_id")
     caller = state.get("caller", "")
     interest_score = state.get("interest_score", "warm")
-    caller_offer_code = state.get("caller_offer_code")
+    # Log the matched code, plus all attempts joined for full traceability
+    attempted_codes = state.get("attempted_codes", [])
+    caller_offer_code = (
+        " | ".join(attempted_codes) if attempted_codes
+        else state.get("caller_offer_code")
+    )
     caller_name = state.get("caller_name", "")
 
     transcript_text = "\n".join(
@@ -732,7 +880,11 @@ async def _finalize_unmatched_call(call_sid: str) -> None:
         return
     caller = state.get("caller", "")
     info = state.get("unmatched_info", "")
-    caller_offer_code = state.get("caller_offer_code")
+    attempted_codes = state.get("attempted_codes", [])
+    caller_offer_code = (
+        " | ".join(attempted_codes) if attempted_codes
+        else state.get("caller_offer_code")
+    )
     transcript = state.get("transcript", [])
     transcript_text = "\n".join(
         f"[{t['step'].upper()}] Caller: {t.get('speech', '[no response]')}"
@@ -947,6 +1099,27 @@ async def communication_stats() -> dict:
         }
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ── Test endpoint ─────────────────────────────────────────────────────────────────
+
+@router.get("/api/calls/test-code")
+async def test_offer_code(spoken: str = Query(..., description="Spoken code string to test, e.g. 'zero two thirty seven'")) -> dict:
+    """Debug endpoint: shows how a spoken code is converted and whether it matches a property."""
+    candidates = _extract_code_candidates(spoken)
+    prop = await _lookup_offer_code(spoken)
+    return {
+        "spoken": spoken,
+        "candidates": candidates,
+        "found": prop is not None,
+        "property": {
+            "id": prop.get("id"),
+            "campaign_code": prop.get("campaign_code"),
+            "county": prop.get("county"),
+            "state": prop.get("state"),
+            "owner_full_name": prop.get("owner_full_name"),
+        } if prop else None,
+    }
 
 
 # ── Migration SQL ─────────────────────────────────────────────────────────────────
