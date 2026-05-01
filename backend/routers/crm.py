@@ -1041,6 +1041,9 @@ async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)
 
         print(f"[add-match-results] After filter: {len(results)} records to insert", flush=True)
 
+        if results:
+            print(f"[add-match-results] RAW engine keys from first record: {list(results[0].keys())}", flush=True)
+
         if not results:
             flag_counts: dict[str, int] = {}
             for r in raw_results:
@@ -1502,6 +1505,27 @@ async def delete_all_properties() -> dict:
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+@router.get("/properties/tags")
+async def get_property_tags(campaign_id: Optional[str] = Query(None)) -> dict:
+    """Return all unique tags from crm_properties.tags JSONB array with counts."""
+    try:
+        sb = get_supabase()
+        q = sb.table("crm_properties").select("tags")
+        if campaign_id:
+            q = q.eq("campaign_id", campaign_id)
+        result = q.execute()
+        tag_counts: Dict[str, int] = {}
+        for row in result.data or []:
+            tags = row.get("tags") or []
+            if isinstance(tags, list):
+                for tag in tags:
+                    if tag and isinstance(tag, str):
+                        tag_counts[tag] = tag_counts.get(tag, 0) + 1
+        return {"tags": [{"tag": t, "count": c} for t, c in sorted(tag_counts.items())]}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 @router.get("/properties")
 async def list_properties(
     status: Optional[str] = Query(None),
@@ -1509,6 +1533,7 @@ async def list_properties(
     county: Optional[str] = Query(None),
     campaign_id: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
+    tag: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=500),
 ) -> dict:
@@ -1529,6 +1554,8 @@ async def list_properties(
             q = q.eq("campaign_id", campaign_id)
         if search:
             q = q.or_(f"owner_full_name.ilike.%{search}%,apn.ilike.%{search}%,campaign_code.ilike.%{search}%")
+        if tag:
+            q = q.contains("tags", [tag])
         result = q.execute()
         return {"data": result.data, "total": result.count or 0, "page": page, "limit": limit}
     except RuntimeError as exc:
@@ -1596,14 +1623,16 @@ async def export_properties_csv(
             "Owner Full Name", "Owner First Name", "Owner Last Name",
             "Mailing Address Line 1", "Mailing City", "Mailing State", "Mailing Zip",
             "APN", "County", "State", "Acreage",
-            "Campaign Code", "Campaign Price", "Offer Price", "LP Estimate",
+            "Campaign Code", "Offer Price", "LP Estimate",
+            "Comp Based Offer", "Recommended Offer", "Confidence Level",
             "Status",
         ]
         FIELDS = [
             "owner_full_name", "owner_first_name", "owner_last_name",
             "owner_mailing_address", "owner_mailing_city", "owner_mailing_state", "owner_mailing_zip",
             "apn", "county", "state", "acreage",
-            "campaign_code", "campaign_price", "offer_price", "lp_estimate",
+            "campaign_code", "offer_price", "lp_estimate",
+            "comp_based_offer", "recommended_offer", "confidence_level",
             "status",
         ]
 

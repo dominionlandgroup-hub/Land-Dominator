@@ -5,6 +5,17 @@ import { pullLpData, sendSms, initiateOutboundCall, listPropertyCommunications, 
 import type { PropertyNote } from '../api/crm'
 import CommDetailModal, { ScoreBadge, TypeBadge, fmtTalk } from '../components/CommDetailModal'
 
+// ── Confidence level normalizer ──────────────────────────────────────────────
+
+function normalizeConfidence(v: string | null | undefined): 'HIGH' | 'MEDIUM' | 'LOW' | null {
+  if (!v) return null
+  const u = v.toUpperCase().trim().replace(/-/g, '_')
+  if (u === 'HIGH' || u === 'HIGH_CONFIDENCE') return 'HIGH'
+  if (u === 'MEDIUM' || u === 'MED' || u === 'MEDIUM_CONFIDENCE') return 'MEDIUM'
+  if (['LOW', 'LOW_CONFIDENCE', 'ESTIMATED', 'EST'].includes(u)) return 'LOW'
+  return null
+}
+
 // ── Display helpers ───────────────────────────────────────────────────────────
 
 function fmtCurrency(v: number | null | undefined): string {
@@ -785,28 +796,27 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
             </div>
             <div className="mt-4 flex flex-col gap-1">
               <label className="label-caps">Confidence Level</label>
-              {form.confidence_level ? (
-                <span className="inline-block self-start px-3 py-1.5 rounded-full text-sm font-bold"
-                  style={{
-                    background: form.confidence_level.toLowerCase() === 'high' ? '#E8F5E9'
-                      : form.confidence_level.toLowerCase() === 'medium' ? '#FFF9E6'
-                      : '#FFF0F0',
-                    color: form.confidence_level.toLowerCase() === 'high' ? '#2D7A4F'
-                      : form.confidence_level.toLowerCase() === 'medium' ? '#B8860B'
-                      : '#B71C1C',
-                  }}>
-                  {form.confidence_level}
-                </span>
-              ) : (
-                <input
-                  type="text"
-                  className="input-base"
-                  value={(form.confidence_level as string | undefined) || ''}
-                  onChange={e => set('confidence_level', e.target.value)}
-                  placeholder="High / Medium / Low"
-                  style={{ maxWidth: 200 }}
-                />
-              )}
+              {(() => {
+                const conf = normalizeConfidence(form.confidence_level as string | undefined)
+                return conf ? (
+                  <span className="inline-block self-start px-3 py-1.5 rounded-full text-sm font-bold"
+                    style={{
+                      background: conf === 'HIGH' ? '#E8F5E9' : conf === 'MEDIUM' ? '#FFF9E6' : '#FFF0F0',
+                      color: conf === 'HIGH' ? '#2D7A4F' : conf === 'MEDIUM' ? '#B8860B' : '#B71C1C',
+                    }}>
+                    {conf}
+                  </span>
+                ) : (
+                  <input
+                    type="text"
+                    className="input-base"
+                    value={(form.confidence_level as string | undefined) || ''}
+                    onChange={e => set('confidence_level', e.target.value)}
+                    placeholder="High / Medium / Low"
+                    style={{ maxWidth: 200 }}
+                  />
+                )
+              })()}
             </div>
           </AccordionSection>
 

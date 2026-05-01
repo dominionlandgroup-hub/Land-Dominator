@@ -23,6 +23,7 @@ export async function listProperties(params?: {
   county?: string
   campaign_id?: string
   search?: string
+  tag?: string
 }): Promise<PropertyListResponse> {
   const { data } = await api.get<PropertyListResponse>('/crm/properties', { params })
   return data
@@ -241,6 +242,18 @@ export async function exportPropertiesCsv(params: {
   a.download = filename ?? `properties-export-${new Date().toISOString().slice(0, 10)}.csv`
   a.click()
   URL.revokeObjectURL(url)
+}
+
+export async function getPropertyTags(campaignId?: string): Promise<{ tag: string; count: number }[]> {
+  const params: Record<string, string> = {}
+  if (campaignId) params.campaign_id = campaignId
+  const { data } = await api.get<{ tags: { tag: string; count: number }[] }>('/crm/properties/tags', { params })
+  return data.tags
+}
+
+export async function listPropertiesAll(campaignId: string): Promise<CRMProperty[]> {
+  const { data } = await api.get<CRMProperty[]>('/crm/properties/export-all', { params: { campaign_id: campaignId } })
+  return data
 }
 
 // ── Land Portal ───────────────────────────────────────────────────────

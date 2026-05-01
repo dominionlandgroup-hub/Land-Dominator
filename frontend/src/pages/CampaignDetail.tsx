@@ -4,7 +4,7 @@ import type { CRMProperty, CRMCampaign, PropertyStatus } from '../types/crm'
 import {
   listProperties, updateProperty, deleteProperties, bulkInsertRows, getCrmCampaign,
   exportPropertiesCsv, startCampaignLpPull, getCampaignLpPullStatus,
-  sendCampaignMailDrop, updateCrmCampaign,
+  sendCampaignMailDrop, updateCrmCampaign, getPropertyTags,
 } from '../api/crm'
 import PropertyDetail from './PropertyDetail'
 
@@ -54,6 +54,14 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
 
   const [exportingAll, setExportingAll] = useState(false)
 
+  // All-pages selection
+  const [allPagesSelected, setAllPagesSelected] = useState(false)
+  // Tags + Boards filters
+  const [tagFilter, setTagFilter] = useState('')
+  const [boardFilter, setBoardFilter] = useState('')
+  const [availableTags, setAvailableTags] = useState<{ tag: string; count: number }[]>([])
+  const [tagsLoading, setTagsLoading] = useState(false)
+
   // Start Mailing
   const [showMailModal, setShowMailModal] = useState(false)
   const [mailHouseEmail, setMailHouseEmail] = useState(campaign.mail_house_email ?? '')
@@ -94,14 +102,15 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
     } catch {}
   }
 
-  async function loadProperties(p: number, sf: string, sq: string) {
+  async function loadProperties(p: number, sf: string, sq: string, tf = tagFilter, bf = boardFilter) {
     setLoading(true)
     try {
       const res = await listProperties({
         page: p, limit: PAGE_SIZE,
         campaign_id: campaign.id,
-        status: sf === 'all' ? undefined : sf,
+        status: bf || (sf === 'all' ? undefined : sf),
         search: sq.trim() || undefined,
+        tag: tf || undefined,
       })
       setProperties(res.data)
       setTotalCount(res.total)
@@ -112,7 +121,22 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
   function handleStatusChange(sf: string) {
     setStatusFilter(sf)
     setSelectedIds(new Set())
+    setAllPagesSelected(false)
     loadProperties(1, sf, search)
+  }
+
+  function handleTagChange(tf: string) {
+    setTagFilter(tf)
+    setSelectedIds(new Set())
+    setAllPagesSelected(false)
+    loadProperties(1, statusFilter, search, tf, boardFilter)
+  }
+
+  function handleBoardChange(bf: string) {
+    setBoardFilter(bf)
+    setSelectedIds(new Set())
+    setAllPagesSelected(false)
+    loadProperties(1, statusFilter, search, tagFilter, bf)
   }
 
   function handleSearch(sq: string) {
@@ -127,7 +151,10 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
 
   // ── Select all on current page ──────────────────────────────────────
   function toggleSelectAll() {
-    if (selectedIds.size === properties.length && properties.length > 0) {
+    if (allPagesSelected) {
+      setAllPagesSelected(false)
+      setSelectedIds(new Set())
+    } else if (selectedIds.size === properties.length && properties.length > 0) {
       setSelectedIds(new Set())
     } else {
       setSelectedIds(new Set(properties.map(p => p.id)))
@@ -169,13 +196,19 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
   }
 
   // ── Export CSV ──────────────────────────────────────────────────────
-  function handleExport() {
+  async function handleExport() {
+    if (allPagesSelected) {
+      // Export all via backend
+      await handleExportAll()
+      return
+    }
     const selected = properties.filter(p => selectedIds.has(p.id))
     const headers = [
       'Owner Full Name', 'Owner First Name', 'Owner Last Name',
       'Mailing Address Line 1', 'Mailing City', 'Mailing State', 'Mailing Zip',
       'APN', 'County', 'State', 'Acreage',
-      'Campaign Code', 'Campaign Price', 'Offer Price', 'LP Estimate',
+      'Campaign Code', 'Offer Price', 'LP Estimate',
+      'Comp Based Offer', 'Recommended Offer', 'Confidence Level',
       'Status',
     ]
     const rows = selected.map(p => [
@@ -191,9 +224,11 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
       p.state ?? '',
       p.acreage?.toFixed(2) ?? '',
       p.campaign_code ?? '',
-      p.campaign_price?.toString() ?? '',
       p.offer_price?.toString() ?? '',
       p.lp_estimate?.toString() ?? '',
+      p.comp_based_offer?.toString() ?? '',
+      p.recommended_offer?.toString() ?? '',
+      p.confidence_level ?? '',
       p.status ?? 'lead',
     ])
     const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
@@ -201,7 +236,7 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `${campaign.name.replace(/[^a-z0-9]/gi, '_')}_export.csv`
+    a.download = `${campaign.name.replace(/[^a-z0-9]/gi, '_')}_selected.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -343,7 +378,7 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE)
   const firstRow = totalCount === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
   const lastRow = Math.min(page * PAGE_SIZE, totalCount)
-  const allSelected = properties.length > 0 && selectedIds.size === properties.length
+  const allSelected = allPagesSelected || (properties.length > 0 && selectedIds.size === properties.length)
   const someSelected = selectedIds.size > 0 && !allSelected
 
   const bs = stats.by_status ?? {}
@@ -425,7 +460,7 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
               <polyline points="17 8 12 3 7 8"/>
               <line x1="12" y1="3" x2="12" y2="15"/>
             </svg>
-            {exportingAll ? 'Exporting…' : 'Export All'}
+            {exportingAll ? 'Exporting…' : `Export All (${(stats.property_count ?? totalCount).toLocaleString()})`}
           </button>
           <button
             className="btn-secondary text-sm"
@@ -486,12 +521,45 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
           ))}
         </select>
 
-        {/* Placeholder dropdowns */}
-        <select className="input-base text-sm py-1.5" style={{ maxWidth: '120px' }} disabled>
-          <option>All Tags</option>
+        {/* Tags filter */}
+        <select
+          className="input-base text-sm py-1.5"
+          style={{ maxWidth: '140px' }}
+          value={tagFilter}
+          onChange={e => handleTagChange(e.target.value)}
+          onFocus={async () => {
+            if (availableTags.length === 0 && !tagsLoading) {
+              setTagsLoading(true)
+              try { setAvailableTags(await getPropertyTags(campaign.id)) } catch {} finally { setTagsLoading(false) }
+            }
+          }}
+        >
+          <option value="">All Tags</option>
+          {availableTags.length === 0 && !tagsLoading && <option disabled>No tags yet</option>}
+          {availableTags.map(t => (
+            <option key={t.tag} value={t.tag}>{t.tag} ({t.count})</option>
+          ))}
         </select>
-        <select className="input-base text-sm py-1.5" style={{ maxWidth: '120px' }} disabled>
-          <option>All Boards</option>
+
+        {/* Boards / status filter */}
+        <select
+          className="input-base text-sm py-1.5"
+          style={{ maxWidth: '150px' }}
+          value={boardFilter}
+          onChange={e => handleBoardChange(e.target.value)}
+        >
+          <option value="">All Boards</option>
+          {[
+            { label: 'New Lead', value: 'lead' },
+            { label: 'Contacted', value: 'prospect' },
+            { label: 'Offer Sent', value: 'offer_sent' },
+            { label: 'Under Contract', value: 'under_contract' },
+            { label: 'Due Diligence', value: 'due_diligence' },
+            { label: 'Closed Won', value: 'closed_won' },
+            { label: 'Closed Lost', value: 'closed_lost' },
+          ].map(b => (
+            <option key={b.value} value={b.value}>{b.label} ({(stats.by_status?.[b.value] ?? 0).toLocaleString()})</option>
+          ))}
         </select>
 
         {/* Search */}
@@ -512,7 +580,7 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
         {selectedIds.size > 0 && (
           <div className="flex items-center gap-2 ml-auto">
             <span className="text-xs font-semibold" style={{ color: '#5C2977' }}>
-              {selectedIds.size.toLocaleString()} selected
+              {allPagesSelected ? `${totalCount.toLocaleString()} selected` : `${selectedIds.size.toLocaleString()} selected`}
             </span>
             <button
               className="px-3 py-1.5 text-xs font-semibold rounded-lg"
@@ -543,6 +611,22 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
       {importPhase === 'importing' && importTotal > 0 && (
         <div style={{ background: '#5C2977', height: '3px' }}>
           <div style={{ background: '#C4A8D8', height: '100%', width: `${Math.round((importProgress / importTotal) * 100)}%`, transition: 'width 0.3s' }} />
+        </div>
+      )}
+
+      {/* All-pages selection banner */}
+      {!loading && selectedIds.size === properties.length && properties.length > 0 && !allPagesSelected && totalCount > PAGE_SIZE && (
+        <div className="mx-6 mt-4 flex items-center justify-between px-4 py-2.5 rounded-lg text-sm" style={{ background: 'rgba(92,41,119,0.07)', border: '1px solid #D4B8E8' }}>
+          <span style={{ color: '#3D2B5E' }}>All {properties.length} records on this page are selected.</span>
+          <button className="font-semibold text-sm ml-3" style={{ color: '#5C2977' }} onClick={() => setAllPagesSelected(true)}>
+            Select all {totalCount.toLocaleString()} records →
+          </button>
+        </div>
+      )}
+      {allPagesSelected && (
+        <div className="mx-6 mt-4 flex items-center justify-between px-4 py-2.5 rounded-lg text-sm" style={{ background: 'rgba(183,28,28,0.06)', border: '1px solid rgba(183,28,28,0.25)' }}>
+          <span style={{ color: '#B71C1C', fontWeight: 600 }}>All {totalCount.toLocaleString()} records selected.</span>
+          <button className="font-semibold text-sm ml-3" style={{ color: '#B71C1C' }} onClick={() => { setAllPagesSelected(false); setSelectedIds(new Set()) }}>Clear ×</button>
         </div>
       )}
 
