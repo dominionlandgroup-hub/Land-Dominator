@@ -3,7 +3,7 @@ import { useApp } from '../context/AppContext'
 import { fetchDashboard } from '../api/client'
 import { createCrmCampaign, saveBuyBox } from '../api/crm'
 import LoadingSpinner from '../components/LoadingSpinner'
-import type { ZipStats, CompLocation, SweetSpot } from '../types'
+import type { ZipStats, CompLocation, SweetSpot, LandQualityStats } from '../types'
 import CompMap from '../components/CompMap'
 import WelcomeScreen from './WelcomeScreen'
 
@@ -128,6 +128,7 @@ export default function Dashboard() {
               sweetSpot={dashboardData.sweet_spot}
               topStates={dashboardData.top_states ?? []}
               topCounties={dashboardData.top_counties ?? []}
+              landQuality={dashboardData.land_quality}
             />
 
             {/* ── Section 3: Top 10 Markets ────────────────────────── */}
@@ -366,18 +367,53 @@ function BuyBoxRecipe({
   sweetSpot,
   topStates,
   topCounties,
+  landQuality,
 }: {
   zipStats: ZipStats[]
   comps: Array<{ lot_acres: number; sale_price: number; zip?: string }>
   sweetSpot?: SweetSpot | null
   topStates: string[]
   topCounties: string[]
+  landQuality?: LandQualityStats | null
 }) {
   const [copied, setCopied] = useState(false)
   const [building, setBuilding] = useState(false)
   const [built, setBuilt] = useState(false)
 
   const topZips = [...zipStats].sort((a, b) => b.sales_count - a.sales_count).slice(0, 10).map(z => z.zip_code)
+
+  // Land quality — data-driven from sold comps, with fallbacks
+  const buildabilityMin = landQuality?.buildability_count
+    ? Math.round((landQuality.buildability_min ?? 80) / 10) * 10
+    : 80
+  const buildabilityCount = landQuality?.buildability_count ?? 0
+  const buildabilityLabel = buildabilityCount > 0
+    ? `${buildabilityMin}% minimum (based on ${buildabilityCount} comps)`
+    : '80% minimum (default)'
+
+  const slopeMax = landQuality?.slope_count
+    ? Math.round(landQuality.slope_p75 ?? 10)
+    : 10
+  const slopeCount = landQuality?.slope_count ?? 0
+  const slopeLabel = slopeCount > 0
+    ? `${slopeMax}% max (based on ${slopeCount} comps)`
+    : '10% max (default)'
+
+  const wetlandsMax = landQuality?.wetlands_count
+    ? Math.round(landQuality.wetlands_p75 ?? 5)
+    : 5
+  const wetlandsCount = landQuality?.wetlands_count ?? 0
+  const wetlandsLabel = wetlandsCount > 0
+    ? `Less than ${wetlandsMax}% (based on ${wetlandsCount} comps)`
+    : 'Less than 5% (default)'
+
+  const roadFrontageMin = landQuality?.road_frontage_count
+    ? Math.round(landQuality.road_frontage_p25 ?? 30)
+    : null
+  const roadFrontageCount = landQuality?.road_frontage_count ?? 0
+  const roadFrontageLabel = roadFrontageCount > 0 && roadFrontageMin != null
+    ? `Minimum ${roadFrontageMin} ft (based on ${roadFrontageCount} comps)`
+    : 'Data not available in comps — recommend 30 ft minimum'
 
   const acres = comps.map(c => c.lot_acres).filter(v => Number.isFinite(v) && v > 0).sort((a, b) => a - b)
   const minAcre = acres.length > 0 ? Math.max(0.1, Math.floor(percentile(acres, 25) * 10) / 10) : 0.5
@@ -415,11 +451,11 @@ function BuyBoxRecipe({
     `   Sweet spot: ${sweetLabel}`,
     '',
     '4. LAND QUALITY',
-    '   Buildability: 80% minimum',
-    '   Max slope: 10%',
-    '   Wetlands: Less than 5% coverage',
+    `   Buildability: ${buildabilityLabel}`,
+    `   Max slope: ${slopeLabel}`,
+    `   Wetlands: ${wetlandsLabel}`,
     '   FEMA flood zone: Exclude all flood zones',
-    '   Road frontage: Required (minimum 1 ft)',
+    `   Road frontage: ${roadFrontageLabel}`,
     '   Landlocked: Exclude',
     '',
     '5. SALE HISTORY',
@@ -481,8 +517,8 @@ ${sec('3. Lot Size',
   row('Sweet spot', sweetLabel)
 )}
 ${sec('4. Land Quality',
-  row('Buildability minimum', '80%') + row('Maximum slope', '10%') + row('Wetlands coverage', 'Less than 5%') +
-  check('Exclude all FEMA flood zones', false) + check('Exclude landlocked parcels', false) + row('Road frontage', 'Required — minimum 1 ft')
+  row('Buildability minimum', buildabilityLabel) + row('Maximum slope', slopeLabel) + row('Wetlands coverage', wetlandsLabel) +
+  check('Exclude all FEMA flood zones', false) + check('Exclude landlocked parcels', false) + row('Road frontage', roadFrontageLabel)
 )}
 ${sec('5. Sale History',
   check('Include: sold in last 5 years') + check('Exclude: unknown sale dates', false) + check('Exclude: sold in last 2 years', false)
@@ -594,12 +630,12 @@ ${sec('6. Owner',
         <div className="rounded-xl p-4" style={cardStyle}>
           {hdr('4 · Land Quality')}
           <div className="space-y-2 text-xs">
-            <div className="flex justify-between"><span style={{ color: '#6B5B8A' }}>Buildability minimum</span><span style={{ color: '#2D7A4F', fontWeight: 600 }}>80%</span></div>
-            <div className="flex justify-between"><span style={{ color: '#6B5B8A' }}>Maximum slope</span><span style={{ color: '#1A0A2E', fontWeight: 600 }}>10%</span></div>
-            <div className="flex justify-between"><span style={{ color: '#6B5B8A' }}>Wetlands coverage</span><span style={{ color: '#1A0A2E', fontWeight: 600 }}>Less than 5%</span></div>
+            <div className="flex justify-between gap-2"><span style={{ color: '#6B5B8A', flexShrink: 0 }}>Buildability minimum</span><span style={{ color: '#2D7A4F', fontWeight: 600, textAlign: 'right' }}>{buildabilityLabel}</span></div>
+            <div className="flex justify-between gap-2"><span style={{ color: '#6B5B8A', flexShrink: 0 }}>Maximum slope</span><span style={{ color: '#1A0A2E', fontWeight: 600, textAlign: 'right' }}>{slopeLabel}</span></div>
+            <div className="flex justify-between gap-2"><span style={{ color: '#6B5B8A', flexShrink: 0 }}>Wetlands coverage</span><span style={{ color: '#1A0A2E', fontWeight: 600, textAlign: 'right' }}>{wetlandsLabel}</span></div>
             <div className="flex gap-2"><span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>FEMA flood zones (exclude all)</span></div>
             <div className="flex gap-2"><span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>Landlocked parcels (exclude)</span></div>
-            <div className="flex justify-between"><span style={{ color: '#6B5B8A' }}>Road frontage</span><span style={{ color: '#2D7A4F', fontWeight: 600 }}>Required (min 1 ft)</span></div>
+            <div className="flex justify-between gap-2"><span style={{ color: '#6B5B8A', flexShrink: 0 }}>Road frontage</span><span style={{ color: '#2D7A4F', fontWeight: 600, textAlign: 'right' }}>{roadFrontageLabel}</span></div>
           </div>
         </div>
 
