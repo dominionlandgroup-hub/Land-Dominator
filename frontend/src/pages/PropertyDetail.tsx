@@ -686,19 +686,62 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
 
           {/* Comparables */}
           <AccordionSection title="Comparables" sectionKey="comps" {...accordionProps}>
+            {/* Quality flag banner */}
+            {form.comp_quality_flags && (
+              <div className="mb-4 flex flex-wrap gap-2 items-center">
+                {form.comp_quality_flags.split(',').map(f => f.trim()).filter(Boolean).map(flag => (
+                  <span key={flag} className="text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider"
+                    style={{
+                      background: flag === 'REVIEW_NEEDED' ? '#FFF0F0' : '#FFF9E6',
+                      color: flag === 'REVIEW_NEEDED' ? '#B71C1C' : '#B8860B',
+                      border: `1px solid ${flag === 'REVIEW_NEEDED' ? '#FFCDD2' : '#FFE082'}`,
+                    }}>
+                    {flag.replace(/_/g, ' ')}
+                  </span>
+                ))}
+                {form.pricing_method_used && (
+                  <span className="text-[10px] font-medium px-2 py-1 rounded-full" style={{ background: '#EDE8F5', color: '#5C2977' }}>
+                    Method: {form.pricing_method_used}
+                  </span>
+                )}
+              </div>
+            )}
             <div className="grid grid-cols-3 gap-4">
               {([1, 2, 3] as const).map(n => {
                 const price = form[`comp${n}_price` as keyof CRMProperty] as number | undefined
                 const acreage = form[`comp${n}_acreage` as keyof CRMProperty] as number | undefined
                 const link = form[`comp${n}_link` as keyof CRMProperty] as string | undefined
+                const address = form[`comp_${n}_address` as keyof CRMProperty] as string | undefined
+                const date = form[`comp_${n}_date` as keyof CRMProperty] as string | undefined
+                const distance = form[`comp_${n}_distance` as keyof CRMProperty] as number | undefined
+                const ppa = form[`comp_${n}_ppa` as keyof CRMProperty] as number | undefined
+                // Per-comp quality check: stale if date > 18 months, poor if acreage ratio > 3x
+                const now = Date.now()
+                const dateMs = date ? new Date(date).getTime() : null
+                const isStale = dateMs != null && (now - dateMs) > 18 * 30.44 * 24 * 60 * 60 * 1000
+                const propertyAcreage = form.acreage
+                const isPoor = acreage != null && propertyAcreage != null && propertyAcreage > 0
+                  ? Math.max(acreage, propertyAcreage) / Math.min(acreage, propertyAcreage) > 3
+                  : false
                 return (
                   <div key={n} className="rounded-xl overflow-hidden" style={{ border: '1px solid #EDE8F5' }}>
                     <div className="px-4 pt-4 pb-3" style={{ background: '#F8F5FC', borderBottom: '1px solid #EDE8F5' }}>
-                      <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: '#9B8AAE' }}>Comp {n}</p>
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#9B8AAE' }}>Comp {n}</p>
+                        <div className="flex gap-1">
+                          {isStale && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#FFF9E6', color: '#B8860B', border: '1px solid #FFE082' }}>STALE</span>}
+                          {isPoor && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#FFF0F0', color: '#B71C1C', border: '1px solid #FFCDD2' }}>POOR</span>}
+                        </div>
+                      </div>
                       <p className="text-2xl font-bold" style={{ color: '#1A0A2E' }}>
                         {price != null ? fmtCurrency(price) : <span style={{ color: '#C4B5D8', fontSize: '13px', fontWeight: 400 }}>No price yet</span>}
                       </p>
-                      {acreage != null && <p className="text-sm mt-0.5" style={{ color: '#6B5B8A' }}>{acreage.toFixed(2)} ac</p>}
+                      {acreage != null && <p className="text-sm mt-0.5" style={{ color: '#6B5B8A' }}>{acreage.toFixed(2)} ac{ppa != null ? ` · ${fmtCurrency(ppa)}/ac` : ''}</p>}
+                      {address && <p className="text-xs mt-1 leading-tight" style={{ color: '#6B5B8A' }}>{address}</p>}
+                      <div className="flex flex-wrap gap-2 mt-1.5">
+                        {date && <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: '#EDE8F5', color: '#6B5B8A' }}>{new Date(date).toLocaleDateString('en-US', { year: 'numeric', month: 'short' })}</span>}
+                        {distance != null && <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: '#EDE8F5', color: '#6B5B8A' }}>{distance.toFixed(2)} mi away</span>}
+                      </div>
                       {link && (
                         <a href={link} target="_blank" rel="noopener noreferrer"
                           className="inline-block mt-2 text-xs font-semibold px-2 py-1 rounded-lg"

@@ -506,6 +506,7 @@ async def db_migrate() -> dict:
         "sql": _MIGRATION_SQL,
         "documents_table_sql": DOCUMENTS_MIGRATION_SQL,
         "notes_table_sql": NOTES_MIGRATION_SQL,
+        "comp_columns_sql": COMP_MIGRATION_SQL,
         "errors_tried": errors_tried,
     }
 
@@ -1001,8 +1002,34 @@ async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)
                 "acreage": r.get("lot_acres"),
                 "offer_price": r.get("suggested_offer_mid"),
                 "lp_estimate": r.get("retail_estimate"),
+                "recommended_offer": r.get("suggested_offer_mid"),
+                "confidence_level": r.get("confidence"),
                 "latitude": r.get("latitude"),
                 "longitude": r.get("longitude"),
+                # Comp 1 data from matching engine
+                "comp1_price": r.get("comp_1_price"),
+                "comp1_acreage": r.get("comp_1_acres"),
+                "comp_1_address": r.get("comp_1_address") or None,
+                "comp_1_date": r.get("comp_1_date") or None,
+                "comp_1_distance": r.get("comp_1_distance"),
+                "comp_1_ppa": r.get("comp_1_ppa"),
+                # Comp 2 data
+                "comp2_price": r.get("comp_2_price"),
+                "comp2_acreage": r.get("comp_2_acres"),
+                "comp_2_address": r.get("comp_2_address") or None,
+                "comp_2_date": r.get("comp_2_date") or None,
+                "comp_2_distance": r.get("comp_2_distance"),
+                "comp_2_ppa": r.get("comp_2_ppa"),
+                # Comp 3 data
+                "comp3_price": r.get("comp_3_price"),
+                "comp3_acreage": r.get("comp_3_acres"),
+                "comp_3_address": r.get("comp_3_address") or None,
+                "comp_3_date": r.get("comp_3_date") or None,
+                "comp_3_distance": r.get("comp_3_distance"),
+                "comp_3_ppa": r.get("comp_3_ppa"),
+                # Pricing metadata
+                "comp_quality_flags": r.get("comp_quality_flags") or None,
+                "pricing_method_used": r.get("pricing_method") or None,
                 "created_at": _now(),
                 "updated_at": _now(),
             })
@@ -1957,5 +1984,126 @@ async def add_property_note(property_id: str, body: dict = Body(...)) -> dict:
         return r.data[0]
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+COMP_MIGRATION_SQL = """
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS comp_1_address TEXT;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS comp_2_address TEXT;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS comp_3_address TEXT;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS comp_1_date TEXT;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS comp_2_date TEXT;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS comp_3_date TEXT;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS comp_1_distance NUMERIC;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS comp_2_distance NUMERIC;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS comp_3_distance NUMERIC;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS comp_1_ppa NUMERIC;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS comp_2_ppa NUMERIC;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS comp_3_ppa NUMERIC;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS comp_quality_flags TEXT;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS pricing_method_used TEXT;
+""".strip()
+
+
+@router.post("/save-match-pricing")
+async def save_match_pricing(body: dict = Body(...)) -> dict:
+    """
+    Update existing CRM properties with comp and pricing data from a match run.
+    Matches by APN. Only updates records that already exist in crm_properties.
+    Body: {match_id: str, export_type?: 'mailable'|'matched'|'all'}
+    """
+    try:
+        from storage.session_store import get_match
+        match_id = body.get("match_id", "")
+        export_type = body.get("export_type", "all")
+
+        match_data = get_match(match_id)
+        if match_data is None:
+            raise HTTPException(status_code=404, detail="Match result not found. Re-run matching engine.")
+
+        raw_results = match_data.get("results", [])
+
+        if export_type == "mailable":
+            results = [r for r in raw_results if r.get("pricing_flag") in ("MATCHED", "LP_FALLBACK")]
+        elif export_type == "matched":
+            results = [r for r in raw_results if r.get("pricing_flag") == "MATCHED"]
+        else:
+            results = raw_results
+
+        if not results:
+            return {"updated": 0, "total": 0, "not_found": 0}
+
+        sb = get_supabase()
+
+        # Batch APN lookup
+        all_apns = list(set((r.get("apn") or "").strip() for r in results if (r.get("apn") or "").strip()))
+        if not all_apns:
+            return {"updated": 0, "total": len(results), "not_found": len(results)}
+
+        LOOKUP_CHUNK = 500
+        apn_to_id: Dict[str, str] = {}
+        for i in range(0, len(all_apns), LOOKUP_CHUNK):
+            chunk_apns = all_apns[i:i + LOOKUP_CHUNK]
+            found = sb.table("crm_properties").select("id,apn").in_("apn", chunk_apns).execute()
+            for row in (found.data or []):
+                if row.get("apn"):
+                    apn_to_id[row["apn"].strip()] = row["id"]
+
+        updated = 0
+        not_found = 0
+        errors: List[str] = []
+
+        for r in results:
+            apn = (r.get("apn") or "").strip()
+            prop_id = apn_to_id.get(apn)
+            if not prop_id:
+                not_found += 1
+                continue
+
+            updates: Dict[str, Any] = {
+                "comp1_price": r.get("comp_1_price"),
+                "comp1_acreage": r.get("comp_1_acres"),
+                "comp_1_address": r.get("comp_1_address") or None,
+                "comp_1_date": r.get("comp_1_date") or None,
+                "comp_1_distance": r.get("comp_1_distance"),
+                "comp_1_ppa": r.get("comp_1_ppa"),
+                "comp2_price": r.get("comp_2_price"),
+                "comp2_acreage": r.get("comp_2_acres"),
+                "comp_2_address": r.get("comp_2_address") or None,
+                "comp_2_date": r.get("comp_2_date") or None,
+                "comp_2_distance": r.get("comp_2_distance"),
+                "comp_2_ppa": r.get("comp_2_ppa"),
+                "comp3_price": r.get("comp_3_price"),
+                "comp3_acreage": r.get("comp_3_acres"),
+                "comp_3_address": r.get("comp_3_address") or None,
+                "comp_3_date": r.get("comp_3_date") or None,
+                "comp_3_distance": r.get("comp_3_distance"),
+                "comp_3_ppa": r.get("comp_3_ppa"),
+                "lp_estimate": r.get("retail_estimate"),
+                "offer_price": r.get("suggested_offer_mid"),
+                "recommended_offer": r.get("suggested_offer_mid"),
+                "confidence_level": r.get("confidence"),
+                "comp_quality_flags": r.get("comp_quality_flags") or None,
+                "pricing_method_used": r.get("pricing_method") or None,
+                "updated_at": _now(),
+            }
+            updates = {k: v for k, v in updates.items() if v is not None}
+
+            try:
+                sb.table("crm_properties").update(updates).eq("id", prop_id).execute()
+                updated += 1
+            except Exception as exc:
+                errors.append(str(exc)[:80])
+                not_found += 1
+
+        return {
+            "updated": updated,
+            "total": len(results),
+            "not_found": not_found,
+            "errors": errors[:5],
+        }
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))

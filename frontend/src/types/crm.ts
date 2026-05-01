@@ -54,12 +54,26 @@ export interface CRMProperty {
   comp1_link?: string
   comp1_price?: number
   comp1_acreage?: number
+  comp_1_address?: string
+  comp_1_date?: string
+  comp_1_distance?: number
+  comp_1_ppa?: number
   comp2_link?: string
   comp2_price?: number
   comp2_acreage?: number
+  comp_2_address?: string
+  comp_2_date?: string
+  comp_2_distance?: number
+  comp_2_ppa?: number
   comp3_link?: string
   comp3_price?: number
   comp3_acreage?: number
+  comp_3_address?: string
+  comp_3_date?: string
+  comp_3_distance?: number
+  comp_3_ppa?: number
+  comp_quality_flags?: string
+  pricing_method_used?: string
 
   marketing_price?: number
   marketing_title?: string

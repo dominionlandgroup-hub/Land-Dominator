@@ -5,7 +5,7 @@ import LoadingSpinner from '../components/LoadingSpinner'
 import LoadingOverlay from '../components/LoadingOverlay'
 import { useApp } from '../context/AppContext'
 import { uploadTargets, runMatch, getMailingDownloadUrl, getMatchedLeadsDownloadUrl } from '../api/client'
-import { listCrmCampaigns, autoCreateCampaign, addMatchResultsToCampaign } from '../api/crm'
+import { listCrmCampaigns, autoCreateCampaign, addMatchResultsToCampaign, saveMatchPricing } from '../api/crm'
 import type { Column } from '../components/DataTable'
 import type { MatchedParcel, MatchFilters } from '../types'
 import { getConfidence } from '../types'
@@ -61,6 +61,11 @@ export default function MatchTargets() {
   const [mailingSuccess, setMailingSuccess] = useState<string | null>(null)
   const [mailingError, setMailingError] = useState<string | null>(null)
   const [mailingExportType, setMailingExportType] = useState<'mailable' | 'matched'>('mailable')
+
+  // Save to CRM state
+  const [savingToCrm, setSavingToCrm] = useState(false)
+  const [saveCrmSuccess, setSaveCrmSuccess] = useState<string | null>(null)
+  const [saveCrmError, setSaveCrmError] = useState<string | null>(null)
 
   // Pre-fill acreage from sweet spot when no saved filters
   useEffect(() => {
@@ -546,14 +551,52 @@ export default function MatchTargets() {
                 <div className="card mb-6">
                   <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
                     <h2 className="font-semibold" style={{ color: '#1A0A2E' }}>Download Results</h2>
-                    <button
-                      className="btn-primary text-sm"
-                      style={{ padding: '8px 16px' }}
-                      onClick={() => setShowMailingModal(true)}
-                    >
-                      + Add to Mailing List
-                    </button>
+                    <div className="flex gap-2 flex-wrap">
+                      <button
+                        className="btn-secondary text-sm"
+                        style={{ padding: '8px 16px' }}
+                        disabled={savingToCrm}
+                        onClick={async () => {
+                          const matchId = matchResult?.match_id
+                          if (!matchId) return
+                          setSavingToCrm(true)
+                          setSaveCrmSuccess(null)
+                          setSaveCrmError(null)
+                          try {
+                            const res = await saveMatchPricing(matchId, 'all')
+                            if (res.updated > 0) {
+                              setSaveCrmSuccess(`Updated ${res.updated.toLocaleString()} existing CRM properties with comp & pricing data. (${res.not_found} not found in CRM)`)
+                            } else {
+                              setSaveCrmSuccess(`No matching CRM records found by APN (${res.not_found} parcels not in CRM yet — use "Add to Mailing List" to import them first).`)
+                            }
+                          } catch {
+                            setSaveCrmError('Failed to save pricing to CRM.')
+                          } finally {
+                            setSavingToCrm(false)
+                          }
+                        }}
+                      >
+                        {savingToCrm ? 'Saving…' : 'Save Pricing to CRM'}
+                      </button>
+                      <button
+                        className="btn-primary text-sm"
+                        style={{ padding: '8px 16px' }}
+                        onClick={() => setShowMailingModal(true)}
+                      >
+                        + Add to Mailing List
+                      </button>
+                    </div>
                   </div>
+                  {saveCrmSuccess && (
+                    <div className="mb-3 text-xs rounded-lg px-3 py-2" style={{ background: '#E8F5E9', color: '#2D7A4F' }}>
+                      {saveCrmSuccess}
+                    </div>
+                  )}
+                  {saveCrmError && (
+                    <div className="mb-3 text-xs rounded-lg px-3 py-2" style={{ background: '#FFF0F0', color: '#B71C1C' }}>
+                      {saveCrmError}
+                    </div>
+                  )}
                   <div className="flex flex-wrap gap-2">
                     <a href={getMailingDownloadUrl(matchId, 'mailable-records', 'mailable')} download className="btn-primary text-sm no-underline" style={{ padding: '8px 16px' }}>
                       Mailable Records ({(matchResult.mailable_count ?? 0).toLocaleString()})

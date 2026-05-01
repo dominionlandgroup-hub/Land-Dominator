@@ -154,6 +154,17 @@ export async function addMatchResultsToCampaign(
   return data
 }
 
+export async function saveMatchPricing(
+  matchId: string,
+  exportType: 'mailable' | 'matched' | 'all' = 'all'
+): Promise<{ updated: number; total: number; not_found: number; errors: string[] }> {
+  const { data } = await api.post('/crm/save-match-pricing', {
+    match_id: matchId,
+    export_type: exportType,
+  })
+  return data
+}
+
 export async function importPropertiesBatch(
   rows: Record<string, string>[],
 ): Promise<ImportResult> {
