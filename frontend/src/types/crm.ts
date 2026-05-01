@@ -88,6 +88,10 @@ export interface CRMProperty {
 
   ghl_offer_code?: string
   lp_estimate?: number
+  lp_based_offer?: number
+  comp_based_offer?: number
+  recommended_offer?: number
+  confidence_level?: string
   offer_range_high?: number
   pricing_offer_price?: number
   pebble_code?: string

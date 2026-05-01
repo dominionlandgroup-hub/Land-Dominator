@@ -5,6 +5,65 @@ import { pullLpData, sendSms, listPropertyCommunications, listPropertyDocuments,
 import CommDetailModal, { ScoreBadge, TypeBadge, fmtTalk } from '../components/CommDetailModal'
 
 // ── Display helpers ───────────────────────────────────────────────────────────
+
+function fmtCurrency(v: number | null | undefined): string {
+  if (v == null || isNaN(v as number)) return ''
+  return `$${Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+function parseCurrency(s: string): number | undefined {
+  const n = parseFloat(s.replace(/[$,\s]/g, ''))
+  return isNaN(n) ? undefined : n
+}
+
+// ── Currency input (formats on blur, raw on focus) ────────────────────────────
+function CurrencyInput({
+  label, value, onChange, placeholder = '$0.00', bold = false,
+}: {
+  label: string
+  value: number | null | undefined
+  onChange: (v: number | undefined) => void
+  placeholder?: string
+  bold?: boolean
+}) {
+  const [focused, setFocused] = React.useState(false)
+  const [raw, setRaw] = React.useState('')
+
+  function onFocus() {
+    setFocused(true)
+    setRaw(value != null ? String(value) : '')
+  }
+
+  function onBlur() {
+    setFocused(false)
+    onChange(parseCurrency(raw))
+  }
+
+  function onChangeHandler(s: string) {
+    setRaw(s)
+    const n = parseCurrency(s)
+    if (n !== undefined) onChange(n)
+  }
+
+  const displayValue = focused ? raw : (value != null ? fmtCurrency(value) : '')
+
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="label-caps">{label}</label>
+      <input
+        type="text"
+        className="input-base"
+        value={displayValue}
+        onChange={e => onChangeHandler(e.target.value)}
+        onFocus={onFocus}
+        onBlur={onBlur}
+        placeholder={placeholder}
+        style={bold ? { fontWeight: 700, color: '#2D7A4F', fontSize: '14px' } : undefined}
+      />
+    </div>
+  )
+}
+
 function fmtLandLocked(v: string | null | undefined): string {
   if (!v) return '—'
   const up = v.trim().toLowerCase()
@@ -132,6 +191,8 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
   const [docUploading, setDocUploading] = useState(false)
   const [docError, setDocError] = useState<string | null>(null)
   const [detailComm, setDetailComm] = useState<Communication | null>(null)
+  const [noteSaving, setNoteSaving] = useState(false)
+  const [noteSaved, setNoteSaved] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const isNew = !property
 
@@ -303,6 +364,20 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
     }
   }
 
+  async function handleSaveNotes() {
+    if (isNew || noteSaving) return
+    setNoteSaving(true)
+    try {
+      await onSave({ notes: form.notes })
+      setNoteSaved(true)
+      setTimeout(() => setNoteSaved(false), 2000)
+    } catch {
+      // ignore — full save will catch it
+    } finally {
+      setNoteSaving(false)
+    }
+  }
+
   const Field = ({
     label, field, type = 'text', placeholder = '', span = 1,
   }: {
@@ -431,12 +506,13 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
           {/* Basic Information */}
           <AccordionSection title="Basic Information" sectionKey="basic" {...accordionProps}>
             <div className="grid grid-cols-3 gap-4">
+              <Field label="Property Address" field="property_address" span={3} />
+              <Field label="Property City" field="property_city" />
+              <Field label="State" field="state" placeholder="TX" />
+              <Field label="Property ZIP" field="property_zip" />
               <Field label="APN" field="apn" placeholder="123-456-789" />
               <Field label="County" field="county" />
-              <Field label="State" field="state" placeholder="TX" />
               <Field label="Acreage" field="acreage" type="number" placeholder="0.00" />
-              <Field label="Property ID (LP)" field="property_id" placeholder="LP property ID" />
-              <Field label="FIPS Code" field="fips" placeholder="County FIPS code" />
               <div className="flex flex-col gap-1">
                 <label className="label-caps">Status</label>
                 <select
@@ -449,9 +525,8 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
                   ))}
                 </select>
               </div>
-              <Field label="Property Address" field="property_address" span={2} />
-              <Field label="Property City" field="property_city" />
-              <Field label="Property Zip" field="property_zip" />
+              <Field label="Property ID (LP)" field="property_id" placeholder="LP property ID" />
+              <Field label="FIPS Code" field="fips" placeholder="County FIPS code" />
             </div>
           </AccordionSection>
 
@@ -503,7 +578,7 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
           <AccordionSection title="Campaign & Sale" sectionKey="campaign" {...accordionProps}>
             <div className="grid grid-cols-2 gap-4">
               <Field label="Campaign Code" field="campaign_code" />
-              <Field label="Offer Price" field="offer_price" type="number" placeholder="0" />
+              <CurrencyInput label="Offer Price" value={form.offer_price} onChange={v => set('offer_price', v)} />
             </div>
           </AccordionSection>
 
@@ -606,7 +681,7 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
                     <div className="px-4 pt-4 pb-3" style={{ background: '#F8F5FC', borderBottom: '1px solid #EDE8F5' }}>
                       <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: '#9B8AAE' }}>Comp {n}</p>
                       <p className="text-2xl font-bold" style={{ color: '#1A0A2E' }}>
-                        {price != null ? `$${price.toLocaleString()}` : <span style={{ color: '#C4B5D8', fontSize: '13px', fontWeight: 400 }}>No price yet</span>}
+                        {price != null ? fmtCurrency(price) : <span style={{ color: '#C4B5D8', fontSize: '13px', fontWeight: 400 }}>No price yet</span>}
                       </p>
                       {acreage != null && <p className="text-sm mt-0.5" style={{ color: '#6B5B8A' }}>{acreage.toFixed(2)} ac</p>}
                       {link && (
@@ -618,7 +693,7 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
                     </div>
                     <div className="p-4 space-y-2">
                       <Field label="Link" field={`comp${n}_link` as keyof CRMProperty} placeholder="https://…" />
-                      <Field label="Price ($)" field={`comp${n}_price` as keyof CRMProperty} type="number" placeholder="0" />
+                      <CurrencyInput label="Price" value={form[`comp${n}_price` as keyof CRMProperty] as number | undefined} onChange={v => set(`comp${n}_price` as keyof CRMProperty, v)} />
                       <Field label="Acreage" field={`comp${n}_acreage` as keyof CRMProperty} type="number" placeholder="0.00" />
                     </div>
                   </div>
@@ -629,13 +704,36 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
 
           {/* Pricing Fields */}
           <AccordionSection title="Pricing Fields" sectionKey="pricing" {...accordionProps}>
-            <div className="grid grid-cols-3 gap-4">
-              <Field label="GHL Offer Code" field="ghl_offer_code" />
-              <Field label="LP Estimate" field="lp_estimate" type="number" placeholder="0" />
-              <Field label="Price Per Acre" field="price_per_acre" type="number" placeholder="0" />
-              <Field label="Offer Range High" field="offer_range_high" type="number" placeholder="0" />
-              <Field label="Pebble Code" field="pebble_code" />
-              <Field label="Claude AI Comp" field="claude_ai_comp" type="number" placeholder="0" />
+            <div className="grid grid-cols-2 gap-4">
+              <CurrencyInput label="LP Estimate" value={form.lp_estimate} onChange={v => set('lp_estimate', v)} />
+              <CurrencyInput label="LP Based Offer" value={form.lp_based_offer} onChange={v => set('lp_based_offer', v)} />
+              <CurrencyInput label="Comp Based Offer" value={form.comp_based_offer} onChange={v => set('comp_based_offer', v)} />
+              <CurrencyInput label="Recommended Offer" value={form.recommended_offer} onChange={v => set('recommended_offer', v)} bold />
+            </div>
+            <div className="mt-4 flex flex-col gap-1">
+              <label className="label-caps">Confidence Level</label>
+              {form.confidence_level ? (
+                <span className="inline-block self-start px-3 py-1.5 rounded-full text-sm font-bold"
+                  style={{
+                    background: form.confidence_level.toLowerCase() === 'high' ? '#E8F5E9'
+                      : form.confidence_level.toLowerCase() === 'medium' ? '#FFF9E6'
+                      : '#FFF0F0',
+                    color: form.confidence_level.toLowerCase() === 'high' ? '#2D7A4F'
+                      : form.confidence_level.toLowerCase() === 'medium' ? '#B8860B'
+                      : '#B71C1C',
+                  }}>
+                  {form.confidence_level}
+                </span>
+              ) : (
+                <input
+                  type="text"
+                  className="input-base"
+                  value={(form.confidence_level as string | undefined) || ''}
+                  onChange={e => set('confidence_level', e.target.value)}
+                  placeholder="High / Medium / Low"
+                  style={{ maxWidth: 200 }}
+                />
+              )}
             </div>
           </AccordionSection>
 
@@ -671,6 +769,7 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
               <textarea
                 value={form.notes || ''}
                 onChange={e => set('notes', e.target.value)}
+                onBlur={handleSaveNotes}
                 rows={4}
                 style={{
                   padding: '8px 12px',
@@ -685,6 +784,19 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
                   resize: 'vertical',
                 }}
               />
+              <div className="flex items-center gap-3 mt-2">
+                <button
+                  className="btn-secondary text-xs"
+                  style={{ padding: '6px 14px' }}
+                  onClick={handleSaveNotes}
+                  disabled={noteSaving || isNew}
+                >
+                  {noteSaving ? 'Saving…' : 'Save Notes'}
+                </button>
+                {noteSaved && (
+                  <span className="text-xs font-medium" style={{ color: '#2D7A4F' }}>Notes saved</span>
+                )}
+              </div>
             </div>
           </AccordionSection>
 
@@ -764,9 +876,9 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
             <AccordionSection title="Deal Details" sectionKey="deal" {...accordionProps}>
               <div className="grid grid-cols-2 gap-4">
                 <Field label="Sale Date" field="sale_date" type="date" />
-                <Field label="Sale Price" field="sale_price" type="number" placeholder="0" />
+                <CurrencyInput label="Sale Price" value={form.sale_price} onChange={v => set('sale_price', v)} />
                 <Field label="Purchase Date" field="purchase_date" type="date" />
-                <Field label="Purchase Price" field="purchase_price" type="number" placeholder="0" />
+                <CurrencyInput label="Purchase Price" value={form.purchase_price} onChange={v => set('purchase_price', v)} />
               </div>
             </AccordionSection>
           )}
