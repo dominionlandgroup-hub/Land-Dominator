@@ -81,8 +81,21 @@ class PropertyBase(BaseModel):
     property_city: Optional[str] = None
     property_zip: Optional[str] = None
 
-    # Assessed value (from "Total Assessed Value" in LP export)
-    assessed_value: Optional[str] = None
+    # Assessed value (from "Total Assessed Value" in LP export — NUMERIC)
+    assessed_value: Optional[float] = None
+
+    # Land analysis fields (from Land Portal export)
+    fema_coverage: Optional[float] = None
+    wetlands_coverage: Optional[float] = None
+    buildability: Optional[float] = None
+    buildability_acres: Optional[float] = None
+    elevation_avg: Optional[float] = None
+    land_locked: Optional[str] = None
+    school_district: Optional[str] = None
+    land_use: Optional[str] = None
+    road_frontage: Optional[float] = None
+    slope_avg: Optional[float] = None
+    price_per_acre: Optional[float] = None
 
     # Geo coordinates
     latitude: Optional[float] = None

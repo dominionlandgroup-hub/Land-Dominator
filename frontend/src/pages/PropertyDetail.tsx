@@ -314,25 +314,59 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
               <Field label="Water" field="dd_water" />
               <Field label="Power" field="dd_power" />
               <Field label="Zoning" field="dd_zoning" />
-              <Field label="Back Taxes" field="dd_back_taxes" />
-              <Field label="Assessed Value" field="assessed_value" />
+              <Field label="Back Taxes (Delinquent Year)" field="dd_back_taxes" />
+            </div>
+          </section>
+
+          {/* Land Analysis */}
+          <section className="card-static">
+            <h2 className="section-heading mb-4">Land Analysis</h2>
+            <div className="grid grid-cols-3 gap-4">
+              <Field label="Land Use" field="land_use" />
+              <Field label="Land Locked" field="land_locked" placeholder="Yes / No" />
+              <Field label="School District" field="school_district" />
+              <Field label="Buildability (%)" field="buildability" type="number" placeholder="0.00" />
+              <Field label="Buildability Area (ac)" field="buildability_acres" type="number" placeholder="0.00" />
+              <Field label="Road Frontage (ft)" field="road_frontage" type="number" placeholder="0" />
+              <Field label="FEMA Flood Coverage (%)" field="fema_coverage" type="number" placeholder="0.00" />
+              <Field label="Wetlands Coverage (%)" field="wetlands_coverage" type="number" placeholder="0.00" />
+              <Field label="Slope AVG (%)" field="slope_avg" type="number" placeholder="0.00" />
+              <Field label="Elevation AVG (ft)" field="elevation_avg" type="number" placeholder="0" />
+              <Field label="Assessed Value ($)" field="assessed_value" type="number" placeholder="0" />
             </div>
           </section>
 
           {/* Comparables */}
           <section className="card-static">
             <h2 className="section-heading mb-4">Comparables</h2>
-            <div className="space-y-4">
-              {([1, 2, 3] as const).map(n => (
-                <div key={n}>
-                  <div className="label-caps mb-2" style={{ color: '#5C2977' }}>Comp {n}</div>
-                  <div className="grid grid-cols-3 gap-4">
-                    <Field label="Link" field={`comp${n}_link` as keyof CRMProperty} placeholder="https://…" />
-                    <Field label="Price" field={`comp${n}_price` as keyof CRMProperty} type="number" placeholder="0" />
-                    <Field label="Acreage" field={`comp${n}_acreage` as keyof CRMProperty} type="number" placeholder="0.00" />
+            <div className="grid grid-cols-3 gap-4">
+              {([1, 2, 3] as const).map(n => {
+                const price = form[`comp${n}_price` as keyof CRMProperty] as number | undefined
+                const acreage = form[`comp${n}_acreage` as keyof CRMProperty] as number | undefined
+                const link = form[`comp${n}_link` as keyof CRMProperty] as string | undefined
+                return (
+                  <div key={n} className="rounded-xl overflow-hidden" style={{ border: '1px solid #EDE8F5' }}>
+                    <div className="px-4 pt-4 pb-3" style={{ background: '#F8F5FC', borderBottom: '1px solid #EDE8F5' }}>
+                      <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: '#9B8AAE' }}>Comp {n}</p>
+                      <p className="text-2xl font-bold" style={{ color: '#1A0A2E' }}>
+                        {price != null ? `$${price.toLocaleString()}` : <span style={{ color: '#C4B5D8', fontSize: '13px', fontWeight: 400 }}>No price yet</span>}
+                      </p>
+                      {acreage != null && <p className="text-sm mt-0.5" style={{ color: '#6B5B8A' }}>{acreage.toFixed(2)} ac</p>}
+                      {link && (
+                        <a href={link} target="_blank" rel="noopener noreferrer"
+                          className="inline-block mt-2 text-xs font-semibold px-2 py-1 rounded-lg"
+                          style={{ background: '#EDE8F5', color: '#5C2977' }}
+                        >View on Land Portal →</a>
+                      )}
+                    </div>
+                    <div className="p-4 space-y-2">
+                      <Field label="Link" field={`comp${n}_link` as keyof CRMProperty} placeholder="https://…" />
+                      <Field label="Price ($)" field={`comp${n}_price` as keyof CRMProperty} type="number" placeholder="0" />
+                      <Field label="Acreage" field={`comp${n}_acreage` as keyof CRMProperty} type="number" placeholder="0.00" />
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </section>
 
@@ -356,6 +390,7 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
             <div className="grid grid-cols-3 gap-4">
               <Field label="GHL Offer Code" field="ghl_offer_code" />
               <Field label="LP Estimate" field="lp_estimate" type="number" placeholder="0" />
+              <Field label="Price Per Acre" field="price_per_acre" type="number" placeholder="0" />
               <Field label="Offer Range High" field="offer_range_high" type="number" placeholder="0" />
               <Field label="Pebble Code" field="pebble_code" />
               <Field label="Claude AI Comp" field="claude_ai_comp" type="number" placeholder="0" />

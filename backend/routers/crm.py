@@ -179,10 +179,20 @@ PEBBLE_MAP: dict[str, str] = {
     "calc acreage": "acreage",                # fallback — see _FALLBACK_COLS
     "tlp estimate": "lp_estimate",
 
-    # Land Portal due diligence
+    # Land Portal due diligence / analysis
     "total assessed value": "assessed_value",
     "assessed value": "assessed_value",
-    "land locked": "dd_access",
+    "tax delinquent year": "dd_back_taxes",
+    "land locked": "land_locked",
+    "fema flood coverage": "fema_coverage",
+    "wetlands coverage": "wetlands_coverage",
+    "buildability total (%)": "buildability",
+    "buildability area (acres)": "buildability_acres",
+    "elevation avg": "elevation_avg",
+    "school district": "school_district",
+    "land use": "land_use",
+    "road frontage": "road_frontage",
+    "slope avg": "slope_avg",
 
     # Land Portal comp link
     "hyperlink": "comp1_link",
@@ -305,6 +315,8 @@ _FLOAT_FIELDS = {
     "comp3_price", "comp3_acreage", "marketing_price", "lp_estimate",
     "offer_range_high", "pricing_offer_price", "claude_ai_comp",
     "latitude", "longitude",
+    "fema_coverage", "wetlands_coverage", "buildability", "buildability_acres",
+    "elevation_avg", "road_frontage", "slope_avg", "assessed_value", "price_per_acre",
 }
 
 # Columns that should only fill in a field if it is not already populated by a
@@ -362,7 +374,18 @@ ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS longitude NUMERIC;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS property_address TEXT;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS property_city TEXT;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS property_zip TEXT;
-ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS assessed_value TEXT;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS assessed_value NUMERIC;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS fema_coverage NUMERIC;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS wetlands_coverage NUMERIC;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS buildability NUMERIC;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS buildability_acres NUMERIC;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS elevation_avg NUMERIC;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS land_locked TEXT;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS school_district TEXT;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS land_use TEXT;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS road_frontage NUMERIC;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS slope_avg NUMERIC;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS price_per_acre NUMERIC;
 """.strip()
 
 
@@ -800,14 +823,21 @@ def _run_lp_pull_job(job_id: str, campaign_id: str) -> None:
                 size = _safe_float(lp_prop.get("size")) or _safe_float(prop.get("acreage"))
 
                 updates: dict = {}
-                if price_acre_mean is not None and size:
-                    lp_estimate = round(price_acre_mean * size, 2)
-                    updates["lp_estimate"] = lp_estimate
-                    updates["offer_price"] = round(lp_estimate * 0.525, 2)
+                if price_acre_mean is not None:
+                    updates["price_per_acre"] = round(price_acre_mean, 2)
+                    if size:
+                        lp_estimate = round(price_acre_mean * size, 2)
+                        updates["lp_estimate"] = lp_estimate
+                        updates["offer_price"] = round(lp_estimate * 0.525, 2)
 
                 comps = data.get("list_of_rows_data", [])
                 for i, comp in enumerate(comps[:3], 1):
-                    link = _safe_str(comp.get("link") or comp.get("url") or comp.get("listing_url"))
+                    link = _safe_str(comp.get("link") or comp.get("url") or comp.get("listing_url") or comp.get("property_url"))
+                    if not link:
+                        comp_apn = _safe_str(comp.get("apn") or comp.get("parcel_number") or comp.get("parcel_id"))
+                        comp_fips = _safe_str(comp.get("fips") or comp.get("county_fips")) or prop.get("fips")
+                        if comp_apn and comp_fips:
+                            link = f"https://landportal.com/property/{comp_fips}/{comp_apn}"
                     price = _safe_float(comp.get("mls_price") or comp.get("price") or comp.get("sale_price") or comp.get("sold_price"))
                     acreage = _safe_float(comp.get("area_acres") or comp.get("acreage") or comp.get("size") or comp.get("lot_size"))
                     if link:
@@ -1191,16 +1221,23 @@ async def pull_lp_data_for_property(property_id: str) -> dict:
     size = _safe_float(lp_prop.get("size")) or _safe_float(prop.get("acreage"))
 
     updates: dict = {}
-    if price_acre_mean is not None and size:
-        lp_estimate = round(price_acre_mean * size, 2)
-        updates["lp_estimate"] = lp_estimate
-        updates["offer_price"] = round(lp_estimate * 0.525, 2)
+    if price_acre_mean is not None:
+        updates["price_per_acre"] = round(price_acre_mean, 2)
+        if size:
+            lp_estimate = round(price_acre_mean * size, 2)
+            updates["lp_estimate"] = lp_estimate
+            updates["offer_price"] = round(lp_estimate * 0.525, 2)
 
     comps = data.get("list_of_rows_data", [])
     for i, comp in enumerate(comps[:3], 1):
-        link = _safe_str(comp.get("link") or comp.get("url") or comp.get("listing_url"))
-        price = _safe_float(comp.get("price") or comp.get("sale_price") or comp.get("sold_price"))
-        acreage = _safe_float(comp.get("acreage") or comp.get("size") or comp.get("lot_size"))
+        link = _safe_str(comp.get("link") or comp.get("url") or comp.get("listing_url") or comp.get("property_url"))
+        if not link:
+            comp_apn = _safe_str(comp.get("apn") or comp.get("parcel_number") or comp.get("parcel_id"))
+            comp_fips = _safe_str(comp.get("fips") or comp.get("county_fips")) or prop.get("fips")
+            if comp_apn and comp_fips:
+                link = f"https://landportal.com/property/{comp_fips}/{comp_apn}"
+        price = _safe_float(comp.get("mls_price") or comp.get("price") or comp.get("sale_price") or comp.get("sold_price"))
+        acreage = _safe_float(comp.get("area_acres") or comp.get("acreage") or comp.get("size") or comp.get("lot_size"))
         if link:
             updates[f"comp{i}_link"] = link
         if price is not None:
