@@ -913,7 +913,7 @@ async def bulk_insert_properties(
                 data["campaign_id"] = campaign_id
                 if not data.get("campaign_code") and campaign_number:
                     record_num = starting_record + valid_index
-                    data["campaign_code"] = f"{campaign_number:03d}-{record_num:05d}"
+                    data["campaign_code"] = f"{campaign_number:02d}-{record_num}"
             if not data.get("offer_price") and data.get("lp_estimate"):
                 data["offer_price"] = round(float(data["lp_estimate"]) * 0.525, 2)
             valid_index += 1
@@ -1119,35 +1119,23 @@ async def export_properties_csv(
         output = io.StringIO()
         writer = csv.writer(output)
 
-        # Shared full column set for both export types
         HEADERS = [
             "Owner Full Name", "Owner First Name", "Owner Last Name",
-            "Owner Phone", "Owner Email",
-            "Owner Address Line 1", "Owner Address City", "Owner Address State", "Owner Address Zip",
-            "Property Address", "Property City", "Property State", "Property Zip",
+            "Mailing Address Line 1", "Mailing City", "Mailing State", "Mailing Zip",
             "APN", "County", "State", "Acreage",
             "Campaign Code", "Campaign Price", "Offer Price", "LP Estimate",
-            "Status", "Tags", "Property ID", "FIPS",
+            "Status",
         ]
         FIELDS = [
             "owner_full_name", "owner_first_name", "owner_last_name",
-            "owner_phone", "owner_email",
             "owner_mailing_address", "owner_mailing_city", "owner_mailing_state", "owner_mailing_zip",
-            "property_address", "property_city", "state", "property_zip",
             "apn", "county", "state", "acreage",
             "campaign_code", "campaign_price", "offer_price", "lp_estimate",
-            "status", "_tags", "property_id", "fips",
+            "status",
         ]
 
         def _row_values(row: dict) -> list:
-            out = []
-            for f in FIELDS:
-                if f == "_tags":
-                    tags = row.get("tags") or []
-                    out.append(",".join(str(t) for t in tags) if isinstance(tags, list) else str(tags))
-                else:
-                    out.append(row.get(f, "") or "")
-            return out
+            return [row.get(f, "") or "" for f in FIELDS]
 
         writer.writerow(HEADERS)
         for row in all_rows:

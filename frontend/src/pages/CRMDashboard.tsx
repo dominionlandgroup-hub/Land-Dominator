@@ -10,7 +10,7 @@ import type { Campaign, AppPage } from '../types'
 function computeStats(properties: CRMProperty[], deals: CRMDeal[]) {
   const dealsAdded = deals.length
   const offersMade = properties.filter(
-    (p) => p.status === 'offer_sent' || p.status === 'under_contract' || (p.offer_price != null && p.offer_price > 0)
+    (p) => p.status === 'offer_sent'
   ).length
   const purchased = properties.filter(
     (p) => p.purchase_price != null && p.purchase_price > 0
