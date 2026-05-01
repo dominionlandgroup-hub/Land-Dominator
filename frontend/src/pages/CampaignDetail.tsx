@@ -4,6 +4,7 @@ import type { CRMProperty, CRMCampaign, PropertyStatus } from '../types/crm'
 import {
   listProperties, updateProperty, deleteProperties, bulkInsertRows, getCrmCampaign,
   exportPropertiesCsv, startCampaignLpPull, getCampaignLpPullStatus,
+  sendCampaignMailDrop, updateCrmCampaign,
 } from '../api/crm'
 import PropertyDetail from './PropertyDetail'
 
@@ -52,6 +53,13 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
   const [adjusting, setAdjusting] = useState(false)
 
   const [exportingAll, setExportingAll] = useState(false)
+
+  // Start Mailing
+  const [showMailModal, setShowMailModal] = useState(false)
+  const [mailHouseEmail, setMailHouseEmail] = useState(campaign.mail_house_email ?? '')
+  const [mailing, setMailing] = useState(false)
+  const [mailSuccess, setMailSuccess] = useState<string | null>(null)
+  const [mailError, setMailError] = useState<string | null>(null)
 
   // LP pull
   const [lpJobId, setLpJobId] = useState<string | null>(null)
@@ -209,6 +217,22 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
         filename: `${safeName}-maillist-${new Date().toISOString().slice(0, 10)}.csv`,
       })
     } catch {} finally { setExportingAll(false) }
+  }
+
+  // ── Start Mailing ───────────────────────────────────────────────────
+  async function handleSendMailing() {
+    setMailing(true)
+    setMailError(null)
+    setMailSuccess(null)
+    try {
+      const result = await sendCampaignMailDrop(campaign.id, mailHouseEmail || undefined)
+      setMailSuccess(`Mail drop sent to ${result.mail_house_email}. ${result.record_count.toLocaleString()} records mailed.`)
+      setShowMailModal(false)
+      refreshStats()
+    } catch (e: unknown) {
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setMailError(detail ?? 'Failed to send mail drop.')
+    } finally { setMailing(false) }
   }
 
   // ── LP Pull ─────────────────────────────────────────────────────────
@@ -417,8 +441,7 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
           </button>
           <button
             className="btn-primary text-sm flex items-center gap-1.5"
-            style={{ opacity: 0.5, cursor: 'not-allowed' }}
-            disabled
+            onClick={() => { setMailError(null); setMailSuccess(null); setShowMailModal(true) }}
           >
             Start Mailing
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -677,6 +700,50 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
               </button>
               <button className="btn-primary flex-1" onClick={handleAdjustPrice} disabled={adjusting || !newPrice}>
                 {adjusting ? 'Updating…' : 'Apply Price'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mail success banner */}
+      {mailSuccess && (
+        <div className="fixed top-4 right-4 z-50 rounded-xl px-5 py-3 shadow-lg text-sm font-medium" style={{ background: '#2D7A4F', color: '#fff', maxWidth: 420 }}>
+          {mailSuccess}
+          <button onClick={() => setMailSuccess(null)} className="ml-4 text-white opacity-70 hover:opacity-100">×</button>
+        </div>
+      )}
+
+      {/* Start Mailing modal */}
+      {showMailModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(26,10,46,0.55)' }}>
+          <div className="bg-white rounded-2xl p-6 shadow-xl" style={{ maxWidth: '440px', width: '100%' }}>
+            <h2 className="section-heading mb-1">Start Mailing</h2>
+            <p className="text-xs mb-4" style={{ color: '#9B8AAE' }}>
+              A CSV of all {(stats.property_count ?? 0).toLocaleString()} records in this campaign will be emailed to your mail house.
+            </p>
+            <div className="flex flex-col gap-1 mb-4">
+              <label className="label-caps">Mail House Email</label>
+              <input
+                type="email"
+                className="input-base"
+                placeholder="mailhouse@example.com"
+                value={mailHouseEmail}
+                onChange={e => setMailHouseEmail(e.target.value)}
+              />
+              <p className="text-[11px] mt-1" style={{ color: '#9B8AAE' }}>
+                {stats.cost_per_piece ? `Estimated cost: $${((stats.cost_per_piece ?? 0) * (stats.property_count ?? 0)).toFixed(2)} at $${stats.cost_per_piece}/piece` : 'Set cost per piece in campaign settings to track spend.'}
+              </p>
+            </div>
+            {mailError && <p className="text-xs mb-3" style={{ color: '#B71C1C' }}>{mailError}</p>}
+            <div className="flex gap-3">
+              <button className="btn-secondary flex-1" onClick={() => setShowMailModal(false)} disabled={mailing}>Cancel</button>
+              <button
+                className="btn-primary flex-1"
+                onClick={handleSendMailing}
+                disabled={mailing || !mailHouseEmail.trim()}
+              >
+                {mailing ? 'Sending…' : `Send to Mail House`}
               </button>
             </div>
           </div>

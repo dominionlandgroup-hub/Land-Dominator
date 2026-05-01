@@ -42,38 +42,34 @@ _PHRASES: dict[str, str] = {
     "greeting": (
         "Thank you for calling Dominion Land Group. "
         "Do you have the offer code from the letter we sent you? "
-        "It's located just below your mailing address. "
-        "The code is usually two numbers, a dash, then one to three more numbers. "
-        "For example zero-two dash thirty-seven."
+        "It's just below your mailing address. "
+        "It's two numbers, a dash, then one to three more numbers."
     ),
     "code_found": (
         "Perfect, I found your file. "
-        "Are you calling because you're interested in our offer?"
+        "Are you calling because you are interested in our cash offer?"
     ),
     "confirm_wrong": (
         "My apologies. Let me look that up again. "
         "Can you repeat the offer code from the letter?"
     ),
     "confirm_yes": (
-        "Great. Are you calling because you're interested in our offer?"
+        "Great. Are you calling because you are interested in our cash offer?"
     ),
     "code_not_found_1": (
         "I want to make sure I get that right. "
         "Can you say each part slowly? "
-        "First the numbers before the dash, pause, then the numbers after the dash."
+        "First the numbers before the dash, then the numbers after the dash."
     ),
     "code_not_found_2": (
-        "Let me try one more time. "
-        "What are the numbers before the dash?"
+        "Can you try the code one more time, saying each digit individually?"
     ),
-    "code_not_found_3": (
-        "No problem at all. "
-        "Let me get your information another way. "
-        "Can I get your first and last name?"
-    ),
-    "ask_name": "Can I get your name please?",
-    "ask_callback": "Is the best number to reach you back at this number?",
-    "close": "Thank you. Someone from our team will be in touch with you very shortly.",
+    "code_not_found_3": "No problem at all. Can I get your first and last name?",
+    "ask_name": "Wonderful. Can I get your first and last name please?",
+    "ask_callback": "And is this the best number to reach you back at?",
+    "close": "Thank you for calling. Have a great day!",
+    "close_cold": "I understand. Thank you for calling. Have a great day!",
+    "mmmhm": "Mmm-hmm.",
 }
 
 
@@ -102,7 +98,7 @@ async def _tts_generate(text: str, cache_key: str) -> bool:
                         "similarity_boost": 0.8,
                         "style": 0.0,
                         "use_speaker_boost": True,
-                        "speed": 1.15,
+                        "speed": 1.2,
                     },
                 },
                 headers={
@@ -170,6 +166,30 @@ async def _tts_confirm(prop: dict) -> tuple[str, Optional[str]]:
     return text, url
 
 
+async def _tts_interest(offer_price: Optional[float], prop_id: str) -> tuple[str, Optional[str]]:
+    """Build and cache a dynamic interest question with offer price."""
+    short_id = (prop_id or "unknown")[:8]
+    if offer_price:
+        price_str = f"${int(offer_price):,}"
+        text = f"Great. Are you calling because you are interested in our cash offer of {price_str}?"
+    else:
+        text = _PHRASES["confirm_yes"]
+    key = f"interest_{short_id}"
+    url = await _tts_url(key, text)
+    return text, url
+
+
+async def _tts_callback(caller_phone: str) -> tuple[str, Optional[str]]:
+    """Build and cache a dynamic callback question with caller phone."""
+    if caller_phone:
+        text = f"And is {caller_phone.strip()} the best number to reach you back at?"
+    else:
+        text = _PHRASES["ask_callback"]
+    key = f"callback_{hashlib.md5((caller_phone or 'anon').encode()).hexdigest()[:8]}"
+    url = await _tts_url(key, text)
+    return text, url
+
+
 # ── TeXML helpers ────────────────────────────────────────────────────────────────
 
 def _xml_escape(text: str) -> str:
@@ -208,11 +228,15 @@ def _texml_gather(
             f'\n          recordingStatusCallbackMethod="POST"'
         )
 
+    hints = "zero one two three four five six seven eight nine dash hyphen oh"
     xml = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         "<Response>\n"
         f'  <Gather input="speech" action="{action}" method="POST"\n'
-        f'          timeout="5" speechTimeout="3" language="en-US"{record_attrs}>\n'
+        f'          timeout="8" speechTimeout="1" language="en-US"\n'
+        f'          enhanced="true" profanityFilter="false"\n'
+        f'          hints="{hints}"\n'
+        f'          actionOnEmptyResult="true"{record_attrs}>\n'
         f"    {inner}\n"
         "  </Gather>\n"
         f'  <Redirect method="POST">{redirect}</Redirect>\n'
@@ -706,11 +730,12 @@ async def call_gather(step: str, request: Request, background_tasks: BackgroundT
             "NO", "NOPE", "WRONG", "INCORRECT", "NOT RIGHT", "THAT'S NOT",
         ])
         if confirmed or (speech and not denied):
-            # Treat ambiguous/no-response as yes (common for confused callers)
+            # Build dynamic interest question with offer price
+            offer_price = state.get("offer_price") or _call_states.get(call_sid, {}).get("offer_price")
+            prop_id = state.get("property_id") or ""
+            interest_text, audio_url = await _tts_interest(offer_price, prop_id)
             background_tasks.add_task(_tts_generate, _PHRASES["ask_name"], "ask_name")
-            text = _PHRASES["confirm_yes"]
-            audio_url = await _tts_url("confirm_yes")
-            return _texml_gather("interest", text, call_sid, audio_url)
+            return _texml_gather("interest", interest_text, call_sid, audio_url)
         else:
             # Caller said no — let them retry the code
             text = _PHRASES["confirm_wrong"]
@@ -732,21 +757,26 @@ async def call_gather(step: str, request: Request, background_tasks: BackgroundT
         if speech and not timed_out:
             if call_sid in _call_states:
                 _call_states[call_sid]["caller_name"] = speech.strip()
-        text = _PHRASES["ask_callback"]
-        audio_url = await _tts_url("ask_callback")
-        return _texml_gather("callback", text, call_sid, audio_url)
+        caller = state.get("caller") or _call_states.get(call_sid, {}).get("caller", "")
+        cb_text, cb_url = await _tts_callback(caller)
+        return _texml_gather("callback", cb_text, call_sid, cb_url)
 
     # ── Step: callback (is this the best number?) ────────────────────────
     elif step == "callback":
         background_tasks.add_task(_finalize_call, call_sid)
         caller_name = state.get("caller_name") or _call_states.get(call_sid, {}).get("caller_name") or ""
-        if caller_name:
-            close_text = f"Thank you {caller_name}. Someone from our team will be in touch with you very shortly."
-            close_key = f"close_{hashlib.md5(caller_name.encode()).hexdigest()[:8]}"
-            audio_url = await _tts_url(close_key, close_text)
+        score = state.get("interest_score") or _call_states.get(call_sid, {}).get("interest_score") or "warm"
+        name_part = f" {caller_name}" if caller_name else ""
+        if score == "hot":
+            close_text = f"Perfect{name_part}. Someone from our team will call you back within 24 hours. Have a great day!"
+            close_key = f"close_hot_{hashlib.md5((caller_name or 'anon').encode()).hexdigest()[:8]}"
+        elif score == "cold":
+            close_text = _PHRASES["close_cold"]
+            close_key = "close_cold"
         else:
-            close_text = _PHRASES["close"]
-            audio_url = await _tts_url("close")
+            close_text = f"Thank you{name_part}. Someone will be in touch with you soon. Have a great day!"
+            close_key = f"close_warm_{hashlib.md5((caller_name or 'anon').encode()).hexdigest()[:8]}"
+        audio_url = await _tts_url(close_key, close_text)
         return _texml_hangup(close_text, audio_url)
 
     # ── Step: unmatched (code not found — get name + address) ────────────
@@ -846,12 +876,8 @@ async def _finalize_call(call_sid: str) -> None:
     property_id = state.get("property_id")
     caller = state.get("caller", "")
     interest_score = state.get("interest_score", "warm")
-    # Log the matched code, plus all attempts joined for full traceability
-    attempted_codes = state.get("attempted_codes", [])
-    caller_offer_code = (
-        " | ".join(attempted_codes) if attempted_codes
-        else state.get("caller_offer_code")
-    )
+    # Store only the successfully matched offer code; "NOT PROVIDED" if none matched
+    caller_offer_code = state.get("caller_offer_code") or "NOT PROVIDED"
     caller_name = state.get("caller_name", "")
 
     # Compute call duration

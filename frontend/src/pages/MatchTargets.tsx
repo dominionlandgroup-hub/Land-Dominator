@@ -5,6 +5,7 @@ import LoadingSpinner from '../components/LoadingSpinner'
 import LoadingOverlay from '../components/LoadingOverlay'
 import { useApp } from '../context/AppContext'
 import { uploadTargets, runMatch, getMailingDownloadUrl, getMatchedLeadsDownloadUrl } from '../api/client'
+import { listCrmCampaigns, autoCreateCampaign, addMatchResultsToCampaign } from '../api/crm'
 import type { Column } from '../components/DataTable'
 import type { MatchedParcel, MatchFilters } from '../types'
 import { getConfidence } from '../types'
@@ -51,6 +52,15 @@ export default function MatchTargets() {
   const [minOfferFloor, setMinOfferFloor] = useState<string>('10000')
   const [minLpEstimate, setMinLpEstimate] = useState<string>('20000')
   const [assignmentFee, setAssignmentFee] = useState<string>('5000')
+
+  // Add to Mailing List modal
+  const [showMailingModal, setShowMailingModal] = useState(false)
+  const [mailingCampaigns, setMailingCampaigns] = useState<{ id: string; name: string }[]>([])
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string>('')
+  const [mailingLoading, setMailingLoading] = useState(false)
+  const [mailingSuccess, setMailingSuccess] = useState<string | null>(null)
+  const [mailingError, setMailingError] = useState<string | null>(null)
+  const [mailingExportType, setMailingExportType] = useState<'mailable' | 'matched'>('mailable')
 
   // Pre-fill acreage from sweet spot when no saved filters
   useEffect(() => {
@@ -534,13 +544,21 @@ export default function MatchTargets() {
               const matchId = matchResult.match_id
               return (
                 <div className="card mb-6">
-                  <h2 className="font-semibold mb-4" style={{ color: '#1A0A2E' }}>Download Results</h2>
+                  <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                    <h2 className="font-semibold" style={{ color: '#1A0A2E' }}>Download Results</h2>
+                    <button
+                      className="btn-primary text-sm"
+                      style={{ padding: '8px 16px' }}
+                      onClick={() => setShowMailingModal(true)}
+                    >
+                      + Add to Mailing List
+                    </button>
+                  </div>
                   <div className="flex flex-wrap gap-2">
                     <a href={getMailingDownloadUrl(matchId, 'mailable-records', 'mailable')} download className="btn-primary text-sm no-underline" style={{ padding: '8px 16px' }}>
                       Mailable Records ({(matchResult.mailable_count ?? 0).toLocaleString()})
                     </a>
-                    <a href={getMailingDownloadUrl(matchId, 'top-500', 'top500')} download className="btn-secondary text-sm no-underline">Top 500</a>
-                    <a href={getMailingDownloadUrl(matchId, 'high-confidence', 'high-confidence')} download className="btn-secondary text-sm no-underline">High Confidence</a>
+                    <a href={getMailingDownloadUrl(matchId, 'high-confidence', 'high-confidence')} download className="btn-secondary text-sm no-underline">High Confidence Only</a>
                     <a href={getMatchedLeadsDownloadUrl(matchId, 'matched-leads')} download className="btn-secondary text-sm no-underline">Matched Only</a>
                     <a href={getMailingDownloadUrl(matchId, 'full-list', 'full')} download className="btn-secondary text-sm no-underline">Full List</a>
                   </div>
@@ -655,6 +673,87 @@ export default function MatchTargets() {
           </>
         )}
       </div>
+
+      {/* Add to Mailing List modal */}
+      {showMailingModal && matchResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(26,10,46,0.55)' }}
+          onClick={e => { if (e.target === e.currentTarget) setShowMailingModal(false) }}>
+          <div className="bg-white rounded-2xl p-6 shadow-xl" style={{ maxWidth: '480px', width: '100%' }}>
+            <h2 className="section-heading mb-1">Add to Mailing List</h2>
+            <p className="text-xs mb-4" style={{ color: '#9B8AAE' }}>
+              Insert match results into a CRM campaign as leads.
+            </p>
+
+            <div className="flex flex-col gap-1 mb-3">
+              <label className="label-caps">Records to add</label>
+              <div className="flex gap-2">
+                {(['mailable', 'matched'] as const).map(t => (
+                  <button key={t} onClick={() => setMailingExportType(t)}
+                    className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${mailingExportType === t ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                    {t === 'mailable' ? `Mailable (${(matchResult.mailable_count ?? 0).toLocaleString()})` : `Matched Only (${matchResult.matched_count.toLocaleString()})`}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1 mb-4">
+              <label className="label-caps">Campaign</label>
+              <select
+                className="input-base text-sm"
+                value={selectedCampaignId}
+                onChange={e => setSelectedCampaignId(e.target.value)}
+                onClick={async () => {
+                  if (mailingCampaigns.length === 0) {
+                    const list = await listCrmCampaigns().catch(() => [])
+                    setMailingCampaigns(list.map(c => ({ id: c.id, name: c.name })))
+                  }
+                }}
+              >
+                <option value="">— Select campaign —</option>
+                <option value="__new__">+ Create new campaign automatically</option>
+                {mailingCampaigns.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {mailingError && <p className="text-xs mb-3" style={{ color: '#B71C1C' }}>{mailingError}</p>}
+            {mailingSuccess && <p className="text-xs mb-3 font-medium" style={{ color: '#2D7A4F' }}>{mailingSuccess}</p>}
+
+            <div className="flex gap-3">
+              <button className="btn-secondary flex-1" onClick={() => { setShowMailingModal(false); setMailingSuccess(null); setMailingError(null) }} disabled={mailingLoading}>Cancel</button>
+              <button
+                className="btn-primary flex-1"
+                disabled={mailingLoading || !selectedCampaignId}
+                onClick={async () => {
+                  setMailingLoading(true)
+                  setMailingError(null)
+                  setMailingSuccess(null)
+                  try {
+                    let campaignId = selectedCampaignId
+                    let campaignName = mailingCampaigns.find(c => c.id === campaignId)?.name ?? 'Campaign'
+                    if (selectedCampaignId === '__new__') {
+                      const topCounty = dashboardData?.top_counties?.[0] ?? ''
+                      const topState = dashboardData?.top_states?.[0] ?? ''
+                      const created = await autoCreateCampaign({ county: topCounty, state: topState })
+                      campaignId = created.campaign_id
+                      campaignName = created.name
+                    }
+                    const result = await addMatchResultsToCampaign(campaignId, matchResult.match_id, mailingExportType)
+                    setMailingSuccess(`${result.imported.toLocaleString()} records added to "${campaignName}". Go to Campaigns to view.`)
+                    setSelectedCampaignId('')
+                  } catch (e: unknown) {
+                    const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+                    setMailingError(detail ?? 'Failed to add records.')
+                  } finally { setMailingLoading(false) }
+                }}
+              >
+                {mailingLoading ? 'Adding…' : 'Add Records'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -122,6 +122,38 @@ export async function deleteCrmCampaign(id: string): Promise<void> {
   await api.delete(`/crm/campaigns/${id}`)
 }
 
+export async function autoCreateCampaign(opts?: {
+  county?: string
+  state?: string
+  month?: string
+  year?: number
+}): Promise<{ campaign_id: string; name: string }> {
+  const { data } = await api.post<{ campaign_id: string; name: string }>('/crm/campaigns/auto-create', opts ?? {})
+  return data
+}
+
+export async function sendCampaignMailDrop(
+  campaignId: string,
+  mailHouseEmail?: string
+): Promise<{ sent: boolean; record_count: number; mail_house_email: string; amount_spent: number }> {
+  const { data } = await api.post(`/crm/campaigns/${campaignId}/send-mail-drop`, {
+    mail_house_email: mailHouseEmail,
+  })
+  return data
+}
+
+export async function addMatchResultsToCampaign(
+  campaignId: string,
+  matchId: string,
+  exportType: 'mailable' | 'matched' = 'mailable'
+): Promise<{ imported: number; total: number; campaign_id: string }> {
+  const { data } = await api.post(`/crm/campaigns/${campaignId}/add-match-results`, {
+    match_id: matchId,
+    export_type: exportType,
+  })
+  return data
+}
+
 export async function importPropertiesBatch(
   rows: Record<string, string>[],
 ): Promise<ImportResult> {

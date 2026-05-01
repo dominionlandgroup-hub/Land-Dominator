@@ -783,6 +783,256 @@ async def delete_crm_campaign(campaign_id: str) -> None:
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+# ── Campaign auto-create ──────────────────────────────────────────────
+
+@router.post("/campaigns/auto-create", status_code=201)
+async def auto_create_campaign(body: dict = Body(...)) -> dict:
+    """
+    Create a campaign named '[County] County [Month] [Year]' from buy-box context.
+    Accepts: {county?, state?, month?, year?}. Falls back to current month/year.
+    """
+    try:
+        sb = get_supabase()
+        county = (body.get("county") or "").strip()
+        state = (body.get("state") or "").strip()
+        from datetime import datetime
+        now = datetime.now()
+        month = body.get("month") or now.strftime("%B")
+        year = body.get("year") or now.year
+        if county:
+            name = f"{county} County {month} {year}"
+        elif state:
+            name = f"{state} {month} {year}"
+        else:
+            name = f"Mail Drop {month} {year}"
+        r = sb.table("crm_campaigns").insert({
+            "name": name,
+            "created_at": _now(),
+            "updated_at": _now(),
+        }).execute()
+        campaign = r.data[0]
+        return {"campaign_id": campaign["id"], "name": name}
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ── Start Mailing (send mail drop to mail house) ──────────────────────
+
+@router.post("/campaigns/{campaign_id}/send-mail-drop")
+async def send_campaign_mail_drop(campaign_id: str, body: dict = Body(default={})) -> dict:
+    """
+    Send a mail drop for a campaign.
+    If mail_house_email is provided in body it is saved to the campaign first.
+    Generates a CSV of all 'lead' properties in the campaign and emails it via SendGrid.
+    """
+    try:
+        sb = get_supabase()
+        # Fetch campaign
+        r = sb.table("crm_campaigns").select("*").eq("id", campaign_id).execute()
+        if not r.data:
+            raise HTTPException(status_code=404, detail="Campaign not found")
+        campaign = r.data[0]
+
+        # Optionally update mail_house_email from request body
+        mail_house_email = body.get("mail_house_email") or campaign.get("mail_house_email", "")
+        if body.get("mail_house_email"):
+            sb.table("crm_campaigns").update({"mail_house_email": mail_house_email, "updated_at": _now()}).eq("id", campaign_id).execute()
+
+        if not mail_house_email:
+            raise HTTPException(status_code=400, detail="mail_house_email is required. Set it in campaign settings or provide it in the request.")
+
+        # Get unmailed lead properties in this campaign
+        props_r = (
+            sb.table("crm_properties")
+            .select("*")
+            .eq("campaign_id", campaign_id)
+            .execute()
+        )
+        properties = props_r.data or []
+        if not properties:
+            raise HTTPException(status_code=400, detail="No properties found in this campaign to mail.")
+
+        # Build CSV
+        import csv as _csv
+        import io as _io
+        buf = _io.StringIO()
+        headers = [
+            "Owner Full Name", "Owner First Name", "Owner Last Name",
+            "Mail Address", "Mail City", "Mail State", "Mail Zip",
+            "APN", "County", "State", "Acreage", "Offer Price",
+            "Campaign Code",
+        ]
+        writer = _csv.writer(buf)
+        writer.writerow(headers)
+        for p in properties:
+            writer.writerow([
+                p.get("owner_full_name", ""),
+                p.get("owner_first_name", ""),
+                p.get("owner_last_name", ""),
+                p.get("owner_mailing_address", ""),
+                p.get("owner_mailing_city", ""),
+                p.get("owner_mailing_state", ""),
+                p.get("owner_mailing_zip", ""),
+                p.get("apn", ""),
+                p.get("county", ""),
+                p.get("state", ""),
+                p.get("acreage", ""),
+                p.get("offer_price", ""),
+                p.get("campaign_code", ""),
+            ])
+        csv_content = buf.getvalue()
+        record_count = len(properties)
+
+        # Send via SendGrid
+        sendgrid_key = os.environ.get("SENDGRID_API_KEY", "")
+        from_email = os.environ.get("ADMIN_EMAIL", "dupeedamien@gmail.com")
+        if not sendgrid_key:
+            raise HTTPException(status_code=503, detail="SENDGRID_API_KEY not configured. Add it to Railway environment variables.")
+
+        import base64 as _base64
+        campaign_name = campaign.get("name", campaign_id)
+        encoded_csv = _base64.b64encode(csv_content.encode("utf-8")).decode("utf-8")
+        payload = {
+            "personalizations": [{"to": [{"email": mail_house_email}]}],
+            "from": {"email": from_email},
+            "subject": f"Mail Drop: {campaign_name} — {record_count} Records",
+            "content": [{"type": "text/plain", "value": (
+                f"Please find attached the mailing list for campaign: {campaign_name}\n\n"
+                f"Records: {record_count}\n"
+                f"Generated: {_now()}\n\n"
+                "This list was generated automatically by Land Dominator."
+            )}],
+            "attachments": [{
+                "content": encoded_csv,
+                "type": "text/csv",
+                "filename": f"{campaign_name.replace(' ', '-').lower()}-{record_count}-records.csv",
+                "disposition": "attachment",
+            }],
+        }
+        async with httpx.AsyncClient(timeout=30) as client:
+            sg_r = await client.post(
+                "https://api.sendgrid.com/v3/mail/send",
+                json=payload,
+                headers={"Authorization": f"Bearer {sendgrid_key}", "Content-Type": "application/json"},
+            )
+            if sg_r.status_code >= 400:
+                raise HTTPException(status_code=502, detail=f"SendGrid error {sg_r.status_code}: {sg_r.text[:200]}")
+
+        # Update campaign: amount_spent, last_mailed_at
+        cost_per_piece = float(campaign.get("cost_per_piece") or 0)
+        amount_spent_prev = float(campaign.get("amount_spent") or 0)
+        amount_spent_new = amount_spent_prev + cost_per_piece * record_count
+        sb.table("crm_campaigns").update({
+            "amount_spent": amount_spent_new,
+            "updated_at": _now(),
+        }).eq("id", campaign_id).execute()
+
+        return {
+            "sent": True,
+            "record_count": record_count,
+            "mail_house_email": mail_house_email,
+            "amount_spent": amount_spent_new,
+        }
+    except HTTPException:
+        raise
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ── Add match results to campaign ─────────────────────────────────────
+
+@router.post("/campaigns/{campaign_id}/add-match-results", status_code=201)
+async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)) -> dict:
+    """
+    Bulk-insert mailable matched parcels into a CRM campaign as 'lead' properties.
+    Body: {match_id: str, export_type?: 'mailable'|'matched'}
+    """
+    try:
+        from storage.session_store import get_match
+        match_id = body.get("match_id", "")
+        export_type = body.get("export_type", "mailable")
+        match_data = get_match(match_id)
+        if match_data is None:
+            raise HTTPException(status_code=404, detail="Match result not found. Re-run matching engine.")
+
+        raw_results = match_data.get("results", [])
+
+        # Filter by export type
+        if export_type == "mailable":
+            results = [r for r in raw_results if r.get("pricing_flag") in ("MATCHED", "LP_FALLBACK")]
+        elif export_type == "matched":
+            results = [r for r in raw_results if r.get("pricing_flag") == "MATCHED"]
+        else:
+            results = raw_results
+
+        if not results:
+            raise HTTPException(status_code=400, detail="No matching records found with the selected filter.")
+
+        sb = get_supabase()
+        # Verify campaign exists
+        c_r = sb.table("crm_campaigns").select("id,name").eq("id", campaign_id).execute()
+        if not c_r.data:
+            raise HTTPException(status_code=404, detail="Campaign not found")
+
+        rows = []
+        for r in results:
+            owner = r.get("owner_name", "") or ""
+            parts = owner.strip().split(" ", 1) if owner.strip() else ["", ""]
+            rows.append({
+                "campaign_id": campaign_id,
+                "status": "lead",
+                "owner_full_name": owner,
+                "owner_first_name": parts[0],
+                "owner_last_name": parts[1] if len(parts) > 1 else "",
+                "owner_mailing_address": r.get("mail_address", ""),
+                "owner_mailing_city": r.get("mail_city", ""),
+                "owner_mailing_state": r.get("mail_state", ""),
+                "owner_mailing_zip": r.get("mail_zip", ""),
+                "apn": r.get("apn", ""),
+                "property_address": r.get("parcel_address", ""),
+                "property_city": r.get("parcel_city", ""),
+                "property_zip": r.get("parcel_zip", ""),
+                "state": r.get("parcel_state", ""),
+                "county": r.get("parcel_county", ""),
+                "acreage": r.get("lot_acres"),
+                "offer_price": r.get("suggested_offer_mid"),
+                "lp_estimate": r.get("retail_estimate"),
+                "latitude": r.get("latitude"),
+                "longitude": r.get("longitude"),
+                "created_at": _now(),
+                "updated_at": _now(),
+            })
+
+        # Batch insert in chunks of 200
+        imported = 0
+        errors: list[str] = []
+        CHUNK = 200
+        for i in range(0, len(rows), CHUNK):
+            chunk = rows[i:i + CHUNK]
+            try:
+                sb.table("crm_properties").insert(chunk).execute()
+                imported += len(chunk)
+            except Exception as exc:
+                errors.append(str(exc)[:120])
+
+        return {
+            "imported": imported,
+            "total": len(results),
+            "campaign_id": campaign_id,
+            "errors": errors[:5],
+        }
+    except HTTPException:
+        raise
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 # ── Land Portal bulk pull (campaign) ──────────────────────────────────
 
 
