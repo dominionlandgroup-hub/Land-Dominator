@@ -460,10 +460,11 @@ function BuyBoxRecipe({
     '=== LAND PORTAL BUY BOX ===',
     `Generated: ${new Date().toLocaleDateString()}`,
     '',
-    '1. LOCATION',
+    '1. LOCATION — Pull by County (not ZIP)',
     topStates.length ? `   State: ${topStates.join(', ')}` : '',
-    sortedCounties.length ? `   Counties: ${sortedCounties.join(', ')}` : '',
-    `   ZIP Codes: ${topZips.join(', ')}`,
+    sortedCounties.length ? `   PULL BY COUNTY: ${sortedCounties.join(', ')} (Land Portal → Location → County)` : '',
+    '   Why: County pulls capture more deals than ZIP filtering.',
+    topZips.length ? `   Reference ZIPs (don't filter in LP): ${topZips.join(', ')}` : '',
     '',
     '2. PROPERTY TYPE',
     '   Land Portal → Property Type → Land Use — check ONLY:',
@@ -536,10 +537,10 @@ function BuyBoxRecipe({
 <style>body{font-family:-apple-system,sans-serif;padding:40px;color:#1A0A2E;max-width:800px}@media print{@page{margin:24px}}</style></head><body>
 <h1 style="color:#5C2977;font-size:20px;margin-bottom:8px">Land Portal Buy Box Recipe</h1>
 <p style="color:#6B5B8A;font-size:12px;margin-bottom:28px">Generated ${new Date().toLocaleDateString()} · Based on ${comps.length.toLocaleString()} sold comps</p>
-${sec('1. Location',
+${sec('1. Location — Pull by County (not ZIP)',
   (topStates.length ? row('State', topStates.join(', ')) : '') +
-  (sortedCounties.length ? row('Counties', '') + `<div style="margin:4px 0 8px">${sortedCounties.map(pill).join('')}</div>` : '') +
-  row('ZIP Codes', '') + `<div style="margin:4px 0">${topZips.map(pill).join('')}</div>`
+  (sortedCounties.length ? `<div style="color:#2D7A4F;font-weight:600;font-size:12px;margin-bottom:4px">Pull by County — Land Portal → Location → County</div><div style="margin:4px 0 8px">${sortedCounties.map(pill).join('')}</div><div style="background:#F0FAF4;border:1px solid #A8D8B4;border-radius:6px;padding:8px;font-size:11px;color:#2D5A3A;margin-bottom:8px"><strong>Why pull the whole county?</strong> ZIP codes cut across market boundaries — county pulls capture more deals and let the matching engine filter by comp strength.</div>` : '') +
+  `<div style="color:#9B8AAE;font-size:11px;margin-bottom:4px">Reference ZIPs — for context only (don't filter by ZIP in LP)</div><div style="margin:4px 0">${topZips.map(pill).join('')}</div>`
 )}
 ${sec('2. Property Type',
   `<p style="font-size:12px;color:#6B5B8A;margin-bottom:8px">Land Portal → Property Type → Land Use — check <strong>only</strong>:</p>` +
@@ -614,23 +615,24 @@ ${sec('6. Owner',
               </div>
             )}
             {sortedCounties.length > 0 && (
-              <div>
-                <p className="mb-1" style={{ color: '#6B5B8A' }}>Counties — Land Portal → Location → County</p>
-                <div className="flex flex-wrap gap-1.5">
+              <div className="md:col-span-2">
+                <p className="mb-1 font-semibold" style={{ color: '#2D7A4F' }}>Pull by County — Land Portal → Location → County</p>
+                <div className="flex flex-wrap gap-1.5 mb-2">
                   {sortedCounties.map(c => (
-                    <span key={c} className="text-[11px] px-2 py-0.5 rounded" style={{ background: 'rgba(92,41,119,0.08)', color: '#5C2977', border: '1px solid rgba(92,41,119,0.15)' }}>{c}</span>
+                    <span key={c} className="text-[11px] px-2 py-0.5 rounded font-medium" style={{ background: 'rgba(45,122,79,0.1)', color: '#2D7A4F', border: '1px solid rgba(45,122,79,0.25)' }}>{c}</span>
                   ))}
+                </div>
+                <div className="rounded-lg p-2.5" style={{ background: 'rgba(45,122,79,0.05)', border: '1px solid rgba(45,122,79,0.18)' }}>
+                  <p className="text-[10px]" style={{ color: '#2D5A3A' }}><span className="font-semibold">Why pull the whole county?</span> ZIP codes cut across market boundaries — filtering by ZIP excludes deals just outside your target area that would still comp well. Pull the entire county and let the matching engine filter by comp strength.</p>
                 </div>
               </div>
             )}
             <div>
-              <div>
-                <p className="mb-1" style={{ color: '#6B5B8A' }}>Top 20 ZIPs — Land Portal → Location → ZIP Code</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {topZips.map(z => (
-                    <span key={z} className="font-mono text-[11px] px-2 py-0.5 rounded" style={{ background: 'rgba(92,41,119,0.1)', color: '#3D1A5C', border: '1px solid rgba(92,41,119,0.2)' }}>{z}</span>
-                  ))}
-                </div>
+              <p className="mb-1" style={{ color: '#9B8AAE' }}>Top 20 ZIPs — reference only · don't filter by ZIP in LP</p>
+              <div className="flex flex-wrap gap-1.5">
+                {topZips.map(z => (
+                  <span key={z} className="font-mono text-[11px] px-2 py-0.5 rounded" style={{ background: 'rgba(92,41,119,0.05)', color: '#8B6BAE', border: '1px solid rgba(92,41,119,0.12)' }}>{z}</span>
+                ))}
               </div>
             </div>
           </div>

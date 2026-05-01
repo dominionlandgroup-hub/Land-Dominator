@@ -496,13 +496,20 @@ export default function MatchTargets() {
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <a href={getMailingDownloadUrl(matchId, 'mailable-records', 'mailable')} download className="btn-primary text-sm no-underline" style={{ padding: '8px 16px' }}>
-                      Mailable Records ({(matchResult.mailable_count ?? 0).toLocaleString()})
+                      ✓ Comp-Matched Mailable Records ({(matchResult.mailable_count ?? 0).toLocaleString()}) <span style={{ fontSize: 10, opacity: 0.75, marginLeft: 2 }}>recommended</span>
                     </a>
                     <a href={getMailingDownloadUrl(matchId, 'high-confidence', 'high-confidence')} download className="btn-secondary text-sm no-underline">High Confidence Only</a>
-                    <a href={getMatchedLeadsDownloadUrl(matchId, 'matched-leads')} download className="btn-secondary text-sm no-underline">Matched Only</a>
-                    <a href={getMailingDownloadUrl(matchId, 'full-list', 'full')} download className="btn-secondary text-sm no-underline">Full List</a>
+                    <a href={getMatchedLeadsDownloadUrl(matchId, 'matched-leads')} download className="btn-secondary text-sm no-underline">Comp-Matched Only ({matchResult.matched_count.toLocaleString()})</a>
+                    {(matchResult.lp_fallback_count ?? 0) > 0 && (
+                      <a href={getMailingDownloadUrl(matchId, 'full-list', 'full')} download className="btn-secondary text-sm no-underline" style={{ borderColor: '#D5A940', color: '#856A20' }}>
+                        ⚠ LP Estimate Only — review before mailing ({(matchResult.lp_fallback_count ?? 0).toLocaleString()})
+                      </a>
+                    )}
                   </div>
-                  <p className="text-[10px] mt-2" style={{ color: '#9B8AAE' }}>Mailable Records = MATCHED + LP_FALLBACK above offer floor · ready for mail house</p>
+                  <p className="text-[10px] mt-2" style={{ color: '#9B8AAE' }}>
+                    <span style={{ color: '#2D7A4F', fontWeight: 600 }}>Comp-Matched</span> = priced from local sold comps · ready for mail house.
+                    {(matchResult.lp_fallback_count ?? 0) > 0 && <span style={{ color: '#D5A940', fontWeight: 600 }}> LP Fallback ({(matchResult.lp_fallback_count ?? 0).toLocaleString()} records) = LP estimate only, no local comps — review pricing before mailing.</span>}
+                  </p>
                 </div>
               )
             })()}
@@ -514,11 +521,21 @@ export default function MatchTargets() {
               <ResultCard label="Low Value" value={(matchResult.low_value_count ?? 0).toLocaleString()} accent="#f97316" sub="Retail too low" />
               <ResultCard label="Unpriced" value={(matchResult.unpriced_count ?? 0).toLocaleString()} accent="#6B5B8A" sub="No comps / LP data" />
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
               <ResultCard label="Total Targets" value={matchResult.total_targets.toLocaleString()} accent="#5C2977" />
               <ResultCard label="Comp-Matched" value={matchResult.matched_count.toLocaleString()} accent="#2D7A4F" />
               <ResultCard label="LP Fallback" value={(matchResult.lp_fallback_count ?? 0).toLocaleString()} accent="#8B4DB8" sub="Priced from LP Est." />
             </div>
+
+            {(matchResult.lp_fallback_count ?? 0) > 0 && (
+              <div className="mb-6 rounded-xl p-3" style={{ background: 'rgba(213,169,64,0.07)', border: '1px solid rgba(213,169,64,0.35)' }}>
+                <p className="text-xs font-semibold mb-0.5" style={{ color: '#B8860B' }}>⚠ Mailable Records includes LP Fallback — review before mailing</p>
+                <p className="text-[10px]" style={{ color: '#856A20' }}>
+                  <span className="font-semibold">{matchResult.matched_count.toLocaleString()} comp-matched</span> records are priced from local sold comps — these are recommended to mail.{' '}
+                  <span className="font-semibold">{(matchResult.lp_fallback_count ?? 0).toLocaleString()} LP Fallback</span> records have no local comps and are priced from Land Portal estimates only — verify pricing accuracy before including in a mailer.
+                </p>
+              </div>
+            )}
 
             {/* Assignment fee calculator */}
             {(() => {
@@ -620,14 +637,26 @@ export default function MatchTargets() {
 
             <div className="flex flex-col gap-1 mb-3">
               <label className="label-caps">Records to add</label>
-              <div className="flex gap-2">
-                {(['mailable', 'matched'] as const).map(t => (
-                  <button key={t} onClick={() => setMailingExportType(t)}
-                    className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${mailingExportType === t ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
-                    {t === 'mailable' ? `Mailable (${(matchResult.mailable_count ?? 0).toLocaleString()})` : `Matched Only (${matchResult.matched_count.toLocaleString()})`}
-                  </button>
-                ))}
+              <div className="flex gap-2 flex-wrap">
+                <button onClick={() => setMailingExportType('matched')}
+                  className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${mailingExportType === 'matched' ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                  <span style={{ color: '#2D7A4F' }}>✓</span> Comp-Matched Only ({matchResult.matched_count.toLocaleString()})
+                </button>
+                <button onClick={() => setMailingExportType('mailable')}
+                  className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${mailingExportType === 'mailable' ? 'border-yellow-400 bg-yellow-50 text-yellow-800' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                  All Records incl. LP Fallback ({(matchResult.mailable_count ?? 0).toLocaleString()})
+                </button>
               </div>
+              {mailingExportType === 'mailable' && (matchResult.lp_fallback_count ?? 0) > 0 && (
+                <p className="text-[10px] mt-1.5 rounded-lg p-2" style={{ background: '#FFF8E1', color: '#856A20', border: '1px solid #FFE082' }}>
+                  ⚠ Includes {(matchResult.lp_fallback_count ?? 0).toLocaleString()} LP Fallback records with no local comps — review pricing before mailing. Select "Comp-Matched Only" for records verified with local sold data.
+                </p>
+              )}
+              {mailingExportType === 'matched' && (
+                <p className="text-[10px] mt-1.5" style={{ color: '#2D7A4F' }}>
+                  ✓ Recommended — only records priced from local sold comps
+                </p>
+              )}
             </div>
 
             <div className="flex flex-col gap-1 mb-4">
