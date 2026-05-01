@@ -436,17 +436,24 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
           {/* Campaign & Sale */}
           <section className="card-static">
             <h2 className="section-heading mb-4">Campaign & Sale</h2>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 gap-4">
               <Field label="Campaign Code" field="campaign_code" />
-              <Field label="Campaign Price" field="campaign_price" type="number" placeholder="0" />
               <Field label="Offer Price" field="offer_price" type="number" placeholder="0" />
-              <Field label="Sale Date" field="sale_date" type="date" />
-              <Field label="Sale Price" field="sale_price" type="number" placeholder="0" />
-              <div />
-              <Field label="Purchase Date" field="purchase_date" type="date" />
-              <Field label="Purchase Price" field="purchase_price" type="number" placeholder="0" />
             </div>
           </section>
+
+          {/* Deal Details — only visible when status is Closed Won */}
+          {form.status === 'closed_won' && (
+            <section className="card-static">
+              <h2 className="section-heading mb-4">Deal Details</h2>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Sale Date" field="sale_date" type="date" />
+                <Field label="Sale Price" field="sale_price" type="number" placeholder="0" />
+                <Field label="Purchase Date" field="purchase_date" type="date" />
+                <Field label="Purchase Price" field="purchase_price" type="number" placeholder="0" />
+              </div>
+            </section>
+          )}
 
           {/* Due Diligence */}
           <section className="card-static">
