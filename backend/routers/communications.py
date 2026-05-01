@@ -32,12 +32,16 @@ def _base_url() -> str:
 # ── In-memory call state ────────────────────────────────────────────────────────
 _call_states: dict[str, dict] = {}
 
+# Flag set to True once warmup finishes — inbound calls wait if False
+_warmup_done: bool = False
+
 
 # ── Disk-backed TTS audio cache ─────────────────────────────────────────────────
 _AUDIO_DIR = Path("/tmp/tts_cache")
 _AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 
-# Static phrases — keyed by a short stable name so cache survives restarts
+# Every phrase the agent will ever say — keyed by stable filename (no .mp3)
+# RULE: No dynamic content here. Dynamic parts use Polly <Say> at zero latency.
 _PHRASES: dict[str, str] = {
     "greeting": (
         "Thank you for calling Dominion Land Group. "
@@ -45,32 +49,54 @@ _PHRASES: dict[str, str] = {
         "I'm here to gather a few details and connect you with a team member. "
         "Can I start with the offer code from the letter we sent you?"
     ),
-    "explain_code": (
+    "offer_code_hint": (
         "It's a short code located just below your mailing address on the letter. "
         "It looks like two numbers, a dash, then a few more numbers."
     ),
-    "code_retry": (
-        "Could you try the code one more time, saying each digit slowly?"
+    "not_found": (
+        "I want to make sure I have that right. "
+        "Can you repeat the code slowly?"
     ),
-    "no_code": "No problem. Can I get your first and last name?",
-    "ask_name_after_code": "Got it. Can I get your first and last name please?",
-    "ask_name": "Can I get your first and last name please?",
-    "ask_county": "And what county is the property located in?",
-    "ask_callback": "And is this the best number to reach you back at?",
-    "close": "Thank you for calling. Have a great day!",
-    "close_not_interested": (
-        "I understand. I'll make a note and pass this along to our team. Have a great day."
+    "got_it_name": "Got it. And can I get your first and last name please?",
+    "no_code_name": "No problem. Can I get your first and last name?",
+    "no_code_county": "And what county is the property located in?",
+    "interested": (
+        "Are you calling because you received our offer and are interested in selling?"
     ),
+    "confirm_callback": "Is that the best number for our team to reach you?",
+    "close_hot": (
+        "Perfect. Someone from our team will be in touch with you very shortly. "
+        "Have a great day."
+    ),
+    "close_cold": (
+        "I understand. I will make a note and pass this along to our team. "
+        "Have a great day."
+    ),
+    "still_there": "Are you still there? Take your time.",
+    "goodbye": "Thank you for calling. Have a great day.",
     "voicemail": (
-        "Hi, this is Damien with Dominion Land Group calling about your property. "
+        "Hi, this is Dominion Land Group calling about your property. "
         "We sent you a letter with a cash offer and would love to connect. "
         "Please call us back at your earliest convenience. Thank you!"
+    ),
+    "faq_redirect": (
+        "That is a great question. For detailed answers you can visit our FAQ page at "
+        "dominionlandgroup.land. A team member will also be happy to answer any questions "
+        "when they call you back. Now can I get your first and last name so our team "
+        "can follow up with you?"
     ),
 }
 
 
 def _audio_path(cache_key: str) -> Path:
     return _AUDIO_DIR / f"{cache_key}.mp3"
+
+
+def _cached_url(cache_key: str) -> Optional[str]:
+    """Return URL if the file is already on disk, else None. Zero latency."""
+    if _audio_path(cache_key).exists():
+        return f"{_base_url()}/api/calls/audio/{cache_key}"
+    return None
 
 
 async def _tts_generate(text: str, cache_key: str) -> bool:
@@ -90,11 +116,11 @@ async def _tts_generate(text: str, cache_key: str) -> bool:
                     "text": text,
                     "model_id": "eleven_turbo_v2_5",
                     "voice_settings": {
-                        "stability": 0.3,
+                        "stability": 0.35,
                         "similarity_boost": 0.8,
                         "style": 0.0,
                         "use_speaker_boost": True,
-                        "speed": 1.2,
+                        "speed": 1.15,
                     },
                 },
                 headers={
@@ -112,106 +138,75 @@ async def _tts_generate(text: str, cache_key: str) -> bool:
     return False
 
 
-async def _tts_url(phrase_key: str, text: Optional[str] = None) -> Optional[str]:
-    """Return audio URL from disk cache, or generate if missing."""
-    actual_text = text or _PHRASES.get(phrase_key, "")
-    if not actual_text:
-        return None
-    path = _audio_path(phrase_key)
-    if path.exists():
-        return f"{_base_url()}/api/calls/audio/{phrase_key}"
-    ok = await _tts_generate(actual_text, phrase_key)
-    return f"{_base_url()}/api/calls/audio/{phrase_key}" if ok else None
-
-
 @router.get("/api/calls/audio/{cache_key}")
 async def serve_tts_audio(cache_key: str) -> Response:
     path = _audio_path(cache_key)
     if not path.exists():
         raise HTTPException(status_code=404, detail="Audio not found")
-    return Response(path.read_bytes(), media_type="audio/mpeg")
+    return Response(
+        path.read_bytes(),
+        media_type="audio/mpeg",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
 
 
 async def warmup() -> None:
-    """Pre-generate all static phrase audio at startup. Called from main.py."""
+    """Pre-generate ALL static phrase audio at startup. Called from main.py.
+    Server should not handle live calls until this completes."""
+    global _warmup_done
     if not _elevenlabs_key():
-        print("[comms] ElevenLabs not configured — skipping TTS warmup")
+        print("[comms] ElevenLabs not configured — voice cache skipped (Polly fallback active)")
+        _warmup_done = True
         return
-    print("[comms] Pre-warming TTS audio cache...")
+    print(f"[comms] Warming voice cache — {len(_PHRASES)} phrases...")
     tasks = [_tts_generate(text, key) for key, text in _PHRASES.items()]
     results = await asyncio.gather(*tasks, return_exceptions=True)
     ok = sum(1 for r in results if r is True)
-    print(f"[comms] TTS warmup complete — {ok}/{len(_PHRASES)} phrases cached")
+    already = sum(1 for r in results if r is True and _audio_path(list(_PHRASES.keys())[list(results).index(r)]).exists())
+    _ = already  # suppress unused warning
+    _warmup_done = True
+    print(f"[comms] Voice cache warmed up: {ok}/{len(_PHRASES)} files ready")
 
 
-async def _tts_ask_interest(caller_name: str) -> tuple[str, Optional[str]]:
-    """'Thank you [name]. Are you calling because you received our offer…?'"""
-    first = caller_name.strip().split()[0] if caller_name.strip() else ""
-    if first:
-        text = f"Thank you {first}. Are you calling because you received our offer and are interested in selling?"
-    else:
-        text = "Are you calling because you received our offer and are interested in selling?"
-    key = f"interest_{hashlib.md5(first.encode()).hexdigest()[:8]}"
-    url = await _tts_url(key, text)
-    return text, url
+# ── Dynamic TTS helpers — use static cache; fall back to Polly <Say> instantly ──
 
-
-async def _tts_callback(caller_phone: str) -> tuple[str, Optional[str]]:
-    """'Is [phone] the best number for our team to reach you?'"""
-    if caller_phone:
-        digits = re.sub(r"\D", "", caller_phone)[-10:]
-        if len(digits) == 10:
-            fmt = f"{digits[:3]}-{digits[3:6]}-{digits[6:]}"
-        else:
-            fmt = caller_phone.strip()
-        text = f"Is {fmt} the best number for our team to reach you?"
-    else:
-        text = _PHRASES["ask_callback"]
-    key = f"callback_{hashlib.md5((caller_phone or 'anon').encode()).hexdigest()[:8]}"
-    url = await _tts_url(key, text)
-    return text, url
-
-
-async def _tts_close_hot(caller_name: str) -> tuple[str, Optional[str]]:
-    """'Perfect. Someone from our team will be in touch very shortly. Have a great day [name].'"""
-    first = caller_name.strip().split()[0] if caller_name.strip() else ""
-    if first:
-        text = f"Perfect. Someone from our team will be in touch with you very shortly. Have a great day {first}."
-    else:
-        text = "Perfect. Someone from our team will be in touch with you very shortly. Have a great day!"
-    key = f"close_hot_{hashlib.md5(first.encode()).hexdigest()[:8]}"
-    url = await _tts_url(key, text)
-    return text, url
-
-
-# ── TeXML helpers ────────────────────────────────────────────────────────────────
-
-def _xml_escape(text: str) -> str:
-    return (
+def _say(text: str, audio_url: Optional[str] = None) -> str:
+    """Return a <Play> or <Say> XML element. <Say> is instant (no latency)."""
+    if audio_url:
+        return f'<Play>{audio_url}</Play>'
+    safe = (
         text.replace("&", "&amp;")
             .replace("<", "&lt;")
             .replace(">", "&gt;")
             .replace('"', "&quot;")
     )
+    return f'<Say voice="Polly.Joanna-Neural"><prosody rate="medium">{safe}</prosody></Say>'
 
 
-def _say(text: str, audio_url: Optional[str] = None) -> str:
-    if audio_url:
-        return f'<Play>{audio_url}</Play>'
-    safe = _xml_escape(text)
-    return f'<Say voice="Polly.Joanna-Neural"><prosody rate="fast">{safe}</prosody></Say>'
+def _phrase(key: str) -> str:
+    """Return a <Play> if cached on disk, else <Say> with Polly. Always instant."""
+    url = _cached_url(key)
+    return _say(_PHRASES.get(key, key), url)
 
+
+def _say_dynamic(text: str, cache_key: str) -> str:
+    """For dynamic text: use cached mp3 if available, else Polly <Say>."""
+    url = _cached_url(cache_key)
+    return _say(text, url)
+
+
+# ── TeXML builders ────────────────────────────────────────────────────────────────
 
 def _texml_gather(
     next_step: str,
-    say_text: str,
+    inner_xml: str,
     call_sid: str,
-    audio_url: Optional[str] = None,
     with_recording: bool = False,
+    hints: str = "zero one two three four five six seven eight nine dash hyphen oh yes no",
 ) -> Response:
+    """Build a Gather TeXML with proper timeouts that never hang up on silence."""
     action = f"{_base_url()}/api/calls/gather/{next_step}"
-    redirect = f"{action}?timedout=1"
-    inner = _say(say_text, audio_url)
+    timeout_url = f"{action}?timedout=1"
 
     record_attrs = ""
     if with_recording:
@@ -222,29 +217,28 @@ def _texml_gather(
             f'\n          recordingStatusCallbackMethod="POST"'
         )
 
-    hints = "zero one two three four five six seven eight nine dash hyphen oh"
     xml = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         "<Response>\n"
         f'  <Gather input="speech" action="{action}" method="POST"\n'
-        f'          timeout="8" speechTimeout="1" language="en-US"\n'
+        f'          timeout="10" speechTimeout="1" language="en-US"\n'
         f'          enhanced="true" profanityFilter="false"\n'
         f'          hints="{hints}"\n'
         f'          actionOnEmptyResult="true"{record_attrs}>\n'
-        f"    {inner}\n"
+        f"    {inner_xml}\n"
         "  </Gather>\n"
-        f'  <Redirect method="POST">{redirect}</Redirect>\n'
+        # On timeout/silence: redirect back to same step with timedout flag
+        f'  <Redirect method="POST">{timeout_url}</Redirect>\n'
         "</Response>"
     )
     return Response(xml, media_type="text/xml")
 
 
-def _texml_hangup(say_text: str, audio_url: Optional[str] = None) -> Response:
-    inner = _say(say_text, audio_url)
+def _texml_hangup(inner_xml: str) -> Response:
     xml = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         "<Response>\n"
-        f"  {inner}\n"
+        f"  {inner_xml}\n"
         "  <Hangup/>\n"
         "</Response>"
     )
@@ -661,11 +655,49 @@ async def _lookup_by_name_county(name: str, county: str) -> list[dict]:
     return []
 
 
+# ── FAQ detection ────────────────────────────────────────────────────────────────
+
+_FAQ_KEYWORDS = [
+    "how does this work", "how does it work",
+    "are you legit", "are you legitimate", "is this legit", "is this legitimate",
+    "what is dominion", "dominion land group",
+    "how much are you", "how much is",
+    "why do you want", "why are you buying",
+    "is this a scam", "this a scam", "sounds like a scam",
+    "how long does it take", "how long to close", "how long will it",
+    "tell me more", "what do you do", "who are you",
+    "what's this about", "whats this about", "what is this about",
+]
+
+
+def _is_faq_question(speech: str) -> bool:
+    low = speech.lower()
+    return any(kw in low for kw in _FAQ_KEYWORDS)
+
+
+def _get_step_retries(state: dict, step: str) -> int:
+    return state.get("retries", {}).get(step, 0)
+
+
+def _inc_step_retries(call_sid: str, state: dict, step: str) -> int:
+    retries = state.setdefault("retries", {})
+    retries[step] = retries.get(step, 0) + 1
+    if call_sid in _call_states:
+        _call_states[call_sid].setdefault("retries", {})[step] = retries[step]
+    return retries[step]
+
+
 # ── Inbound call ──────────────────────────────────────────────────────────────────
 
 @router.post("/api/calls/inbound")
 async def inbound_call(request: Request) -> Response:
     """Telnyx TeXML webhook — answers inbound call, asks for offer code."""
+    if not _warmup_done:
+        for _ in range(10):
+            await asyncio.sleep(1)
+            if _warmup_done:
+                break
+
     call_sid = f"call_{_now()}"
     caller = ""
     try:
@@ -694,11 +726,10 @@ async def inbound_call(request: Request) -> Response:
         "code_attempts": 0,
         "transcript": [],
         "started_at": _now(),
+        "retries": {},
     }
 
-    greeting_text = _PHRASES["greeting"]
-    audio_url = await _tts_url("greeting")
-    return _texml_gather("greeting", greeting_text, call_sid, audio_url, with_recording=True)
+    return _texml_gather("greeting", _phrase("greeting"), call_sid, with_recording=True)
 
 
 @router.post("/api/calls/gather/{step}")
@@ -716,103 +747,101 @@ async def call_gather(step: str, request: Request, background_tasks: BackgroundT
     state = _call_states.get(call_sid, {})
     state.setdefault("transcript", []).append({"step": step, "speech": speech, "timed_out": timed_out})
 
+    def _on_timeout(step_name: str) -> Response:
+        """Retry up to 3x on silence/timeout, then close gracefully."""
+        retry_count = _inc_step_retries(call_sid, state, step_name)
+        if retry_count < 3:
+            return _texml_gather(step_name, _phrase("still_there"), call_sid)
+        background_tasks.add_task(_finalize_call, call_sid)
+        return _texml_hangup(_phrase("goodbye"))
+
     # ── Step: greeting — ask for offer code ──────────────────────────────
     if step == "greeting":
-        if speech and not timed_out:
-            # Detect "what is an offer code" confusion
-            speech_low = speech.lower()
-            asking_what = any(w in speech_low for w in [
+        if timed_out or not speech:
+            return _on_timeout("greeting")
+
+        # FAQ question — play redirect, skip to name step
+        if _is_faq_question(speech):
+            state["code_attempts"] = 99
+            if call_sid in _call_states:
+                _call_states[call_sid]["code_attempts"] = 99
+            return _texml_gather("name", _phrase("faq_redirect"), call_sid)
+
+        speech_low = speech.lower()
+        asking_what = (
+            any(w in speech_low for w in [
                 "what", "don't know", "dont know", "no idea", "don't have",
                 "dont have", "not sure", "no code", "i don't", "i dont",
                 "what's that", "whats that", "explain",
             ])
-            if asking_what and not re.search(r"\d", speech):
-                text = _PHRASES["explain_code"]
-                audio_url = await _tts_url("explain_code")
-                return _texml_gather("greeting", text, call_sid, audio_url)
+            and not re.search(r"\d", speech)
+        )
+        if asking_what:
+            return _texml_gather("greeting", _phrase("offer_code_hint"), call_sid)
 
+        state.setdefault("attempted_codes", []).append(speech.strip())
+        if call_sid in _call_states:
+            _call_states[call_sid].setdefault("attempted_codes", []).append(speech.strip())
+
+        prop = await _lookup_offer_code(speech)
+        if prop:
+            state["property_id"] = prop.get("id")
+            state["offer_price"] = prop.get("offer_price")
+            state["owner_name"] = prop.get("owner_full_name") or prop.get("owner_first_name") or ""
+            state["caller_offer_code"] = speech.strip()
             if call_sid in _call_states:
-                _call_states[call_sid].setdefault("attempted_codes", []).append(speech.strip())
-            state.setdefault("attempted_codes", []).append(speech.strip())
+                _call_states[call_sid].update(state)
+            return _texml_gather("name", _phrase("got_it_name"), call_sid)
 
-            prop = await _lookup_offer_code(speech)
-            if prop:
-                state["property_id"] = prop.get("id")
-                state["offer_price"] = prop.get("offer_price")
-                state["owner_name"] = prop.get("owner_full_name") or prop.get("owner_first_name") or ""
-                state["caller_offer_code"] = speech.strip()
-                if call_sid in _call_states:
-                    _call_states[call_sid].update(state)
-                text = _PHRASES["ask_name_after_code"]
-                audio_url = await _tts_url("ask_name_after_code")
-                return _texml_gather("name", text, call_sid, audio_url)
-            else:
-                attempts = state.get("code_attempts", 0)
-                state["code_attempts"] = attempts + 1
-                if call_sid in _call_states:
-                    _call_states[call_sid]["code_attempts"] = attempts + 1
-                if attempts == 0:
-                    text = _PHRASES["code_retry"]
-                    audio_url = await _tts_url("code_retry")
-                    return _texml_gather("greeting", text, call_sid, audio_url)
-                else:
-                    text = _PHRASES["no_code"]
-                    audio_url = await _tts_url("no_code")
-                    return _texml_gather("fallback_name", text, call_sid, audio_url)
-        else:
-            # Timed out — replay greeting once, then go to name fallback
-            attempts = state.get("code_attempts", 0)
-            if attempts < 1:
-                state["code_attempts"] = 1
-                if call_sid in _call_states:
-                    _call_states[call_sid]["code_attempts"] = 1
-                text = _PHRASES["greeting"]
-                audio_url = await _tts_url("greeting")
-                return _texml_gather("greeting", text, call_sid, audio_url)
-            text = _PHRASES["no_code"]
-            audio_url = await _tts_url("no_code")
-            return _texml_gather("fallback_name", text, call_sid, audio_url)
+        attempts = state.get("code_attempts", 0)
+        state["code_attempts"] = attempts + 1
+        if call_sid in _call_states:
+            _call_states[call_sid]["code_attempts"] = attempts + 1
 
-    # ── Step: name — capture caller name, then ask interest ─────────────
+        if attempts == 0:
+            return _texml_gather("greeting", _phrase("not_found"), call_sid)
+        # Second failed attempt — skip code, proceed to name
+        return _texml_gather("name", _phrase("no_code_name"), call_sid)
+
+    # ── Step: name — capture caller name, then ask if interested ─────────
     elif step == "name":
-        if speech and not timed_out:
-            if call_sid in _call_states:
-                _call_states[call_sid]["caller_name"] = speech.strip()
-            state["caller_name"] = speech.strip()
-        caller_name = state.get("caller_name") or _call_states.get(call_sid, {}).get("caller_name") or ""
-        interest_text, audio_url = await _tts_ask_interest(caller_name)
-        return _texml_gather("interest", interest_text, call_sid, audio_url)
+        if timed_out or not speech:
+            return _on_timeout("name")
+
+        if call_sid in _call_states:
+            _call_states[call_sid]["caller_name"] = speech.strip()
+        state["caller_name"] = speech.strip()
+
+        return _texml_gather("interest", _phrase("interested"), call_sid)
 
     # ── Step: interest — yes → callback confirm; no → warm close ─────────
     elif step == "interest":
-        score = _score_interest(speech) if speech else "warm"
+        if timed_out or not speech:
+            return _on_timeout("interest")
+
+        score = _score_interest(speech)
         if call_sid in _call_states:
             _call_states[call_sid]["interest_score"] = score
+
         if score == "cold":
             background_tasks.add_task(_finalize_call, call_sid)
-            close_text = _PHRASES["close_not_interested"]
-            audio_url = await _tts_url("close_not_interested")
-            return _texml_hangup(close_text, audio_url)
-        # Interested or unclear — ask for callback number
-        caller = state.get("caller") or _call_states.get(call_sid, {}).get("caller", "")
-        cb_text, cb_url = await _tts_callback(caller)
-        return _texml_gather("callback", cb_text, call_sid, cb_url)
+            return _texml_hangup(_phrase("close_cold"))
 
-    # ── Step: callback — confirm phone, then warm close ──────────────────
+        return _texml_gather("callback", _phrase("confirm_callback"), call_sid)
+
+    # ── Step: callback — confirm phone number, close hot ─────────────────
     elif step == "callback":
         background_tasks.add_task(_finalize_call, call_sid)
-        caller_name = state.get("caller_name") or _call_states.get(call_sid, {}).get("caller_name") or ""
-        close_text, audio_url = await _tts_close_hot(caller_name)
-        return _texml_hangup(close_text, audio_url)
+        return _texml_hangup(_phrase("close_hot"))
 
-    # ── Step: fallback_name — code failed, get name ──────────────────────
+    # ── Step: fallback_name — code failed, ask for name ──────────────────
     elif step == "fallback_name":
         if speech and not timed_out:
             if call_sid in _call_states:
                 _call_states[call_sid]["fallback_name"] = speech.strip()
-        text = _PHRASES["ask_county"]
-        audio_url = await _tts_url("ask_county")
-        return _texml_gather("fallback_county", text, call_sid, audio_url)
+                _call_states[call_sid]["caller_name"] = speech.strip()
+            state["caller_name"] = speech.strip()
+        return _texml_gather("fallback_county", _phrase("no_code_county"), call_sid)
 
     # ── Step: fallback_county — lookup by name+county ────────────────────
     elif step == "fallback_county":
@@ -829,16 +858,12 @@ async def call_gather(step: str, request: Request, background_tasks: BackgroundT
                     _call_states[call_sid]["property_id"] = prop.get("id")
                     _call_states[call_sid]["offer_price"] = prop.get("offer_price")
                     _call_states[call_sid]["owner_name"] = prop.get("owner_full_name") or ""
+                    _call_states[call_sid].setdefault("caller_name", fb_name)
                 state["property_id"] = prop.get("id")
                 state["offer_price"] = prop.get("offer_price")
-                # Store the name they gave us and go to interest
-                if call_sid in _call_states:
-                    _call_states[call_sid].setdefault("caller_name", fb_name)
                 state.setdefault("caller_name", fb_name)
-                interest_text, audio_url = await _tts_ask_interest(fb_name)
-                return _texml_gather("interest", interest_text, call_sid, audio_url)
+                return _texml_gather("interest", _phrase("interested"), call_sid)
 
-        # Phone fallback — try caller phone
         caller = state.get("caller") or _call_states.get(call_sid, {}).get("caller", "")
         if caller:
             prop_by_phone = await _lookup_phone(caller)
@@ -849,24 +874,18 @@ async def call_gather(step: str, request: Request, background_tasks: BackgroundT
                     _call_states[call_sid].setdefault("caller_name", fb_name)
                 state["property_id"] = prop_by_phone.get("id")
                 state.setdefault("caller_name", fb_name)
-                interest_text, audio_url = await _tts_ask_interest(fb_name)
-                return _texml_gather("interest", interest_text, call_sid, audio_url)
+                return _texml_gather("interest", _phrase("interested"), call_sid)
 
-        # Last resort — create unmatched lead
         if call_sid in _call_states:
             _call_states[call_sid]["unmatched_info"] = f"{fb_name} / {fb_county}"
             _call_states[call_sid].setdefault("caller_name", fb_name)
         background_tasks.add_task(_finalize_unmatched_call, call_sid)
-        close_text = _PHRASES["close"]
-        audio_url = await _tts_url("close")
-        return _texml_hangup(close_text, audio_url)
+        return _texml_hangup(_phrase("goodbye"))
 
     # ── Fallback ─────────────────────────────────────────────────────────
     else:
         background_tasks.add_task(_finalize_call, call_sid)
-        close_text = _PHRASES["close"]
-        audio_url = await _tts_url("close")
-        return _texml_hangup(close_text, audio_url)
+        return _texml_hangup(_phrase("goodbye"))
 
 
 # ── Recording status callback ────────────────────────────────────────────────────
