@@ -689,6 +689,9 @@ export default function MatchTargets() {
                       campaignName = created.name
                       setMailingCampaigns(prev => [...prev, { id: created.campaign_id, name: created.name }])
                     }
+                    console.log('[MailingModal] matchResult.results count:', matchResult.results.length)
+                    console.log('[MailingModal] mailingExportType:', mailingExportType)
+                    console.log('[MailingModal] sample result:', matchResult.results[0])
                     const result = await addMatchResultsToCampaign(
                       campaignId,
                       matchResult.match_id,

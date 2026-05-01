@@ -149,11 +149,23 @@ export async function addMatchResultsToCampaign(
   exportType: 'mailable' | 'matched' = 'mailable',
   records?: unknown[]
 ): Promise<{ imported: number; total: number; campaign_id: string }> {
-  const { data } = await api.post(`/crm/campaigns/${campaignId}/add-match-results`, {
+  console.log('[addMatchResultsToCampaign] campaignId:', campaignId)
+  console.log('[addMatchResultsToCampaign] exportType:', exportType)
+  console.log('[addMatchResultsToCampaign] records count:', records?.length ?? 0)
+  if (records && records.length > 0) {
+    const r0 = records[0] as Record<string, unknown>
+    console.log('[addMatchResultsToCampaign] first record keys:', Object.keys(r0))
+    console.log('[addMatchResultsToCampaign] first record pricing_flag:', r0.pricing_flag)
+    console.log('[addMatchResultsToCampaign] first record sample:', { apn: r0.apn, pricing_flag: r0.pricing_flag, suggested_offer_mid: r0.suggested_offer_mid })
+  }
+  const payload = {
     match_id: matchId,
     export_type: exportType,
     ...(records ? { records } : {}),
-  })
+  }
+  console.log('[addMatchResultsToCampaign] payload keys:', Object.keys(payload), 'records included:', 'records' in payload)
+  const { data } = await api.post(`/crm/campaigns/${campaignId}/add-match-results`, payload)
+  console.log('[addMatchResultsToCampaign] response:', data)
   return data
 }
 

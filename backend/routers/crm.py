@@ -517,11 +517,30 @@ async def db_migrate() -> dict:
 # ══════════════════════════════════════════════════════════════════════
 
 
+def _extract_bad_column(err_msg: str) -> Optional[str]:
+    """Extract a missing-column name from both PostgreSQL and PostgREST error formats.
+
+    PostgreSQL native: column "foo" of relation "bar" does not exist
+    PostgREST PGRST204: Column 'foo' of relation 'bar' does not exist
+    PostgREST PGRST200: Could not find a relationship between ... and ...
+    """
+    # Handle both quote styles and both capitalizations
+    for pattern in [
+        r'[Cc]olumn ["\']([^"\']+)["\'] of relation',
+        r'[Cc]olumn ["\']([^"\']+)["\'] does not exist',
+        r"unrecognized configuration parameter ['\"]([^'\"]+)['\"]",
+    ]:
+        m = re.search(pattern, err_msg)
+        if m:
+            return m.group(1)
+    return None
+
+
 def _safe_batch_insert(sb: Any, rows: list[dict]) -> tuple[int, list[str]]:
     """Insert a batch into crm_properties, stripping any unmigrated columns on failure.
 
     Returns (imported_count, warning_messages).
-    If the error is not column-related, falls back to per-row inserts so good rows still land.
+    Handles both PostgreSQL-native and PostgREST PGRST204 error formats.
     """
     if not rows:
         return 0, []
@@ -529,24 +548,34 @@ def _safe_batch_insert(sb: Any, rows: list[dict]) -> tuple[int, list[str]]:
     current = list(rows)
     warnings: list[str] = []
 
-    for _ in range(12):  # up to 12 distinct unknown columns before giving up
+    for attempt in range(20):  # strip up to 20 unknown columns before giving up
         try:
             sb.table("crm_properties").insert(current).execute()
             return len(current), warnings
         except Exception as exc:
             err_msg = str(exc)
-            col_match = re.search(r'column "([^"]+)" of relation', err_msg)
-            if col_match:
-                bad_col = col_match.group(1)
-                warnings.append(f"Stripped unmigrated column '{bad_col}' (run ALTER TABLE)")
-                print(f"[import] Stripping unmigrated column '{bad_col}' from batch and retrying")
+            bad_col = _extract_bad_column(err_msg)
+            if bad_col:
+                warnings.append(f"Stripped unmigrated column '{bad_col}' (run db-migrate)")
+                print(f"[safe_insert] attempt={attempt} stripping column '{bad_col}': {err_msg[:200]}", flush=True)
                 current = [{k: v for k, v in d.items() if k != bad_col} for d in current]
                 continue
-            # Not a missing-column error — fall back to per-row inserts
-            print(f"[import] Batch insert error: {err_msg[:300]}")
+            # Not a column error — log fully and fall back to per-row inserts
+            print(f"[safe_insert] Non-column batch error (attempt={attempt}): {err_msg[:500]}", flush=True)
             imported = 0
             row_errors: list[str] = []
-            for j, row_data in enumerate(current):
+            for j, row_data in enumerate(current[:5]):  # only retry first 5 rows to surface error
+                try:
+                    sb.table("crm_properties").insert(row_data).execute()
+                    imported += 1
+                except Exception as row_exc:
+                    row_errors.append(f"Row {j + 1}: {str(row_exc)[:300]}")
+            # If first 5 all errored with the same non-column issue, retry remaining
+            if imported == 0 and row_errors:
+                print(f"[safe_insert] Per-row errors: {row_errors[:3]}", flush=True)
+                return 0, warnings + row_errors
+            # Some succeeded — do the rest
+            for j, row_data in enumerate(current[5:], start=5):
                 try:
                     sb.table("crm_properties").insert(row_data).execute()
                     imported += 1
@@ -554,7 +583,8 @@ def _safe_batch_insert(sb: Any, rows: list[dict]) -> tuple[int, list[str]]:
                     row_errors.append(f"Row {j + 1}: {str(row_exc)[:150]}")
             return imported, warnings + row_errors
 
-    return len(current), warnings
+    print(f"[safe_insert] Exhausted 20 column-strip attempts. Remaining keys: {list(current[0].keys()) if current else []}", flush=True)
+    return 0, warnings + ["Exhausted column-strip attempts — run POST /crm/db-migrate"]
 
 @router.post("/properties/import", status_code=202)
 async def import_properties(
@@ -1103,8 +1133,18 @@ async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)
             })
 
         print(f"[add-match-results] Inserting {len(rows)} rows via _safe_batch_insert", flush=True)
+        if rows:
+            safe_keys = ["campaign_id", "status", "apn", "offer_price", "pricing_flag" if "pricing_flag" in rows[0] else "lp_estimate"]
+            print(f"[add-match-results] First row sample: { {k: rows[0].get(k) for k in safe_keys} }", flush=True)
+
         imported, warnings = _safe_batch_insert(sb, rows)
-        print(f"[add-match-results] Insert complete: imported={imported} warnings={warnings[:3]}", flush=True)
+        print(f"[add-match-results] Insert complete: imported={imported} warnings={warnings[:5]}", flush=True)
+
+        if imported == 0 and warnings:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Insert failed — 0 records written. Errors: {'; '.join(warnings[:3])}. Run POST /crm/db-migrate to add missing columns."
+            )
 
         return {
             "imported": imported,
