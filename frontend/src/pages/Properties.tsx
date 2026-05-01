@@ -3,7 +3,7 @@ import type { CRMProperty, CRMCampaign, PropertyStatus } from '../types/crm'
 import {
   listProperties, createProperty, updateProperty, deleteProperty,
   deleteProperties, deletePropertiesFiltered, exportPropertiesCsv,
-  getPropertyCounts, listCrmCampaigns,
+  getPropertyCounts, listCrmCampaigns, getProperty,
 } from '../api/crm'
 import PropertyDetail from './PropertyDetail'
 import { useApp } from '../context/AppContext'
@@ -32,7 +32,7 @@ const STATUS_LABELS: Record<string, string> = {
 const ALL_STATUSES = ['all', 'lead', 'prospect', 'offer_sent', 'under_contract', 'due_diligence', 'closed_won', 'closed_lost']
 
 export default function Properties() {
-  const { propertyCampaignId, setPropertyCampaignId } = useApp()
+  const { propertyCampaignId, setPropertyCampaignId, selectedPropertyId, setSelectedPropertyId } = useApp()
   const [view, setView] = useState<View>('list')
   const [selected, setSelected] = useState<CRMProperty | null>(null)
 
@@ -65,6 +65,11 @@ export default function Properties() {
     setCampaignFilter(initCampaign)
     setPropertyCampaignId(null)
     loadPage(1, 'all', initCampaign, '', '', '')
+    if (selectedPropertyId) {
+      const id = selectedPropertyId
+      setSelectedPropertyId(null)
+      getProperty(id).then(p => { setSelected(p); setView('detail') }).catch(() => {})
+    }
     listCrmCampaigns().then(setCampaigns).catch(() => {})
   }, [])
 

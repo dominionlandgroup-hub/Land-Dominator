@@ -83,6 +83,16 @@ async def start_scheduler() -> None:
         print(f"Scheduler startup warning: {exc}")
 
 
+@app.on_event("startup")
+async def warmup_tts() -> None:
+    """Pre-generate TTS audio for all static voice agent phrases."""
+    try:
+        from routers.communications import warmup
+        await warmup()
+    except Exception as exc:
+        print(f"TTS warmup warning: {exc}")
+
+
 @app.on_event("shutdown")
 async def stop_scheduler() -> None:
     scheduler = getattr(app.state, "scheduler", None)

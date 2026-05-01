@@ -211,6 +211,7 @@ export interface Communication {
   direction?: 'inbound' | 'outbound'
   message_body?: string
   call_id?: string
+  caller_offer_code?: string
   property?: {
     id?: string
     owner_full_name?: string
