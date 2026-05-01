@@ -1,6 +1,6 @@
-import React, { useState } from 'react'
-import type { CRMProperty, PropertyStatus } from '../types/crm'
-import { pullLpData } from '../api/crm'
+import React, { useEffect, useState } from 'react'
+import type { CRMProperty, PropertyStatus, Communication } from '../types/crm'
+import { pullLpData, sendSms, listPropertyCommunications } from '../api/crm'
 
 interface Props {
   property: CRMProperty | null
@@ -30,7 +30,52 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
   const [phoneInput, setPhoneInput] = useState('')
   const [lpPulling, setLpPulling] = useState(false)
   const [lpMsg, setLpMsg] = useState<string | null>(null)
+  const [showSmsModal, setShowSmsModal] = useState(false)
+  const [smsMessage, setSmsMessage] = useState('')
+  const [smsSending, setSmsSending] = useState(false)
+  const [smsError, setSmsError] = useState<string | null>(null)
+  const [smsSuccess, setSmsSuccess] = useState<string | null>(null)
+  const [comms, setComms] = useState<Communication[]>([])
+  const [commsLoading, setCommsLoading] = useState(false)
   const isNew = !property
+
+  useEffect(() => {
+    if (!property?.id) return
+    setCommsLoading(true)
+    listPropertyCommunications(property.id)
+      .then(setComms)
+      .catch(() => {/* table may not exist yet */})
+      .finally(() => setCommsLoading(false))
+  }, [property?.id])
+
+  function openSmsModal() {
+    const firstName = form.owner_first_name || form.owner_full_name?.split(' ')[0] || 'there'
+    const addr = form.property_address || `${form.county ? form.county + ' County' : 'your area'}`
+    const offerFmt = form.offer_price ? `$${Math.round(form.offer_price).toLocaleString()}` : 'our cash offer'
+    const telnyx = '[Your Phone Number]'
+    setSmsMessage(
+      `Hi ${firstName}, this is Dominion Land Group. We sent you a letter about your property at ${addr}. ` +
+      `We have a cash offer of ${offerFmt} for your land. Are you interested? ` +
+      `Reply YES or call us back at ${telnyx}.`
+    )
+    setSmsError(null); setSmsSuccess(null)
+    setShowSmsModal(true)
+  }
+
+  async function handleSendSms() {
+    if (!property?.id || !form.owner_phone) return
+    setSmsSending(true); setSmsError(null); setSmsSuccess(null)
+    try {
+      await sendSms(property.id, form.owner_phone, smsMessage)
+      setSmsSuccess('SMS sent successfully.')
+      setShowSmsModal(false)
+      // Refresh comms
+      listPropertyCommunications(property.id).then(setComms).catch(() => {})
+    } catch (e: unknown) {
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setSmsError(detail ?? 'Failed to send SMS. Check TELNYX_API_KEY and TELNYX_PHONE_NUMBER.')
+    } finally { setSmsSending(false) }
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function set(field: keyof CRMProperty, value: any) {
@@ -174,6 +219,18 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {!isNew && form.owner_phone && (
+            <button
+              className="btn-secondary text-sm flex items-center gap-1.5"
+              onClick={openSmsModal}
+              title="Send SMS to owner"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+              Send Text
+            </button>
+          )}
           {!isNew && property?.property_id && (
             <button
               className="btn-secondary text-sm flex items-center gap-1.5"
@@ -209,6 +266,11 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
         {lpMsg && (
           <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: '#E8F5E9', color: '#2E7D32', border: '1px solid #A5D6A7' }}>
             {lpMsg}
+          </div>
+        )}
+        {smsSuccess && (
+          <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: '#E8F5E9', color: '#2E7D32', border: '1px solid #A5D6A7' }}>
+            {smsSuccess}
           </div>
         )}
 
@@ -446,8 +508,91 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
               />
             </div>
           </section>
+
+          {/* Communications History */}
+          {!isNew && (
+            <section className="card-static">
+              <h2 className="section-heading mb-4">Communications</h2>
+              {commsLoading ? (
+                <p className="text-xs" style={{ color: '#9B8AAE' }}>Loading…</p>
+              ) : comms.length === 0 ? (
+                <p className="text-xs" style={{ color: '#9B8AAE' }}>
+                  No communications yet. Use the "Send Text" button to send an SMS, or communications will appear here when this seller calls or texts your Telnyx number.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {comms.map(c => {
+                    const isIn = c.direction === 'inbound'
+                    const isSms = c.type.startsWith('sms')
+                    const scoreColors: Record<string, string> = { hot: '#E65100', warm: '#B8860B', cold: '#2E7D32' }
+                    return (
+                      <div key={c.id} className="rounded-lg p-3" style={{ background: '#F8F5FC', border: '1px solid #EDE8F5' }}>
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{
+                              background: isSms ? '#F3E5F5' : '#E3F2FD',
+                              color: isSms ? '#6A1B9A' : '#1565C0',
+                            }}>
+                              {isSms ? (isIn ? '💬 SMS In' : '📤 SMS Out') : (isIn ? '📞 Call In' : '📱 Call Out')}
+                            </span>
+                            {c.lead_score && (
+                              <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{
+                                background: '#FFF0E0',
+                                color: scoreColors[c.lead_score] || '#5C2977',
+                              }}>
+                                {c.lead_score.toUpperCase()}
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-xs" style={{ color: '#9B8AAE' }}>
+                            {new Date(c.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                          </span>
+                        </div>
+                        {c.message_body && <p className="text-xs mt-1" style={{ color: '#1A0A2E' }}>{c.message_body}</p>}
+                        {c.summary && <p className="text-xs mt-1" style={{ color: '#6B5B8A' }}>{c.summary}</p>}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </section>
+          )}
         </div>
       </div>
+
+      {/* SMS Modal */}
+      {showSmsModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(26,10,46,0.5)' }}
+          onClick={e => { if (e.target === e.currentTarget) setShowSmsModal(false) }}
+        >
+          <div className="card" style={{ width: 480, maxWidth: '95vw', padding: 24 }}>
+            <h2 className="section-heading mb-1">Send Text Message</h2>
+            <p className="text-xs mb-3" style={{ color: '#9B8AAE' }}>
+              To: {form.owner_phone} — {form.owner_first_name || form.owner_full_name || 'Owner'}
+            </p>
+            <textarea
+              className="input-base w-full text-sm mb-3"
+              rows={5}
+              value={smsMessage}
+              onChange={e => setSmsMessage(e.target.value)}
+              style={{ resize: 'vertical' }}
+            />
+            {smsError && <p className="text-xs mb-2" style={{ color: '#B71C1C' }}>{smsError}</p>}
+            <div className="flex gap-2 justify-end">
+              <button className="btn-secondary" onClick={() => setShowSmsModal(false)}>Cancel</button>
+              <button
+                className="btn-primary"
+                onClick={handleSendSms}
+                disabled={smsSending || !smsMessage.trim()}
+              >
+                {smsSending ? 'Sending…' : 'Send SMS'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {confirmDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(26,10,46,0.55)' }}>

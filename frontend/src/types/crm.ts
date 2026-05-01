@@ -194,6 +194,47 @@ export interface MailDropPreview {
   cost_per_piece: number
 }
 
+export type CommType = 'call_inbound' | 'call_outbound' | 'sms_inbound' | 'sms_outbound'
+export type LeadScore = 'hot' | 'warm' | 'cold'
+
+export interface Communication {
+  id: string
+  created_at: string
+  property_id?: string
+  type: CommType
+  phone_number?: string
+  duration_seconds?: number
+  recording_url?: string
+  transcript?: string
+  summary?: string
+  lead_score?: LeadScore
+  direction?: 'inbound' | 'outbound'
+  message_body?: string
+  call_id?: string
+  property?: {
+    id?: string
+    owner_full_name?: string
+    owner_first_name?: string
+    owner_last_name?: string
+    apn?: string
+    county?: string
+    state?: string
+    campaign_code?: string
+    offer_price?: number
+    owner_phone?: string
+  }
+}
+
+export interface CommStats {
+  total_conversations: number
+  calls_total: number
+  calls_inbound: number
+  texts_total: number
+  texts_outbound: number
+  hot_leads_this_week: number
+  talk_time_seconds: number
+}
+
 export interface BuyBox {
   target_state?: string
   target_county?: string

@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { useApp } from '../context/AppContext'
-import { listProperties, listDeals } from '../api/crm'
+import { listProperties, listDeals, getCommStats } from '../api/crm'
 import { listCampaigns } from '../api/client'
-import type { CRMProperty, CRMDeal } from '../types/crm'
+import type { CRMProperty, CRMDeal, CommStats } from '../types/crm'
 import type { Campaign, AppPage } from '../types'
 
 // ── Stat helpers ─────────────────────────────────────────────────────────────
@@ -97,6 +97,7 @@ export default function CRMDashboard() {
   const [deals, setDeals] = useState<CRMDeal[]>([])
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [loading, setLoading] = useState(true)
+  const [commStats, setCommStats] = useState<CommStats | null>(null)
 
   useEffect(() => {
     Promise.all([
@@ -109,6 +110,7 @@ export default function CRMDashboard() {
       setCampaigns(camps)
       setLoading(false)
     })
+    getCommStats().then(setCommStats).catch(() => {})
   }, [])
 
   const stats = computeStats(properties, deals)
@@ -197,7 +199,7 @@ export default function CRMDashboard() {
           <table className="w-full text-sm">
             <thead>
               <tr style={{ borderBottom: '1px solid #F0EBF8' }}>
-                {['Total Conversations', 'Calls Made', 'Calls Missed', 'Talk Time', 'Texts', 'Emails'].map((h) => (
+                {['Total Conversations', 'Calls', 'Texts Sent', 'Talk Time', 'HOT Leads (7d)', 'Inbox'].map((h) => (
                   <th key={h} className="px-5 py-3 text-left" style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#9B8AAE' }}>
                     {h}
                   </th>
@@ -206,17 +208,44 @@ export default function CRMDashboard() {
             </thead>
             <tbody>
               <tr>
-                {['—', '—', '—', '—', '—', '—'].map((v, i) => (
-                  <td key={i} className="px-5 py-4" style={{ color: '#9B8AAE' }}>{v}</td>
-                ))}
+                <td className="px-5 py-4 font-semibold" style={{ color: '#1A0A2E' }}>
+                  {commStats ? commStats.total_conversations.toLocaleString() : '—'}
+                </td>
+                <td className="px-5 py-4" style={{ color: '#1565C0' }}>
+                  {commStats ? commStats.calls_total.toLocaleString() : '—'}
+                </td>
+                <td className="px-5 py-4" style={{ color: '#6A1B9A' }}>
+                  {commStats ? commStats.texts_outbound.toLocaleString() : '—'}
+                </td>
+                <td className="px-5 py-4" style={{ color: '#1A0A2E' }}>
+                  {commStats
+                    ? commStats.talk_time_seconds > 0
+                      ? `${Math.floor(commStats.talk_time_seconds / 60)}m ${commStats.talk_time_seconds % 60}s`
+                      : '0m'
+                    : '—'}
+                </td>
+                <td className="px-5 py-4 font-bold" style={{ color: commStats && commStats.hot_leads_this_week > 0 ? '#E65100' : '#9B8AAE' }}>
+                  {commStats ? (commStats.hot_leads_this_week > 0 ? `🔥 ${commStats.hot_leads_this_week}` : '0') : '—'}
+                </td>
+                <td className="px-5 py-4">
+                  <button
+                    className="text-xs underline"
+                    style={{ color: '#5C2977' }}
+                    onClick={() => setCurrentPage('seller-inbox')}
+                  >
+                    View Inbox →
+                  </button>
+                </td>
               </tr>
             </tbody>
           </table>
-          <div className="px-5 py-3" style={{ borderTop: '1px solid #F8F5FC' }}>
-            <p className="text-xs" style={{ color: '#9B8AAE' }}>
-              Communication data will populate once connected to your CRM communication provider.
-            </p>
-          </div>
+          {!commStats && (
+            <div className="px-5 py-3" style={{ borderTop: '1px solid #F8F5FC' }}>
+              <p className="text-xs" style={{ color: '#9B8AAE' }}>
+                Connect Telnyx to start tracking communication data. Set <code>TELNYX_API_KEY</code> and <code>TELNYX_PHONE_NUMBER</code> in Railway.
+              </p>
+            </div>
+          )}
         </TableCard>
 
         {/* Quick links */}

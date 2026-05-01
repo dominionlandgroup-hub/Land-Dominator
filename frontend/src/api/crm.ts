@@ -1,5 +1,5 @@
 import api from './client'
-import type { CRMProperty, CRMContact, CRMDeal, CRMCampaign, ImportResult, MailDrop, MailDropPreview, BuyBox } from '../types/crm'
+import type { CRMProperty, CRMContact, CRMDeal, CRMCampaign, ImportResult, MailDrop, MailDropPreview, BuyBox, Communication, CommStats } from '../types/crm'
 
 // ── Properties ────────────────────────────────────────────────────────
 
@@ -312,4 +312,31 @@ export async function getBuyBox(): Promise<BuyBox> {
 
 export async function saveBuyBox(box: BuyBox): Promise<void> {
   await upsertSetting('buy_box', box)
+}
+
+// ── Communications ────────────────────────────────────────────────────
+
+export async function listCommunications(params?: {
+  property_id?: string
+  comm_type?: string
+  lead_score?: string
+  limit?: number
+}): Promise<Communication[]> {
+  const { data } = await api.get<Communication[]>('/crm/communications', { params })
+  return data
+}
+
+export async function listPropertyCommunications(propertyId: string): Promise<Communication[]> {
+  const { data } = await api.get<Communication[]>(`/crm/properties/${propertyId}/communications`)
+  return data
+}
+
+export async function getCommStats(): Promise<CommStats> {
+  const { data } = await api.get<CommStats>('/crm/communications/stats')
+  return data
+}
+
+export async function sendSms(property_id: string, to_phone: string, message: string): Promise<{ sent: boolean; communication_id?: string }> {
+  const { data } = await api.post('/crm/sms/send', { property_id, to_phone, message })
+  return data
 }
