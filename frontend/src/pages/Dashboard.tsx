@@ -161,8 +161,8 @@ export default function Dashboard() {
 
 function zipDotColor(z: ZipStats, outlierSet: Set<string>): string {
   if (outlierSet.has(z.zip_code)) return '#dc2626'
-  if (z.sales_count >= 20) return '#2D7A4F'
-  if (z.sales_count >= 10) return '#D5A940'
+  if (z.sales_count >= 10) return '#2D7A4F'
+  if (z.sales_count >= 5)  return '#D5A940'
   return '#dc2626'
 }
 
@@ -179,21 +179,22 @@ function TopMarketsCard({ zipStats, comps }: { zipStats: ZipStats[]; comps: Comp
       ? zipStats.filter(z => (z.median_price_per_acre ?? 0) > 3 * overallMedian).map(z => z.zip_code)
       : []
   )
-  const thinZips = zipStats.filter(z => z.sales_count < 10).map(z => z.zip_code)
+  const thinZips = zipStats.filter(z => z.sales_count < 5).map(z => z.zip_code)
+  const warningZips = new Set(zipStats.filter(z => z.sales_count >= 5 && z.sales_count < 10).map(z => z.zip_code))
   const avoidZips = [...outlierSet, ...thinZips]
 
-  // Top 10: exclude outliers first, then rank by sales count
+  // Top 20: exclude outliers and <5 sales first, then rank by sales count
   const sorted = [...zipStats]
-    .filter(z => !outlierSet.has(z.zip_code))
+    .filter(z => !outlierSet.has(z.zip_code) && !thinZips.includes(z.zip_code))
     .sort((a, b) => b.sales_count - a.sales_count)
-  const top10 = sorted.slice(0, 10)
-  const top10Zips = top10.map(z => z.zip_code)
+  const top20 = sorted.slice(0, 20)
+  const top20Zips = top20.map(z => z.zip_code)
 
   return (
     <div className="card mb-6">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="font-semibold" style={{ color: '#1A0A2E' }}>Top 10 Markets</h2>
+          <h2 className="font-semibold" style={{ color: '#1A0A2E' }}>Top 20 Markets</h2>
           <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>Ranked by sales volume · color shows market quality</p>
         </div>
         <button className="btn-secondary text-xs" onClick={() => setShowMap(v => !v)}>
@@ -203,23 +204,24 @@ function TopMarketsCard({ zipStats, comps }: { zipStats: ZipStats[]; comps: Comp
 
       {/* Legend */}
       <div className="flex items-center gap-4 mb-4 text-xs" style={{ color: '#6B5B8A' }}>
-        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full inline-block" style={{ background: '#2D7A4F' }} />Top market (20+ sales)</span>
-        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full inline-block" style={{ background: '#D5A940' }} />Good (10–19 sales)</span>
-        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full inline-block" style={{ background: '#dc2626' }} />Avoid (thin/outlier)</span>
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full inline-block" style={{ background: '#2D7A4F' }} />Solid (10+ sales)</span>
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full inline-block" style={{ background: '#D5A940' }} />Thin Data (5–9 sales)</span>
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full inline-block" style={{ background: '#dc2626' }} />Avoid (outlier)</span>
       </div>
 
-      {/* Top 10 ranked list */}
+      {/* Top 20 ranked list */}
       <div className="rounded-xl overflow-hidden mb-4" style={{ border: '1px solid #E8E0F0' }}>
-        <div className="grid text-[10px] uppercase tracking-wider px-4 py-2" style={{ gridTemplateColumns: '32px 12px 1fr 80px 100px', color: '#6B5B8A', background: '#F8F6FB', borderBottom: '1px solid #E8E0F0' }}>
-          <span>#</span><span></span><span>ZIP</span><span className="text-right">Sales</span><span className="text-right">Median $/Acre</span>
+        <div className="grid text-[10px] uppercase tracking-wider px-4 py-2" style={{ gridTemplateColumns: '32px 12px 1fr 90px 100px 80px', color: '#6B5B8A', background: '#F8F6FB', borderBottom: '1px solid #E8E0F0' }}>
+          <span>#</span><span></span><span>ZIP</span><span className="text-right">Sales</span><span className="text-right">Median $/Acre</span><span></span>
         </div>
-        {top10.map((z, i) => {
+        {top20.map((z, i) => {
           const dot = zipDotColor(z, outlierSet)
+          const isThinWarning = warningZips.has(z.zip_code)
           return (
             <div
               key={z.zip_code}
               className="grid items-center px-4 py-2.5"
-              style={{ gridTemplateColumns: '32px 12px 1fr 80px 100px', background: i % 2 === 0 ? '#FFFFFF' : '#FAFAF8', borderBottom: i < 9 ? '1px solid #F0EBF8' : 'none' }}
+              style={{ gridTemplateColumns: '32px 12px 1fr 90px 100px 80px', background: i % 2 === 0 ? '#FFFFFF' : '#FAFAF8', borderBottom: i < top20.length - 1 ? '1px solid #F0EBF8' : 'none' }}
             >
               <span className="text-xs font-bold" style={{ color: '#9B8AAE' }}>{i + 1}</span>
               <div className="w-2 h-2 rounded-full" style={{ background: dot }} />
@@ -227,6 +229,11 @@ function TopMarketsCard({ zipStats, comps }: { zipStats: ZipStats[]; comps: Comp
               <span className="text-xs text-right font-medium" style={{ color: '#1A0A2E' }}>{z.sales_count.toLocaleString()}</span>
               <span className="text-xs text-right" style={{ color: '#D5A940' }}>
                 {z.median_price_per_acre != null ? `$${Math.round(z.median_price_per_acre).toLocaleString()}` : '—'}
+              </span>
+              <span className="flex justify-end">
+                {isThinWarning && (
+                  <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 6, background: '#FFF9E6', color: '#B8860B', border: '1px solid #FFE082' }}>Thin Data</span>
+                )}
               </span>
             </div>
           )
@@ -252,7 +259,7 @@ function TopMarketsCard({ zipStats, comps }: { zipStats: ZipStats[]; comps: Comp
           )}
           {thinZips.length > 0 && (
             <div>
-              <span style={{ color: '#6B5B8A' }}>{thinZips.length} thin data ZIPs excluded (fewer than 10 sales)</span>
+              <span style={{ color: '#6B5B8A' }}>{thinZips.length} thin data ZIPs excluded (fewer than 5 sales)</span>
               <button className="ml-2 underline" style={{ color: '#5C2977' }} onClick={() => setShowThin(v => !v)}>
                 {showThin ? 'hide' : 'view all'}
               </button>
@@ -271,9 +278,9 @@ function TopMarketsCard({ zipStats, comps }: { zipStats: ZipStats[]; comps: Comp
         <CompMap
           comps={comps}
           availableZips={zipStats.map(z => z.zip_code)}
-          visibleZips={top10Zips}
+          visibleZips={top20Zips}
           onZipToggle={() => {}}
-          topZips={top10Zips}
+          topZips={top20Zips}
           avoidZips={avoidZips}
         />
       )}
@@ -385,7 +392,22 @@ function BuyBoxRecipe({
   const [building, setBuilding] = useState(false)
   const [built, setBuilt] = useState(false)
 
-  const topZips = [...zipStats].sort((a, b) => b.sales_count - a.sales_count).slice(0, 10).map(z => z.zip_code)
+  const allPpas = zipStats.map(z => z.median_price_per_acre).filter((v): v is number => v != null && Number.isFinite(v) && v > 0)
+  const sortedPpas = [...allPpas].sort((a, b) => a - b)
+  const mid = Math.floor(sortedPpas.length / 2)
+  const buyBoxMedianPpa = sortedPpas.length === 0 ? 0
+    : sortedPpas.length % 2 === 0 ? (sortedPpas[mid - 1] + sortedPpas[mid]) / 2
+    : sortedPpas[mid]
+  const bbOutlierCodes = new Set(
+    buyBoxMedianPpa > 0
+      ? zipStats.filter(z => (z.median_price_per_acre ?? 0) > 3 * buyBoxMedianPpa).map(z => z.zip_code)
+      : []
+  )
+  const topZips = [...zipStats]
+    .filter(z => !bbOutlierCodes.has(z.zip_code) && z.sales_count >= 5)
+    .sort((a, b) => b.sales_count - a.sales_count)
+    .slice(0, 20)
+    .map(z => z.zip_code)
   const sortedCounties = [...topCounties].sort((a, b) => a.localeCompare(b))
 
   // Land quality — data-driven from sold comps, with fallbacks
@@ -602,11 +624,13 @@ ${sec('6. Owner',
               </div>
             )}
             <div>
-              <p className="mb-1" style={{ color: '#6B5B8A' }}>Top 10 ZIPs — Land Portal → Location → ZIP Code</p>
-              <div className="flex flex-wrap gap-1.5">
-                {topZips.map(z => (
-                  <span key={z} className="font-mono text-[11px] px-2 py-0.5 rounded" style={{ background: 'rgba(92,41,119,0.1)', color: '#3D1A5C', border: '1px solid rgba(92,41,119,0.2)' }}>{z}</span>
-                ))}
+              <div>
+                <p className="mb-1" style={{ color: '#6B5B8A' }}>Top 20 ZIPs — Land Portal → Location → ZIP Code</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {topZips.map(z => (
+                    <span key={z} className="font-mono text-[11px] px-2 py-0.5 rounded" style={{ background: 'rgba(92,41,119,0.1)', color: '#3D1A5C', border: '1px solid rgba(92,41,119,0.2)' }}>{z}</span>
+                  ))}
+                </div>
               </div>
             </div>
           </div>

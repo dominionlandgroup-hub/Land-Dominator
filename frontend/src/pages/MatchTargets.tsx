@@ -71,7 +71,7 @@ export default function MatchTargets() {
     else { setMinAcreage('0.1'); setMaxAcreage('2') }
   }, [dashboardData])
 
-  // Top 10 ZIPs from dashboard for "Use Buy Box ZIPs" — exclude outliers (ppa > 3x market median)
+  // Top 20 ZIPs from dashboard for "Use Buy Box ZIPs" — exclude outliers (ppa > 3x market median) and <5 sales
   const top10Zips = React.useMemo(() => {
     const stats = dashboardData?.zip_stats ?? []
     const ppas = stats
@@ -88,9 +88,9 @@ export default function MatchTargets() {
         : []
     )
     return stats
-      .filter(z => !outlierCodes.has(z.zip_code))
+      .filter(z => !outlierCodes.has(z.zip_code) && z.sales_count >= 5)
       .sort((a, b) => b.sales_count - a.sales_count)
-      .slice(0, 10)
+      .slice(0, 20)
       .map(z => z.zip_code)
   }, [dashboardData?.zip_stats])
 

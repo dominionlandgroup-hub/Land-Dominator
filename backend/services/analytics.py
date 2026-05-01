@@ -248,8 +248,8 @@ def generate_insight(zip_stats: List[Dict[str, Any]], summary: Dict[str, Any], s
         ]
         outlier_zips.sort(key=lambda x: x[1], reverse=True)
 
-    # ── Thin data ZIPs (<10 sales) ───────────────────────────────────
-    thin_zips = [z["zip_code"] for z in zip_stats if z["sales_count"] < 10]
+    # ── Thin data ZIPs (<5 sales) ────────────────────────────────────
+    thin_zips = [z["zip_code"] for z in zip_stats if z["sales_count"] < 5]
 
     parts: List[str] = []
 
@@ -296,7 +296,7 @@ def generate_insight(zip_stats: List[Dict[str, Any]], summary: Dict[str, Any], s
         plural = "s" if len(thin_zips) > 1 else ""
         have = "have" if len(thin_zips) > 1 else "has"
         parts.append(
-            f"Avoid ZIP{plural} {zip_list} which {have} fewer than 10 sales "
+            f"Avoid ZIP{plural} {zip_list} which {have} fewer than 5 sales "
             f"and insufficient comp data for reliable pricing."
         )
     elif top_zip.get("median_lot_size"):
