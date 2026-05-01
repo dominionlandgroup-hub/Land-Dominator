@@ -22,7 +22,7 @@ from models.crm_schemas import (
     ImportResult,
     Property, PropertyCreate, PropertyUpdate,
 )
-from services.supabase_client import get_supabase
+from services.supabase_client import get_supabase, get_supabase_admin
 
 router = APIRouter(prefix="/crm", tags=["crm"])
 
@@ -1551,17 +1551,26 @@ async def upload_property_document(
 
         storage_path = f"{property_id}/{doc_id}_{file.filename or 'document'}"
 
-        # Upload to Supabase Storage
+        # Upload to Supabase Storage using service role key (anon key is blocked by Storage RLS)
         try:
-            sb.storage.from_(_STORAGE_BUCKET).upload(
+            sb_admin = get_supabase_admin()
+            sb_admin.storage.from_(_STORAGE_BUCKET).upload(
                 storage_path,
                 content,
                 {"content-type": content_type},
             )
         except Exception as exc:
+            import logging
+            logging.getLogger(__name__).error(
+                "Storage upload failed for path=%s bucket=%s: %s",
+                storage_path, _STORAGE_BUCKET, exc,
+            )
             # Rollback metadata row if storage upload fails
             sb.table("crm_property_documents").delete().eq("id", doc_id).execute()
-            raise HTTPException(status_code=500, detail=f"Storage upload failed: {exc}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Storage upload failed: {exc}. Ensure the '{_STORAGE_BUCKET}' bucket exists in Supabase Storage and SUPABASE_SERVICE_KEY is set.",
+            )
 
         # Update storage_path
         sb.table("crm_property_documents").update({"storage_path": storage_path}).eq("id", doc_id).execute()
@@ -1605,7 +1614,8 @@ async def delete_document(doc_id: str) -> None:
         storage_path = res.data[0].get("storage_path", "")
         if storage_path and storage_path != "__pending__":
             try:
-                sb.storage.from_(_STORAGE_BUCKET).remove([storage_path])
+                sb_admin = get_supabase_admin()
+                sb_admin.storage.from_(_STORAGE_BUCKET).remove([storage_path])
             except Exception:
                 pass  # best-effort; delete metadata regardless
         sb.table("crm_property_documents").delete().eq("id", doc_id).execute()
@@ -1629,7 +1639,8 @@ async def get_document_download_url(doc_id: str) -> dict:
         storage_path = doc.get("storage_path", "")
         if not storage_path or storage_path == "__pending__":
             raise HTTPException(status_code=404, detail="Document not yet stored")
-        signed = sb.storage.from_(_STORAGE_BUCKET).create_signed_url(storage_path, 3600)
+        sb_admin = get_supabase_admin()
+        signed = sb_admin.storage.from_(_STORAGE_BUCKET).create_signed_url(storage_path, 3600)
         url = signed.get("signedURL") or signed.get("signed_url") or signed.get("data", {}).get("signedURL", "")
         if not url:
             raise HTTPException(status_code=500, detail="Could not generate signed URL")
