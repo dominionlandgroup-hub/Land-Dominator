@@ -104,7 +104,7 @@ async def stop_scheduler() -> None:
 
 @app.on_event("startup")
 async def check_crm_schema() -> None:
-    """Warn at startup if property_id / fips columns are missing from crm_properties."""
+    """Warn at startup if required columns/tables are missing from CRM schema."""
     try:
         from services.supabase_client import get_supabase
         sb = get_supabase()
@@ -122,6 +122,23 @@ async def check_crm_schema() -> None:
                 "  Or call:  POST /crm/db-migrate  to auto-apply.\n"
                 "═══════════════════════════════════════════════════════════════\n"
             )
+
+    # Ensure notes history table exists (non-blocking)
+    try:
+        from services.supabase_client import get_supabase
+        sb = get_supabase()
+        sb.table("crm_property_notes").select("id").limit(1).execute()
+    except Exception:
+        print(
+            "\n"
+            "NOTE: crm_property_notes table missing. Run this in Supabase SQL Editor:\n"
+            "  CREATE TABLE IF NOT EXISTS crm_property_notes (\n"
+            "    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n"
+            "    created_at TIMESTAMPTZ DEFAULT NOW(),\n"
+            "    property_id UUID REFERENCES crm_properties(id) ON DELETE CASCADE,\n"
+            "    content TEXT NOT NULL\n"
+            "  );\n"
+        )
 
 
 # ── Health / Root ─────────────────────────────────────────────────────

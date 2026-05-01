@@ -375,6 +375,24 @@ export async function getDocumentDownloadUrl(docId: string): Promise<string> {
   return data.url
 }
 
+// ── Property Notes History ────────────────────────────────────────────────────
+
+export interface PropertyNote {
+  id: string
+  created_at: string
+  content: string
+}
+
+export async function listPropertyNotes(propertyId: string): Promise<PropertyNote[]> {
+  const { data } = await api.get<PropertyNote[]>(`/crm/properties/${propertyId}/notes`)
+  return data
+}
+
+export async function addPropertyNote(propertyId: string, content: string): Promise<PropertyNote> {
+  const { data } = await api.post<PropertyNote>(`/crm/properties/${propertyId}/notes`, { content })
+  return data
+}
+
 // ── Market Research ──────────────────────────────────────────────────────────
 
 export interface CountyRecommendation {

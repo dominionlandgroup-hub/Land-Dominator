@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react'
 import type { CRMProperty, PropertyStatus, Communication } from '../types/crm'
 import type { PropertyDocument } from '../api/crm'
-import { pullLpData, sendSms, listPropertyCommunications, listPropertyDocuments, uploadPropertyDocument, deleteDocument, getDocumentDownloadUrl } from '../api/crm'
+import { pullLpData, sendSms, listPropertyCommunications, listPropertyDocuments, uploadPropertyDocument, deleteDocument, getDocumentDownloadUrl, listPropertyNotes, addPropertyNote } from '../api/crm'
+import type { PropertyNote } from '../api/crm'
 import CommDetailModal, { ScoreBadge, TypeBadge, fmtTalk } from '../components/CommDetailModal'
 
 // ── Display helpers ───────────────────────────────────────────────────────────
@@ -193,6 +194,7 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
   const [detailComm, setDetailComm] = useState<Communication | null>(null)
   const [noteSaving, setNoteSaving] = useState(false)
   const [noteSaved, setNoteSaved] = useState(false)
+  const [noteHistory, setNoteHistory] = useState<PropertyNote[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const isNew = !property
 
@@ -222,6 +224,10 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
       .then(setDocs)
       .catch(() => {})
       .finally(() => setDocsLoading(false))
+
+    listPropertyNotes(property.id)
+      .then(setNoteHistory)
+      .catch(() => {})
   }, [property?.id])
 
   async function handleDocUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -365,12 +371,21 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
   }
 
   async function handleSaveNotes() {
-    if (isNew || noteSaving) return
+    if (isNew || noteSaving || !form.notes?.trim()) return
     setNoteSaving(true)
     try {
       await onSave({ notes: form.notes })
+      // Add to timestamped history
+      if (property?.id) {
+        try {
+          const note = await addPropertyNote(property.id, form.notes.trim())
+          setNoteHistory(prev => [note, ...prev])
+        } catch {
+          // history append is best-effort
+        }
+      }
       setNoteSaved(true)
-      setTimeout(() => setNoteSaved(false), 2000)
+      setTimeout(() => setNoteSaved(false), 3000)
     } catch {
       // ignore — full save will catch it
     } finally {
@@ -769,7 +784,6 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
               <textarea
                 value={form.notes || ''}
                 onChange={e => set('notes', e.target.value)}
-                onBlur={handleSaveNotes}
                 rows={4}
                 style={{
                   padding: '8px 12px',
@@ -789,14 +803,29 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
                   className="btn-secondary text-xs"
                   style={{ padding: '6px 14px' }}
                   onClick={handleSaveNotes}
-                  disabled={noteSaving || isNew}
+                  disabled={noteSaving || isNew || !form.notes?.trim()}
                 >
-                  {noteSaving ? 'Saving…' : 'Save Notes'}
+                  {noteSaving ? 'Saving…' : 'Save Note'}
                 </button>
                 {noteSaved && (
-                  <span className="text-xs font-medium" style={{ color: '#2D7A4F' }}>Notes saved</span>
+                  <span className="text-xs font-medium" style={{ color: '#2D7A4F' }}>Saved to history</span>
                 )}
               </div>
+              {noteHistory.length > 0 && (
+                <div className="mt-4">
+                  <p className="label-caps mb-2">Note History</p>
+                  <div className="flex flex-col gap-2">
+                    {noteHistory.map(n => (
+                      <div key={n.id} className="rounded-lg p-3" style={{ background: '#F8F5FC', border: '1px solid #EDE8F5' }}>
+                        <p className="text-[11px] mb-1" style={{ color: '#9B8AAE' }}>
+                          {new Date(n.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                        </p>
+                        <p className="text-xs whitespace-pre-wrap" style={{ color: '#1A0A2E' }}>{n.content}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </AccordionSection>
 

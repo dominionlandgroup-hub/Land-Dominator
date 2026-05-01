@@ -504,6 +504,8 @@ async def db_migrate() -> dict:
         "status": "manual_required",
         "message": "Could not auto-apply migration. Run the SQL below in Supabase dashboard → SQL Editor.",
         "sql": _MIGRATION_SQL,
+        "documents_table_sql": DOCUMENTS_MIGRATION_SQL,
+        "notes_table_sql": NOTES_MIGRATION_SQL,
         "errors_tried": errors_tried,
     }
 
@@ -1554,6 +1556,11 @@ async def upload_property_document(
         # Upload to Supabase Storage using service role key (anon key is blocked by Storage RLS)
         try:
             sb_admin = get_supabase_admin()
+            # Ensure bucket exists (creates it if missing — idempotent)
+            try:
+                sb_admin.storage.create_bucket(_STORAGE_BUCKET, {"public": False})
+            except Exception:
+                pass  # already exists
             sb_admin.storage.from_(_STORAGE_BUCKET).upload(
                 storage_path,
                 content,
@@ -1647,6 +1654,57 @@ async def get_document_download_url(doc_id: str) -> dict:
         return {"url": url, "filename": doc.get("filename"), "expires_in": 3600}
     except HTTPException:
         raise
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ── Property Notes History ────────────────────────────────────────────────────
+
+NOTES_MIGRATION_SQL = """
+CREATE TABLE IF NOT EXISTS crm_property_notes (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  property_id UUID REFERENCES crm_properties(id) ON DELETE CASCADE,
+  content     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_property_notes ON crm_property_notes(property_id, created_at DESC);
+""".strip()
+
+
+@router.get("/properties/{property_id}/notes")
+async def list_property_notes(property_id: str) -> list:
+    """Return all saved notes for a property, newest first."""
+    try:
+        sb = get_supabase()
+        r = (
+            sb.table("crm_property_notes")
+            .select("id,created_at,content")
+            .eq("property_id", property_id)
+            .order("created_at", desc=True)
+            .limit(100)
+            .execute()
+        )
+        return r.data or []
+    except Exception:
+        return []
+
+
+@router.post("/properties/{property_id}/notes", status_code=201)
+async def add_property_note(property_id: str, body: dict = Body(...)) -> dict:
+    """Append a timestamped note entry for a property."""
+    content = str(body.get("content", "")).strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="Note content cannot be empty")
+    try:
+        sb = get_supabase()
+        r = sb.table("crm_property_notes").insert({
+            "property_id": property_id,
+            "content": content,
+            "created_at": _now(),
+        }).execute()
+        return r.data[0]
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     except Exception as exc:
