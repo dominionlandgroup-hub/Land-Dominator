@@ -154,6 +154,14 @@ export async function addMatchResultsToCampaign(
   return data
 }
 
+export async function initiateOutboundCall(
+  toNumber: string,
+  propertyId?: string
+): Promise<{ call_id: string; to: string; from: string; communication_id?: string }> {
+  const { data } = await api.post('/crm/calls/outbound', { to_number: toNumber, property_id: propertyId })
+  return data
+}
+
 export async function saveMatchPricing(
   matchId: string,
   exportType: 'mailable' | 'matched' | 'all' = 'all'

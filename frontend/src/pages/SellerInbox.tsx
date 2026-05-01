@@ -1,361 +1,558 @@
-import React, { useEffect, useState } from 'react'
-import { listCommunications, sendSms } from '../api/crm'
+import React, { useEffect, useRef, useState } from 'react'
+import { listCommunications, sendSms, initiateOutboundCall } from '../api/crm'
 import type { Communication } from '../types/crm'
 import { useApp } from '../context/AppContext'
-import CommDetailModal, { ScoreBadge, TypeBadge, fmtTalk } from '../components/CommDetailModal'
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
-function fmtDate(iso: string) {
+function fmtInboxDate(iso: string) {
+  try {
+    const d = new Date(iso)
+    const now = new Date()
+    const isToday = d.toDateString() === now.toDateString()
+    if (isToday) return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  } catch { return '' }
+}
+
+function fmtMsgTime(iso: string) {
   try {
     return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
   } catch { return iso }
 }
 
-function fmtPrice(v?: number | null) {
-  if (!v) return '—'
-  return `$${v.toLocaleString()}`
+function fmtTalk(s?: number | null) {
+  if (!s) return ''
+  if (s < 60) return `${s}s`
+  return `${Math.floor(s / 60)}m ${s % 60}s`
 }
 
-function ownerName(c: Communication) {
-  const p = c.property
-  if (!p) return c.phone_number || 'Unknown'
-  return p.owner_full_name || [p.owner_first_name, p.owner_last_name].filter(Boolean).join(' ') || c.phone_number || 'Unknown'
+function fmtPhone(phone?: string) {
+  if (!phone) return ''
+  const d = phone.replace(/\D/g, '')
+  if (d.length === 10) return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`
+  if (d.length === 11) return `+${d[0]} (${d.slice(1,4)}) ${d.slice(4,7)}-${d.slice(7)}`
+  return phone
 }
 
-type Filter = 'all' | 'calls' | 'texts' | 'hot' | 'warm'
+function contactName(comms: Communication[]): string {
+  for (const c of comms) {
+    const p = c.property
+    if (!p) continue
+    const full = p.owner_full_name || [p.owner_first_name, p.owner_last_name].filter(Boolean).join(' ')
+    if (full) return full
+  }
+  return comms[0]?.phone_number || 'Unknown'
+}
 
-// ── SMS Reply Modal ──────────────────────────────────────────────────────────
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/)
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
 
-function SmsModal({ comm, onClose, onSent }: { comm: Communication; onClose: () => void; onSent: () => void }) {
-  const [msg, setMsg] = useState('')
-  const [sending, setSending] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
+function messagePreview(c: Communication): string {
+  if (c.type.startsWith('sms')) return c.message_body || '(SMS)'
+  if (c.summary) return c.summary
+  if (c.transcript) return c.transcript.slice(0, 100)
+  return c.type === 'call_inbound' ? '📞 Inbound call' : '📞 Outbound call'
+}
 
-  async function handleSend() {
-    if (!msg.trim() || !comm.phone_number || !comm.property_id) return
-    setSending(true); setErr(null)
-    try {
-      await sendSms(comm.property_id, comm.phone_number, msg.trim())
-      onSent()
-    } catch (e: unknown) {
-      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setErr(detail ?? 'Failed to send SMS.')
-    } finally { setSending(false) }
+// ── Thread grouping ───────────────────────────────────────────────────────────
+
+interface Thread {
+  phone: string
+  name: string
+  comms: Communication[]
+  lastComm: Communication
+  propertyId: string | null
+  ownerFirstName: string
+  propertyAddress: string
+  offerPrice: number | null
+  email: string | null
+  leadScore: string | null
+}
+
+function buildThreads(comms: Communication[]): Thread[] {
+  const map = new Map<string, Communication[]>()
+  for (const c of comms) {
+    const key = c.phone_number || 'unknown'
+    if (!map.has(key)) map.set(key, [])
+    map.get(key)!.push(c)
+  }
+  const threads: Thread[] = []
+  for (const [phone, cs] of map) {
+    const sorted = [...cs].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    const name = contactName(sorted)
+    const prop = sorted.find(c => c.property)?.property
+    const scores = sorted.map(c => c.lead_score).filter(Boolean)
+    const topScore = scores.includes('hot') ? 'hot' : scores.includes('warm') ? 'warm' : (scores[0] || null)
+    threads.push({
+      phone,
+      name,
+      comms: sorted,
+      lastComm: sorted[0],
+      propertyId: prop?.id || null,
+      ownerFirstName: prop?.owner_first_name || name.split(' ')[0] || '',
+      propertyAddress: '',
+      offerPrice: prop?.offer_price || null,
+      email: null,
+      leadScore: topScore,
+    })
+  }
+  return threads.sort((a, b) => new Date(b.lastComm.created_at).getTime() - new Date(a.lastComm.created_at).getTime())
+}
+
+// ── Score badge ───────────────────────────────────────────────────────────────
+
+function ScoreDot({ score }: { score: string | null }) {
+  if (!score) return null
+  const color = score === 'hot' ? '#E65100' : score === 'warm' ? '#F59E0B' : '#78909C'
+  return <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, display: 'inline-block', flexShrink: 0 }} />
+}
+
+// ── Recording player ──────────────────────────────────────────────────────────
+
+function RecordingPlayer({ url }: { url: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <span>
+      <button onClick={() => setOpen(o => !o)}
+        className="px-2 py-1 rounded text-xs font-semibold mr-1"
+        style={{ background: '#E8F5E9', color: '#2E7D32', border: '1px solid #A5D6A7' }}>
+        ▶ Play recording
+      </button>
+      {open && <audio controls src={url} style={{ height: 28, maxWidth: 220, display: 'block', marginTop: 4 }} autoPlay />}
+    </span>
+  )
+}
+
+// ── Message bubble ────────────────────────────────────────────────────────────
+
+function MessageEntry({ c }: { c: Communication }) {
+  const isOutbound = c.direction === 'outbound' || c.type.includes('outbound')
+  const isSms = c.type.startsWith('sms')
+
+  if (isSms) {
+    return (
+      <div className={`flex ${isOutbound ? 'justify-end' : 'justify-start'} mb-3`}>
+        <div style={{
+          maxWidth: '72%',
+          background: isOutbound ? '#5C2977' : '#F0EBF8',
+          color: isOutbound ? '#fff' : '#1A0A2E',
+          borderRadius: isOutbound ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+          padding: '10px 14px',
+          fontSize: 14,
+        }}>
+          <p style={{ margin: 0, lineHeight: 1.4 }}>{c.message_body || '—'}</p>
+          <p style={{ margin: '4px 0 0', fontSize: 10, opacity: 0.6, textAlign: isOutbound ? 'right' : 'left' }}>
+            {fmtMsgTime(c.created_at)}
+          </p>
+        </div>
+      </div>
+    )
   }
 
+  // Call entry
+  const icon = isOutbound ? '↗' : '↙'
+  const label = isOutbound ? 'Outbound call' : 'Inbound call'
+  const bg = isOutbound ? '#E3F2FD' : '#F3E5F5'
+  const col = isOutbound ? '#1565C0' : '#6A1B9A'
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(26,10,46,0.5)' }}
-      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="card" style={{ width: 480, maxWidth: '95vw', padding: 24 }}>
-        <h2 className="section-heading mb-1">Reply via SMS</h2>
-        <p className="text-xs mb-4" style={{ color: '#9B8AAE' }}>To: {comm.phone_number} — {ownerName(comm)}</p>
-        <textarea className="input-base w-full text-sm" rows={4} placeholder="Type your message…"
-          value={msg} onChange={e => setMsg(e.target.value)} style={{ resize: 'vertical' }} autoFocus />
-        {err && <p className="text-xs mt-2" style={{ color: '#B71C1C' }}>{err}</p>}
-        <div className="flex gap-2 justify-end mt-3">
-          <button className="btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn-primary" onClick={handleSend} disabled={sending || !msg.trim()}>
-            {sending ? 'Sending…' : 'Send SMS'}
-          </button>
+    <div className="flex justify-center mb-3">
+      <div style={{ background: bg, border: `1px solid ${col}22`, borderRadius: 12, padding: '10px 16px', maxWidth: '85%', width: '100%' }}>
+        <div className="flex items-center gap-2 mb-1">
+          <span style={{ color: col, fontWeight: 700, fontSize: 13 }}>{icon} {label}</span>
+          {c.duration_seconds != null && <span style={{ color: '#6B5B8A', fontSize: 11 }}>{fmtTalk(c.duration_seconds)}</span>}
+          <span style={{ color: '#9B8AAE', fontSize: 11, marginLeft: 'auto' }}>{fmtMsgTime(c.created_at)}</span>
         </div>
+        {c.recording_url && <RecordingPlayer url={c.recording_url} />}
+        {c.summary && <p style={{ color: '#6B5B8A', fontSize: 12, margin: '4px 0 0', lineHeight: 1.4 }}>{c.summary}</p>}
+        {c.transcript && !c.summary && (
+          <p style={{ color: '#6B5B8A', fontSize: 11, margin: '4px 0 0', fontStyle: 'italic', lineHeight: 1.4 }}>
+            {c.transcript.slice(0, 200)}{c.transcript.length > 200 ? '…' : ''}
+          </p>
+        )}
       </div>
     </div>
   )
 }
 
-// ── Recording player ──────────────────────────────────────────────────────────
+// ── Quick templates ───────────────────────────────────────────────────────────
 
-function RecordingBtn({ url }: { url: string }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <span>
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="px-2 py-1 rounded text-xs font-semibold"
-        style={{ background: '#E8F5E9', color: '#2E7D32', border: '1px solid #A5D6A7' }}
-        title="Play recording"
-      >
-        ▶ Play
-      </button>
-      {open && (
-        <div className="mt-1">
-          <audio controls src={url} style={{ height: 28, maxWidth: 180 }} autoPlay />
-        </div>
-      )}
-    </span>
-  )
-}
+const TEMPLATES = (firstName: string, address: string, offerPrice: number | null) => [
+  {
+    label: 'Initial contact',
+    text: `Hi ${firstName || '[First Name]'}, this is Damien with Dominion Land Group. I sent you a letter about your property${address ? ` at ${address}` : ''}. We have a cash offer${offerPrice ? ` of $${offerPrice.toLocaleString()}` : ''}. Are you still interested? Reply YES or call me back.`,
+  },
+  {
+    label: 'Follow-up',
+    text: `Hi ${firstName || '[First Name]'}, following up on our conversation about your property. Are you ready to move forward with our offer${offerPrice ? ` of $${offerPrice.toLocaleString()}` : ''}?`,
+  },
+  {
+    label: 'Check-in',
+    text: `Hi ${firstName || '[First Name]'}, just checking in. Has anything changed with your property${address ? ` at ${address}` : ''}? We are still interested in buying.`,
+  },
+]
 
-// ── Main ─────────────────────────────────────────────────────────────────────
+// ── Main ──────────────────────────────────────────────────────────────────────
+
+type InboxFilter = 'all' | 'calls' | 'texts' | 'hot' | 'unread'
 
 export default function SellerInbox() {
   const { setCurrentPage, setSelectedPropertyId } = useApp()
   const [comms, setComms] = useState<Communication[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [filter, setFilter] = useState<Filter>('all')
-  const [replyTo, setReplyTo] = useState<Communication | null>(null)
-  const [detailComm, setDetailComm] = useState<Communication | null>(null)
-  const [successMsg, setSuccessMsg] = useState<string | null>(null)
+  const [filter, setFilter] = useState<InboxFilter>('all')
+  const [search, setSearch] = useState('')
+  const [selectedPhone, setSelectedPhone] = useState<string | null>(null)
+  const [smsText, setSmsText] = useState('')
+  const [sending, setSending] = useState(false)
+  const [sendErr, setSendErr] = useState<string | null>(null)
+  const [sendOk, setSendOk] = useState(false)
+  const [calling, setCalling] = useState(false)
+  const [callMsg, setCallMsg] = useState<string | null>(null)
+  const threadEndRef = useRef<HTMLDivElement>(null)
+  const silentMode = false // kept as constant; toggle removed from this view
 
   useEffect(() => { load() }, [])
+
+  useEffect(() => {
+    threadEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [selectedPhone, comms])
 
   async function load() {
     setLoading(true); setError(null)
     try {
-      setComms(await listCommunications({ limit: 300 }))
+      setComms(await listCommunications({ limit: 500 }))
     } catch {
-      setError('Failed to load communications. Ensure the crm_communications table has been created.')
+      setError('Failed to load communications.')
     } finally { setLoading(false) }
   }
 
-  const filtered = comms.filter(c => {
-    if (filter === 'calls') return c.type.startsWith('call')
-    if (filter === 'texts') return c.type.startsWith('sms')
-    if (filter === 'hot') return c.lead_score === 'hot'
-    if (filter === 'warm') return c.lead_score === 'warm'
+  const allThreads = buildThreads(comms)
+
+  const filteredThreads = allThreads.filter(t => {
+    const q = search.toLowerCase()
+    if (q && !t.name.toLowerCase().includes(q) && !t.phone.includes(q)) return false
+    if (filter === 'calls') return t.comms.some(c => c.type.startsWith('call'))
+    if (filter === 'texts') return t.comms.some(c => c.type.startsWith('sms'))
+    if (filter === 'hot') return t.leadScore === 'hot'
+    if (filter === 'unread') return false // placeholder — no unread tracking yet
     return true
   })
 
-  const callCount = comms.filter(c => c.type.startsWith('call')).length
-  const textCount = comms.filter(c => c.type.startsWith('sms')).length
-  const hotCount  = comms.filter(c => c.lead_score === 'hot').length
+  const selected = selectedPhone ? allThreads.find(t => t.phone === selectedPhone) ?? null : null
+  const threadComms = selected ? [...selected.comms].reverse() : []
 
-  const FILTERS: { id: Filter; label: string; count: number }[] = [
-    { id: 'all',   label: 'All',     count: comms.length },
-    { id: 'calls', label: 'Calls',   count: callCount },
-    { id: 'texts', label: 'Texts',   count: textCount },
-    { id: 'hot',   label: '🔥 HOT',  count: hotCount },
-    { id: 'warm',  label: '🌡 WARM', count: comms.filter(c => c.lead_score === 'warm').length },
+  const FILTERS: { id: InboxFilter; label: string }[] = [
+    { id: 'all', label: 'All' },
+    { id: 'calls', label: 'Calls' },
+    { id: 'texts', label: 'Texts' },
+    { id: 'hot', label: '🔥 HOT' },
+    { id: 'unread', label: 'Unread' },
   ]
 
-  function openProperty(c: Communication) {
-    const id = c.property?.id
-    if (!id) return
-    setSelectedPropertyId(id)
+  async function handleSend() {
+    if (!smsText.trim() || !selected) return
+    const propId = selected.propertyId
+    if (!propId) { setSendErr('No property linked — cannot send SMS.'); return }
+    setSending(true); setSendErr(null); setSendOk(false)
+    try {
+      await sendSms(propId, selected.phone, smsText.trim())
+      setSmsText(''); setSendOk(true)
+      setTimeout(() => setSendOk(false), 2000)
+      await load()
+    } catch (e: unknown) {
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setSendErr(detail ?? 'Failed to send SMS.')
+    } finally { setSending(false) }
+  }
+
+  async function handleCall(thread: Thread) {
+    setCalling(true); setCallMsg(null)
+    try {
+      await initiateOutboundCall(thread.phone, thread.propertyId ?? undefined)
+      setCallMsg('✓ Call initiated')
+      setTimeout(() => setCallMsg(null), 3000)
+      await load()
+    } catch {
+      setCallMsg('✗ Call failed')
+      setTimeout(() => setCallMsg(null), 3000)
+    } finally { setCalling(false) }
+  }
+
+  function openProperty(thread: Thread) {
+    if (!thread.propertyId) return
+    setSelectedPropertyId(thread.propertyId)
     setCurrentPage('crm-properties')
   }
 
-  return (
-    <div style={{ background: '#F8F6FB', minHeight: '100vh' }}>
-      <div className="page-header">
-        <div className="page-header-left">
-          <h1 className="page-title">Seller Inbox</h1>
-          <p className="page-subtitle">{comms.length} total communications</p>
-        </div>
-        <button className="btn-secondary" onClick={load} disabled={loading}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <polyline points="23 4 23 10 17 10"/>
-            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-          </svg>
-          Refresh
-        </button>
-      </div>
+  // ── Render ────────────────────────────────────────────────────────────────
 
-      <div className="p-6">
-        {/* Summary cards */}
-        <div className="grid grid-cols-3 gap-4 mb-5">
-          {[
-            { label: 'Total Conversations', value: comms.length, color: '#5C2977' },
-            { label: 'Calls',              value: callCount,     color: '#1565C0' },
-            { label: '🔥 HOT Leads',       value: hotCount,      color: '#E65100' },
-          ].map(({ label, value, color }) => (
-            <div key={label} className="bg-white rounded-xl p-4" style={{ border: '1px solid #EDE8F5' }}>
-              <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: '#9B8AAE' }}>{label}</p>
-              <p className="text-2xl font-bold" style={{ color }}>{value}</p>
-            </div>
-          ))}
+  return (
+    <div style={{ display: 'flex', height: '100vh', background: '#F8F6FB', overflow: 'hidden' }}>
+
+      {/* ── Left sidebar: conversation list ── */}
+      <div style={{ width: 320, borderRight: '1px solid #EDE8F5', display: 'flex', flexDirection: 'column', background: '#fff', flexShrink: 0 }}>
+
+        {/* Header */}
+        <div style={{ padding: '16px 16px 12px', borderBottom: '1px solid #EDE8F5' }}>
+          <div className="flex items-center justify-between mb-3">
+            <h1 style={{ fontSize: 18, fontWeight: 700, color: '#1A0A2E' }}>Seller Inbox</h1>
+            <button onClick={load} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9B8AAE', fontSize: 13 }}>↻</button>
+          </div>
+          {/* Search */}
+          <div style={{ position: 'relative' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9B8AAE" strokeWidth="2"
+              style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input
+              type="text"
+              placeholder="Search by name or phone…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              style={{ width: '100%', boxSizing: 'border-box', paddingLeft: 32, paddingRight: 10, paddingTop: 7, paddingBottom: 7, borderRadius: 10, border: '1px solid #EDE8F5', fontSize: 13, outline: 'none', color: '#1A0A2E', background: '#F8F6FB' }}
+            />
+          </div>
         </div>
 
         {/* Filter tabs */}
-        <div className="flex gap-1.5 mb-4">
+        <div style={{ display: 'flex', gap: 4, padding: '8px 12px', borderBottom: '1px solid #EDE8F5', flexWrap: 'wrap' }}>
           {FILTERS.map(f => (
             <button key={f.id} onClick={() => setFilter(f.id)}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
               style={{
-                background: filter === f.id ? '#5C2977' : '#fff',
+                padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                background: filter === f.id ? '#5C2977' : 'transparent',
                 color: filter === f.id ? '#fff' : '#6B5B8A',
-                border: `1px solid ${filter === f.id ? '#5C2977' : '#EDE8F5'}`,
+                border: filter === f.id ? '1px solid #5C2977' : '1px solid transparent',
               }}>
-              {f.label} {f.count > 0 && <span style={{ opacity: 0.7 }}>({f.count})</span>}
+              {f.label}
             </button>
           ))}
         </div>
 
-        {successMsg && (
-          <div className="mb-3 p-3 rounded-lg text-sm" style={{ background: '#E8F5E9', color: '#2E7D32', border: '1px solid #C8E6C9' }}>
-            {successMsg}
-            <button className="ml-3 underline text-xs" onClick={() => setSuccessMsg(null)}>Dismiss</button>
-          </div>
-        )}
+        {/* Thread list */}
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          {loading ? (
+            <div style={{ padding: 24, textAlign: 'center', color: '#9B8AAE', fontSize: 13 }}>Loading…</div>
+          ) : error ? (
+            <div style={{ padding: 16, fontSize: 12, color: '#B71C1C' }}>{error}</div>
+          ) : filteredThreads.length === 0 ? (
+            <div style={{ padding: 24, textAlign: 'center', color: '#9B8AAE', fontSize: 13 }}>No conversations</div>
+          ) : filteredThreads.map(t => {
+            const isSelected = selectedPhone === t.phone
+            const initials = getInitials(t.name)
+            const preview = messagePreview(t.lastComm)
+            const scoreColors: Record<string, string> = { hot: '#E65100', warm: '#F59E0B', cold: '#78909C' }
+            const avatarBg = t.leadScore ? scoreColors[t.leadScore] || '#5C2977' : '#5C2977'
 
-        {error && (
-          <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: '#FFF0F0', color: '#B71C1C', border: '1px solid #FFCDD2' }}>
-            {error}
-          </div>
-        )}
+            return (
+              <div key={t.phone}
+                onClick={() => { setSelectedPhone(t.phone); setSendErr(null); setSendOk(false) }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
+                  cursor: 'pointer', borderBottom: '1px solid #F0EBF8',
+                  background: isSelected ? '#F0EBF8' : 'transparent',
+                  transition: 'background 0.1s',
+                }}
+                onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLDivElement).style.background = '#F8F5FC' }}
+                onMouseLeave={e => { if (!isSelected) (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
+              >
+                {/* Avatar */}
+                <div style={{
+                  width: 44, height: 44, borderRadius: '50%', background: avatarBg,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: '#fff', fontWeight: 700, fontSize: 15, flexShrink: 0,
+                }}>
+                  {initials}
+                </div>
+                {/* Content */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="flex items-center justify-between">
+                    <span style={{ fontWeight: 700, fontSize: 14, color: '#1A0A2E', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 140 }}>
+                      {t.name}
+                    </span>
+                    <span style={{ fontSize: 11, color: '#9B8AAE', flexShrink: 0, marginLeft: 8 }}>
+                      {fmtInboxDate(t.lastComm.created_at)}
+                    </span>
+                  </div>
+                  <p style={{ fontSize: 12, color: '#9B8AAE', margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {preview}
+                  </p>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
 
-        {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <p className="text-sm" style={{ color: '#9B8AAE' }}>Loading communications…</p>
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="text-center py-20" style={{ color: '#6B5B8A' }}>
-            <svg className="mx-auto mb-4 opacity-30" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/>
-              <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>
-            </svg>
-            <p className="text-sm font-medium">
-              {filter === 'all' ? 'No communications yet' : `No ${filter} communications`}
-            </p>
-            {filter === 'all' && (
-              <p className="text-xs mt-1 max-w-xs mx-auto">
-                Communications appear here when sellers call or text your Telnyx number.
-              </p>
-            )}
+      {/* ── Center: conversation thread ── */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        {!selected ? (
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#C4B5D8' }}>
+            <div style={{ textAlign: 'center' }}>
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" style={{ marginBottom: 12, opacity: 0.4 }}>
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+              <p style={{ fontSize: 14 }}>Select a conversation</p>
+            </div>
           </div>
         ) : (
-          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: '#F8F6FB', borderBottom: '2px solid #EDE8F5' }}>
-                  {['Owner', 'Phone', 'APN / County', 'Offer Code', 'Offer Price', 'Type', 'Score', 'Talk Time', 'Summary', 'Date', 'Actions'].map(h => (
-                    <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: '10px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#6B5B8A', whiteSpace: 'nowrap' }}>
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((c, idx) => {
-                  const prop = c.property || {}
-                  const name = ownerName(c)
-                  const apn = prop.apn || '—'
-                  const county = prop.county || ''
-                  const offerCode = prop.campaign_code || c.caller_offer_code || '—'
-                  const offerPrice = prop.offer_price
-                  const isSms = c.type.startsWith('sms')
-                  const hasProperty = !!prop.id
-                  return (
-                    <tr key={c.id}
-                      style={{ background: idx % 2 === 0 ? '#fff' : '#FAF8FD', borderBottom: '1px solid #EDE8F5', cursor: 'pointer' }}
-                      onClick={() => setDetailComm(c)}
-                      onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = '#F0EBF8' }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = idx % 2 === 0 ? '#fff' : '#FAF8FD' }}
-                    >
-                      {/* Owner */}
-                      <td style={{ padding: '10px 14px', maxWidth: 150 }}>
-                        <span className="text-sm font-semibold" style={{ color: '#5C2977' }} title="Click to view details">
-                          {name}
-                        </span>
-                      </td>
+          <>
+            {/* Thread header */}
+            <div style={{ padding: '12px 20px', borderBottom: '1px solid #EDE8F5', background: '#fff', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: 38, height: 38, borderRadius: '50%', background: '#5C2977', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 14, flexShrink: 0 }}>
+                {getInitials(selected.name)}
+              </div>
+              <div style={{ flex: 1 }}>
+                <p style={{ fontWeight: 700, fontSize: 15, color: '#1A0A2E', margin: 0 }}>{selected.name}</p>
+                <p style={{ fontSize: 12, color: '#9B8AAE', margin: 0 }}>{fmtPhone(selected.phone)}</p>
+              </div>
+              {callMsg && (
+                <span style={{ fontSize: 12, color: callMsg.startsWith('✓') ? '#2D7A4F' : '#B71C1C', fontWeight: 600 }}>{callMsg}</span>
+              )}
+              {/* Call button */}
+              <button
+                onClick={() => handleCall(selected)}
+                disabled={calling}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 10, border: '1px solid #EDE8F5', background: calling ? '#EDE8F5' : '#fff', color: '#5C2977', fontWeight: 600, fontSize: 13, cursor: calling ? 'default' : 'pointer' }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.63 3.38 2 2 0 0 1 3.6 1.21h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.9a16 16 0 0 0 6 6l1.06-1.06a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
+                </svg>
+                {calling ? 'Calling…' : 'Call'}
+              </button>
+              {selected.propertyId && (
+                <button
+                  onClick={() => openProperty(selected)}
+                  style={{ padding: '7px 14px', borderRadius: 10, border: '1px solid #EDE8F5', background: '#fff', color: '#6B5B8A', fontSize: 13, cursor: 'pointer' }}>
+                  View Property →
+                </button>
+              )}
+            </div>
 
-                      {/* Phone */}
-                      <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
-                        <span className="text-xs" style={{ color: '#6B5B8A' }}>{c.phone_number || '—'}</span>
-                      </td>
+            {/* Messages */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+              {threadComms.map(c => <MessageEntry key={c.id} c={c} />)}
+              <div ref={threadEndRef} />
+            </div>
 
-                      {/* APN / County */}
-                      <td style={{ padding: '10px 14px' }}>
-                        <span className="text-xs font-medium" style={{ color: '#5C2977' }}>{apn}</span>
-                        {county && <span className="text-xs block" style={{ color: '#9B8AAE' }}>{county}</span>}
-                      </td>
+            {/* Quick templates */}
+            <div style={{ padding: '8px 24px 0', background: '#F8F6FB', borderTop: '1px solid #EDE8F5' }}>
+              <div className="flex gap-2 flex-wrap">
+                {TEMPLATES(selected.ownerFirstName, selected.propertyAddress, selected.offerPrice).map(tpl => (
+                  <button key={tpl.label}
+                    onClick={() => setSmsText(tpl.text)}
+                    style={{ fontSize: 11, padding: '4px 10px', borderRadius: 14, border: '1px solid #EDE8F5', background: '#fff', color: '#5C2977', cursor: 'pointer', fontWeight: 500 }}>
+                    {tpl.label}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-                      {/* Offer Code */}
-                      <td style={{ padding: '10px 14px' }}>
-                        <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded" style={{ background: '#F3E5F5', color: '#6A1B9A' }}>
-                          {offerCode}
-                        </span>
-                      </td>
-
-                      {/* Offer Price */}
-                      <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
-                        <span className="text-xs font-semibold" style={{ color: offerPrice ? '#2D7A4F' : '#9B8AAE' }}>
-                          {fmtPrice(offerPrice)}
-                        </span>
-                      </td>
-
-                      {/* Type */}
-                      <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
-                        <TypeBadge type={c.type} />
-                      </td>
-
-                      {/* Score */}
-                      <td style={{ padding: '10px 14px' }}>
-                        <ScoreBadge score={c.lead_score} />
-                      </td>
-
-                      {/* Talk time */}
-                      <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
-                        <span className="text-xs" style={{ color: '#9B8AAE' }}>
-                          {c.type.startsWith('call') ? fmtTalk(c.duration_seconds) : '—'}
-                        </span>
-                      </td>
-
-                      {/* Summary */}
-                      <td style={{ padding: '10px 14px', maxWidth: 220 }}>
-                        <p className="text-xs" style={{ color: '#6B5B8A', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                          {c.summary || c.message_body || '—'}
-                        </p>
-                      </td>
-
-                      {/* Date */}
-                      <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
-                        <span className="text-xs" style={{ color: '#9B8AAE' }}>{fmtDate(c.created_at)}</span>
-                      </td>
-
-                      {/* Actions */}
-                      <td style={{ padding: '10px 14px' }} onClick={e => e.stopPropagation()}>
-                        <div className="flex flex-col gap-1">
-                          {isSms && c.property_id && (
-                            <button
-                              className="px-2 py-1 rounded text-xs font-semibold"
-                              style={{ background: '#F3E5F5', color: '#6A1B9A', border: '1px solid #E1BEE7' }}
-                              onClick={() => setReplyTo(c)}
-                            >
-                              Reply
-                            </button>
-                          )}
-                          {c.type === 'call_inbound' && c.phone_number && (
-                            <a
-                              href={`tel:${c.phone_number}`}
-                              className="px-2 py-1 rounded text-xs font-semibold text-center"
-                              style={{ background: '#E3F2FD', color: '#1565C0', border: '1px solid #BBDEFB', textDecoration: 'none' }}
-                            >
-                              Call Back
-                            </a>
-                          )}
-                          {c.recording_url && <RecordingBtn url={c.recording_url} />}
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+            {/* SMS composer */}
+            <div style={{ padding: '10px 24px 16px', background: '#F8F6FB' }}>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
+                <textarea
+                  value={smsText}
+                  onChange={e => setSmsText(e.target.value)}
+                  placeholder={selected.propertyId ? 'Type a message…' : 'No property linked — cannot send SMS'}
+                  disabled={!selected.propertyId}
+                  rows={2}
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
+                  style={{ flex: 1, borderRadius: 16, border: '1px solid #EDE8F5', padding: '10px 14px', fontSize: 14, resize: 'none', outline: 'none', background: '#fff', color: '#1A0A2E' }}
+                />
+                <button
+                  onClick={handleSend}
+                  disabled={sending || !smsText.trim() || !selected.propertyId}
+                  style={{
+                    padding: '10px 18px', borderRadius: 16, border: 'none',
+                    background: (!smsText.trim() || !selected.propertyId) ? '#EDE8F5' : '#5C2977',
+                    color: (!smsText.trim() || !selected.propertyId) ? '#9B8AAE' : '#fff',
+                    fontWeight: 700, fontSize: 14, cursor: sending || !smsText.trim() ? 'default' : 'pointer', flexShrink: 0,
+                  }}>
+                  {sendOk ? '✓' : sending ? '…' : '→'}
+                </button>
+              </div>
+              {sendErr && <p style={{ fontSize: 12, color: '#B71C1C', marginTop: 6 }}>{sendErr}</p>}
+            </div>
+          </>
         )}
       </div>
 
-      {replyTo && (
-        <SmsModal
-          comm={replyTo}
-          onClose={() => setReplyTo(null)}
-          onSent={() => {
-            setReplyTo(null)
-            setSuccessMsg('SMS sent successfully.')
-            load()
-          }}
-        />
-      )}
+      {/* ── Right: contact info panel ── */}
+      {selected && (
+        <div style={{ width: 240, borderLeft: '1px solid #EDE8F5', background: '#fff', overflowY: 'auto', flexShrink: 0, padding: 20 }}>
+          {/* Avatar */}
+          <div style={{ textAlign: 'center', marginBottom: 16 }}>
+            <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#5C2977', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 20, margin: '0 auto 8px' }}>
+              {getInitials(selected.name)}
+            </div>
+            <p style={{ fontWeight: 700, fontSize: 15, color: '#1A0A2E', margin: 0 }}>{selected.name}</p>
+            {selected.leadScore && (
+              <span style={{
+                display: 'inline-block', marginTop: 4, padding: '2px 10px', borderRadius: 12, fontSize: 11, fontWeight: 700,
+                background: selected.leadScore === 'hot' ? '#FFF3E0' : selected.leadScore === 'warm' ? '#FFF9E6' : '#F5F5F5',
+                color: selected.leadScore === 'hot' ? '#E65100' : selected.leadScore === 'warm' ? '#F59E0B' : '#78909C',
+              }}>{selected.leadScore.toUpperCase()}</span>
+            )}
+          </div>
 
-      {detailComm && (
-        <CommDetailModal
-          comm={detailComm}
-          onClose={() => setDetailComm(null)}
-          onOpenProperty={detailComm.property?.id ? (id) => { openProperty(detailComm); setDetailComm(null) } : undefined}
-        />
+          <hr style={{ border: 'none', borderTop: '1px solid #EDE8F5', margin: '0 0 16px' }} />
+
+          {/* Phone */}
+          <div style={{ marginBottom: 14 }}>
+            <p style={{ fontSize: 10, fontWeight: 700, color: '#9B8AAE', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>Phone</p>
+            <div className="flex items-center gap-2">
+              <span style={{ fontSize: 14, color: '#1A0A2E' }}>{fmtPhone(selected.phone)}</span>
+              <button onClick={() => handleCall(selected)} title="Call"
+                style={{ padding: '4px 8px', borderRadius: 8, border: '1px solid #EDE8F5', background: '#F8F5FC', color: '#5C2977', cursor: 'pointer', fontSize: 12 }}>
+                📞
+              </button>
+            </div>
+          </div>
+
+          {/* Linked property */}
+          {selected.propertyId && (
+            <div style={{ marginBottom: 14 }}>
+              <p style={{ fontSize: 10, fontWeight: 700, color: '#9B8AAE', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>Linked Property</p>
+              <button onClick={() => openProperty(selected)}
+                style={{ fontSize: 12, color: '#5C2977', fontWeight: 600, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left' }}>
+                View property →
+              </button>
+            </div>
+          )}
+
+          {/* Offer price */}
+          {selected.offerPrice != null && (
+            <div style={{ marginBottom: 14 }}>
+              <p style={{ fontSize: 10, fontWeight: 700, color: '#9B8AAE', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>Offer Price</p>
+              <p style={{ fontSize: 16, fontWeight: 700, color: '#2D7A4F', margin: 0 }}>
+                ${selected.offerPrice.toLocaleString()}
+              </p>
+            </div>
+          )}
+
+          <hr style={{ border: 'none', borderTop: '1px solid #EDE8F5', margin: '0 0 16px' }} />
+
+          {/* Recent activity count */}
+          <div style={{ marginBottom: 12 }}>
+            <p style={{ fontSize: 10, fontWeight: 700, color: '#9B8AAE', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Activity</p>
+            {[
+              { label: 'Calls', count: selected.comms.filter(c => c.type.startsWith('call')).length },
+              { label: 'Texts', count: selected.comms.filter(c => c.type.startsWith('sms')).length },
+            ].map(({ label, count }) => (
+              <div key={label} className="flex justify-between" style={{ marginBottom: 4 }}>
+                <span style={{ fontSize: 12, color: '#6B5B8A' }}>{label}</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: '#1A0A2E' }}>{count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   )

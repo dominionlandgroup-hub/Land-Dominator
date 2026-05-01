@@ -70,6 +70,12 @@ _PHRASES: dict[str, str] = {
     "close": "Thank you for calling. Have a great day!",
     "close_cold": "I understand. Thank you for calling. Have a great day!",
     "mmmhm": "Mmm-hmm.",
+    "voicemail": (
+        "Hi, this is Damien with Dominion Land Group calling about your property. "
+        "We sent you a letter with a cash offer and would love to connect. "
+        "Please call us back at your earliest convenience. "
+        "Thank you and have a great day!"
+    ),
 }
 
 
@@ -1223,6 +1229,120 @@ async def test_offer_code(spoken: str = Query(..., description="Spoken code stri
             "owner_full_name": prop.get("owner_full_name"),
         } if prop else None,
     }
+
+
+# ── Outbound calling ──────────────────────────────────────────────────────────────
+
+class OutboundCallRequest(BaseModel):
+    property_id: Optional[str] = None
+    to_number: str
+
+
+@router.post("/crm/calls/outbound")
+async def initiate_outbound_call(body: OutboundCallRequest) -> dict:
+    """
+    Initiate an outbound call from the Telnyx number to a seller.
+    Telnyx calls the seller directly from your Telnyx DID.
+    AMD (answering machine detection) is enabled — voicemail is left automatically.
+    """
+    api_key = _telnyx_key()
+    from_phone = _telnyx_phone()
+    if not api_key:
+        raise HTTPException(status_code=503, detail="TELNYX_API_KEY not configured")
+    if not from_phone:
+        raise HTTPException(status_code=503, detail="TELNYX_PHONE_NUMBER not configured")
+
+    # Normalize to E.164
+    digits = re.sub(r"\D", "", body.to_number)
+    if len(digits) == 10:
+        to_e164 = f"+1{digits}"
+    elif len(digits) == 11 and digits.startswith("1"):
+        to_e164 = f"+{digits}"
+    else:
+        to_e164 = body.to_number if body.to_number.startswith("+") else f"+{digits}"
+
+    amd_webhook = f"{_base_url()}/api/calls/outbound-amd"
+
+    try:
+        payload: dict = {
+            "from": from_phone,
+            "to": to_e164,
+            "answering_machine_detection": "detect",
+            "webhook_url": amd_webhook,
+            "webhook_url_method": "POST",
+        }
+        connection_id = os.getenv("TELNYX_CONNECTION_ID", "")
+        if connection_id:
+            payload["connection_id"] = connection_id
+
+        async with httpx.AsyncClient(timeout=20) as client:
+            r = await client.post(
+                "https://api.telnyx.com/v2/calls",
+                json=payload,
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            )
+            if r.status_code >= 400:
+                raise HTTPException(status_code=r.status_code, detail=f"Telnyx: {r.text[:300]}")
+            call_data = r.json().get("data", {})
+            call_id = call_data.get("call_control_id", "")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    # Log call attempt immediately
+    comm = await _log_comm(
+        property_id=body.property_id,
+        comm_type="call_outbound",
+        phone=to_e164,
+        direction="outbound",
+        call_id=call_id,
+        summary="Outbound call initiated from CRM",
+    )
+    return {"call_id": call_id, "to": to_e164, "from": from_phone, "communication_id": comm.get("id")}
+
+
+@router.post("/api/calls/outbound-amd")
+async def outbound_amd_webhook(request: Request) -> Response:
+    """
+    Telnyx AMD webhook for outbound calls.
+    When answering machine is detected, drop pre-recorded voicemail and hang up.
+    """
+    try:
+        payload = await request.json()
+    except Exception:
+        return Response(status_code=200)
+
+    event_type = str(payload.get("data", {}).get("event_type", ""))
+    ev_payload = payload.get("data", {}).get("payload", {})
+    call_control_id = ev_payload.get("call_control_id", "")
+    amd_result = ev_payload.get("result", "")  # "machine" | "human" | "not_sure"
+
+    if event_type == "call.answered.amd" and amd_result == "machine" and call_control_id:
+        voicemail_url = f"{_base_url()}/api/calls/audio/voicemail"
+        api_key = _telnyx_key()
+        if api_key:
+            try:
+                # Ensure voicemail audio is cached
+                asyncio.create_task(_tts_generate(_PHRASES["voicemail"], "voicemail"))
+                async with httpx.AsyncClient(timeout=10) as client:
+                    # Play the voicemail
+                    await client.post(
+                        f"https://api.telnyx.com/v2/calls/{call_control_id}/actions/playback_start",
+                        json={"audio_url": voicemail_url, "loop": 1},
+                        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                    )
+                    # Schedule hangup after 30s (voicemail is ~15s)
+                    await asyncio.sleep(30)
+                    await client.post(
+                        f"https://api.telnyx.com/v2/calls/{call_control_id}/actions/hangup",
+                        json={},
+                        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                    )
+            except Exception as exc:
+                print(f"[comms] Voicemail drop error: {exc}")
+
+    return Response(status_code=200)
 
 
 # ── Migration SQL ─────────────────────────────────────────────────────────────────
