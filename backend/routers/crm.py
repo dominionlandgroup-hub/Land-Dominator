@@ -1046,7 +1046,11 @@ async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)
         c_r = sb.table("crm_campaigns").select("id,name,campaign_code").eq("id", campaign_id).execute()
         if not c_r.data:
             raise HTTPException(status_code=404, detail="Campaign not found")
-        campaign_code_prefix = (c_r.data[0].get("campaign_code") or "")[:6] or campaign_id[:6]
+
+        # Derive a short 2-digit campaign number for campaign_code prefix
+        all_camp = sb.table("crm_campaigns").select("id").order("created_at").execute()
+        camp_num = next((i + 1 for i, c in enumerate(all_camp.data or []) if c["id"] == campaign_id), 1)
+        code_prefix = f"{camp_num:02d}"
 
         rows = []
         for seq, r in enumerate(results, start=1):
@@ -1061,7 +1065,7 @@ async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)
                 # Basic
                 "campaign_id": campaign_id,
                 "status": "lead",
-                "campaign_code": f"{campaign_code_prefix}-{seq:04d}",
+                "campaign_code": f"{code_prefix}-{seq}",
                 # Owner
                 "owner_full_name": owner_full,
                 "owner_first_name": owner_first,
@@ -1125,32 +1129,40 @@ async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)
                 "elevation_avg": r.get("elevation_avg"),
                 "road_frontage": r.get("road_frontage"),
                 "land_use": r.get("land_use") or None,
-                "assessed_value": r.get("assessed_value") or None,
                 "school_district": r.get("school_district") or None,
                 "dd_zoning": r.get("zoning") or r.get("dd_zoning") or None,
                 "created_at": _now(),
                 "updated_at": _now(),
             })
 
-        print(f"[add-match-results] Inserting {len(rows)} rows via _safe_batch_insert", flush=True)
+        print(f"[add-match-results] Inserting {len(rows)} rows in chunks of 25", flush=True)
         if rows:
-            safe_keys = ["campaign_id", "status", "apn", "offer_price", "pricing_flag" if "pricing_flag" in rows[0] else "lp_estimate"]
-            print(f"[add-match-results] First row sample: { {k: rows[0].get(k) for k in safe_keys} }", flush=True)
+            print(f"[add-match-results] First row sample: campaign_id={rows[0].get('campaign_id')} apn={rows[0].get('apn')} offer_price={rows[0].get('offer_price')} lp_estimate={rows[0].get('lp_estimate')}", flush=True)
 
-        imported, warnings = _safe_batch_insert(sb, rows)
-        print(f"[add-match-results] Insert complete: imported={imported} warnings={warnings[:5]}", flush=True)
+        # Insert in chunks of 25 so any per-row error is isolated
+        CHUNK = 25
+        imported = 0
+        all_warnings: list[str] = []
+        for chunk_start in range(0, len(rows), CHUNK):
+            chunk = rows[chunk_start:chunk_start + CHUNK]
+            n, warns = _safe_batch_insert(sb, chunk)
+            imported += n
+            all_warnings.extend(warns)
+            print(f"[add-match-results] chunk {chunk_start}–{chunk_start+len(chunk)}: inserted {n}/{len(chunk)}", flush=True)
 
-        if imported == 0 and warnings:
+        print(f"[add-match-results] Total imported={imported}/{len(rows)} warnings={all_warnings[:3]}", flush=True)
+
+        if imported == 0 and (all_warnings or len(rows) > 0):
             raise HTTPException(
                 status_code=500,
-                detail=f"Insert failed — 0 records written. Errors: {'; '.join(warnings[:3])}. Run POST /crm/db-migrate to add missing columns."
+                detail=f"Insert failed — 0 of {len(rows)} records written. First error: {all_warnings[0] if all_warnings else 'unknown'}. Run POST /crm/db-migrate to add missing columns."
             )
 
         return {
             "imported": imported,
             "total": len(results),
             "campaign_id": campaign_id,
-            "warnings": warnings[:5],
+            "warnings": all_warnings[:5],
         }
     except HTTPException:
         raise

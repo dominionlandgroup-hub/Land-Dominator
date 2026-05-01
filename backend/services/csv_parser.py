@@ -25,6 +25,8 @@ _COLUMN_ALIASES = {
     # Parcel ZIP aliases
     "zip": "Parcel Zip",
     "zip code": "Parcel Zip",
+    "zipcode": "Parcel Zip",
+    "zip code": "Parcel Zip",
     "situs zip": "Parcel Zip",
     "postal code": "Parcel Zip",
     "parcel zip": "Parcel Zip",
@@ -37,6 +39,30 @@ _COLUMN_ALIASES = {
     "ownername": "Owner Name(s)",
     "owner full name": "Owner Name(s)",
     "owner 1 full name": "Owner 1 Full Name",
+    # Land quality aliases — normalize LP header variants to canonical names
+    "slope avg": "Slope AVG",
+    "slope_avg": "Slope AVG",
+    "average slope": "Slope AVG",
+    "avg slope": "Slope AVG",
+    "slope": "Slope AVG",
+    "wetlands coverage": "Wetlands Coverage",
+    "wetlands_coverage": "Wetlands Coverage",
+    "wetland coverage": "Wetlands Coverage",
+    "fema flood coverage": "FEMA Flood Coverage",
+    "fema_flood_coverage": "FEMA Flood Coverage",
+    "fema coverage": "FEMA Flood Coverage",
+    "fema_coverage": "FEMA Flood Coverage",
+    "buildability total (%)": "Buildability total (%)",
+    "buildability total": "Buildability total (%)",
+    "buildability": "Buildability total (%)",
+    "buildability_total": "Buildability total (%)",
+    "road frontage": "Road Frontage",
+    "road_frontage": "Road Frontage",
+    "land locked": "Land Locked",
+    "land_locked": "Land Locked",
+    "elevation avg": "Elevation AVG",
+    "elevation_avg": "Elevation AVG",
+    "avg elevation": "Elevation AVG",
 }
 
 
@@ -75,6 +101,8 @@ NUMERIC_COLS = [
     "Slope AVG",
     "FEMA Flood Coverage",
     "Wetlands Coverage",
+    "Elevation AVG",
+    "Road Frontage",
 ]
 
 STRING_COLS = [
@@ -95,7 +123,6 @@ STRING_COLS = [
     "Topography",
     "Vacant Flag",
     "Do Not Mail",
-    "Road Frontage",
     "Land Locked",
     "Current Sale Recording Date",
 ]

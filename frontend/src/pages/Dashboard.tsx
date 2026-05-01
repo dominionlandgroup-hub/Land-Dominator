@@ -397,21 +397,17 @@ function BuyBoxRecipe({
     ? `${buildabilityMin}% minimum (based on ${buildabilityCount} comps)`
     : '80% minimum (default)'
 
-  const slopeMax = landQuality?.slope_count
-    ? Math.round(landQuality.slope_p75 ?? 10)
-    : 10
   const slopeCount = landQuality?.slope_count ?? 0
-  const slopeLabel = slopeCount > 0
+  const slopeMax = slopeCount > 0 ? Math.round(landQuality!.slope_p75 ?? 10) : null
+  const slopeLabel = slopeCount > 0 && slopeMax != null
     ? `${slopeMax}% max (based on ${slopeCount} comps)`
-    : '10% max (default)'
+    : null
 
-  const wetlandsMax = landQuality?.wetlands_count
-    ? Math.round(landQuality.wetlands_p75 ?? 5)
-    : 5
   const wetlandsCount = landQuality?.wetlands_count ?? 0
-  const wetlandsLabel = wetlandsCount > 0
+  const wetlandsMax = wetlandsCount > 0 ? Math.round(landQuality!.wetlands_p75 ?? 5) : null
+  const wetlandsLabel = wetlandsCount > 0 && wetlandsMax != null
     ? `Less than ${wetlandsMax}% (based on ${wetlandsCount} comps)`
-    : 'Less than 5% (default)'
+    : null
 
   const roadFrontageMin = landQuality?.road_frontage_count
     ? Math.round(landQuality.road_frontage_p25 ?? 30)
@@ -465,8 +461,8 @@ function BuyBoxRecipe({
     '',
     '4. LAND QUALITY',
     `   Buildability: ${buildabilityLabel}`,
-    `   Max slope: ${slopeLabel}`,
-    `   Wetlands: ${wetlandsLabel}`,
+    ...(slopeLabel ? [`   Max slope: ${slopeLabel}`] : []),
+    ...(wetlandsLabel ? [`   Wetlands: ${wetlandsLabel}`] : []),
     '   FEMA flood zone: Exclude all flood zones',
     `   Road frontage: ${roadFrontageLabel}`,
     '   Landlocked: Exclude',
@@ -537,7 +533,7 @@ ${sec('3. Lot Size',
   row('Sweet spot', sweetLabel)
 )}
 ${sec('4. Land Quality',
-  row('Buildability minimum', buildabilityLabel) + row('Maximum slope', slopeLabel) + row('Wetlands coverage', wetlandsLabel) +
+  row('Buildability minimum', buildabilityLabel) + (slopeLabel ? row('Maximum slope', slopeLabel) : '') + (wetlandsLabel ? row('Wetlands coverage', wetlandsLabel) : '') +
   check('Exclude all FEMA flood zones', false) + check('Exclude landlocked parcels', false) + row('Road frontage', roadFrontageLabel)
 )}
 ${sec('5. Sale History',
@@ -656,8 +652,8 @@ ${sec('6. Owner',
           {hdr('4 · Land Quality')}
           <div className="space-y-2 text-xs">
             <div className="flex justify-between gap-2"><span style={{ color: '#6B5B8A', flexShrink: 0 }}>Buildability minimum</span><span style={{ color: '#2D7A4F', fontWeight: 600, textAlign: 'right' }}>{buildabilityLabel}</span></div>
-            <div className="flex justify-between gap-2"><span style={{ color: '#6B5B8A', flexShrink: 0 }}>Maximum slope</span><span style={{ color: '#1A0A2E', fontWeight: 600, textAlign: 'right' }}>{slopeLabel}</span></div>
-            <div className="flex justify-between gap-2"><span style={{ color: '#6B5B8A', flexShrink: 0 }}>Wetlands coverage</span><span style={{ color: '#1A0A2E', fontWeight: 600, textAlign: 'right' }}>{wetlandsLabel}</span></div>
+            {slopeLabel && <div className="flex justify-between gap-2"><span style={{ color: '#6B5B8A', flexShrink: 0 }}>Maximum slope</span><span style={{ color: '#1A0A2E', fontWeight: 600, textAlign: 'right' }}>{slopeLabel}</span></div>}
+            {wetlandsLabel && <div className="flex justify-between gap-2"><span style={{ color: '#6B5B8A', flexShrink: 0 }}>Wetlands coverage</span><span style={{ color: '#1A0A2E', fontWeight: 600, textAlign: 'right' }}>{wetlandsLabel}</span></div>}
             <div className="flex gap-2"><span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>FEMA flood zones (exclude all)</span></div>
             <div className="flex gap-2"><span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>Landlocked parcels (exclude)</span></div>
             <div className="flex justify-between gap-2"><span style={{ color: '#6B5B8A', flexShrink: 0 }}>Road frontage</span><span style={{ color: '#2D7A4F', fontWeight: 600, textAlign: 'right' }}>{roadFrontageLabel}</span></div>

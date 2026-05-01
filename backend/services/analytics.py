@@ -430,8 +430,8 @@ def compute_land_quality_stats(df: pd.DataFrame) -> Dict[str, Any]:
     rf_p25 = _pct(rf_col, 25)
     rf_count = _count(rf_col)
 
-    # Slope — column: 'Slope' or 'Average Slope'
-    slope_col_name = next((c for c in ["Slope", "Average Slope", "Slope (%)", "Avg Slope"] if c in df.columns), None)
+    # Slope — column: 'Slope AVG' (LP canonical) or legacy variants
+    slope_col_name = next((c for c in ["Slope AVG", "Slope", "Average Slope", "Slope (%)", "Avg Slope"] if c in df.columns), None)
     slope_col = pd.to_numeric(df[slope_col_name], errors="coerce") if slope_col_name else pd.Series(dtype=float)
     slope_p75 = _pct(slope_col, 75)
     slope_count = _count(slope_col)
