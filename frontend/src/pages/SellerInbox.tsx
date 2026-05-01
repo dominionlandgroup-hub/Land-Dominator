@@ -88,7 +88,6 @@ function buildThreads(comms: Communication[]): Thread[] {
     const prop = sorted.find(c => c.property)?.property
     const scores = sorted.map(c => c.lead_score).filter(Boolean)
     const topScore = scores.includes('hot') ? 'hot' : scores.includes('warm') ? 'warm' : (scores[0] || null)
-    // Pick most actionable disposition from call history
     const dispositions = sorted.map(c => c.disposition).filter(Boolean)
     const dispPriority = ['INTERESTED', 'CALLBACK_NEEDED', 'MAYBE', 'NOT_INTERESTED', 'WRONG_NUMBER', 'NO_ANSWER']
     const topDisp = dispPriority.find(d => dispositions.includes(d)) || null
@@ -109,7 +108,7 @@ function buildThreads(comms: Communication[]): Thread[] {
   return threads.sort((a, b) => new Date(b.lastComm.created_at).getTime() - new Date(a.lastComm.created_at).getTime())
 }
 
-// ── Score badge ───────────────────────────────────────────────────────────────
+// ── Score dot ─────────────────────────────────────────────────────────────────
 
 function ScoreDot({ score }: { score: string | null }) {
   if (!score) return null
@@ -140,31 +139,138 @@ function DispositionBadge({ disposition }: { disposition: string | null }) {
   )
 }
 
-// ── Recording player ──────────────────────────────────────────────────────────
+// ── Communication detail modal ────────────────────────────────────────────────
 
-function RecordingPlayer({ url }: { url: string }) {
-  const [open, setOpen] = useState(false)
+function CommDetailModal({ comm, onClose }: { comm: Communication; onClose: () => void }) {
+  const isCall = comm.type.startsWith('call')
+  const isInbound = comm.direction === 'inbound' || comm.type.includes('inbound')
+  const prop = comm.property
+
   return (
-    <span>
-      <button onClick={() => setOpen(o => !o)}
-        className="px-2 py-1 rounded text-xs font-semibold mr-1"
-        style={{ background: '#E8F5E9', color: '#2E7D32', border: '1px solid #A5D6A7' }}>
-        ▶ Play recording
-      </button>
-      {open && <audio controls src={url} style={{ height: 28, maxWidth: 220, display: 'block', marginTop: 4 }} autoPlay />}
-    </span>
+    <div
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+      onClick={onClose}
+    >
+      <div
+        style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 560, maxHeight: '82vh', overflowY: 'auto' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
+          <div>
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: '#1A0A2E', margin: 0 }}>
+              {isCall
+                ? (isInbound ? '↙ Inbound Call' : '↗ Outbound Call')
+                : (isInbound ? '← Inbound SMS' : '→ Outbound SMS')}
+            </h2>
+            <p style={{ fontSize: 12, color: '#9B8AAE', margin: '3px 0 0' }}>{fmtMsgTime(comm.created_at)}</p>
+          </div>
+          <button onClick={onClose}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, color: '#9B8AAE', lineHeight: 1, padding: '0 4px' }}>
+            ×
+          </button>
+        </div>
+
+        {/* Details grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 24px', marginBottom: 20 }}>
+          <div>
+            <p style={{ fontSize: 10, fontWeight: 700, color: '#9B8AAE', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 3px' }}>Phone</p>
+            <p style={{ fontSize: 13, color: '#1A0A2E', margin: 0 }}>{fmtPhone(comm.phone_number) || '—'}</p>
+          </div>
+          {comm.duration_seconds != null && (
+            <div>
+              <p style={{ fontSize: 10, fontWeight: 700, color: '#9B8AAE', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 3px' }}>Duration</p>
+              <p style={{ fontSize: 13, color: '#1A0A2E', margin: 0 }}>{fmtTalk(comm.duration_seconds) || '—'}</p>
+            </div>
+          )}
+          {comm.lead_score && (
+            <div>
+              <p style={{ fontSize: 10, fontWeight: 700, color: '#9B8AAE', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 3px' }}>Lead Score</p>
+              <span style={{
+                display: 'inline-block', padding: '2px 10px', borderRadius: 12, fontSize: 12, fontWeight: 700,
+                background: comm.lead_score === 'hot' ? '#FFF3E0' : comm.lead_score === 'warm' ? '#FFF9E6' : '#F5F5F5',
+                color: comm.lead_score === 'hot' ? '#E65100' : comm.lead_score === 'warm' ? '#F59E0B' : '#78909C',
+              }}>{comm.lead_score.toUpperCase()}</span>
+            </div>
+          )}
+          {comm.disposition && (
+            <div>
+              <p style={{ fontSize: 10, fontWeight: 700, color: '#9B8AAE', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 3px' }}>Disposition</p>
+              <DispositionBadge disposition={comm.disposition} />
+            </div>
+          )}
+          {prop && (
+            <div style={{ gridColumn: '1 / -1' }}>
+              <p style={{ fontSize: 10, fontWeight: 700, color: '#9B8AAE', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 3px' }}>Linked Property</p>
+              <p style={{ fontSize: 13, color: '#1A0A2E', margin: 0 }}>
+                {prop.owner_full_name || [prop.owner_first_name, prop.owner_last_name].filter(Boolean).join(' ') || 'Unknown'}
+                {prop.apn ? ` · APN: ${prop.apn}` : ''}
+                {prop.county ? ` · ${prop.county}` : ''}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Recording */}
+        {comm.recording_url && (
+          <div style={{ marginBottom: 18 }}>
+            <p style={{ fontSize: 10, fontWeight: 700, color: '#9B8AAE', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px' }}>Recording</p>
+            <audio controls src={comm.recording_url} style={{ width: '100%', height: 32 }} />
+          </div>
+        )}
+
+        {/* Summary (calls only) */}
+        {isCall && (
+          <div style={{ marginBottom: 18 }}>
+            <p style={{ fontSize: 10, fontWeight: 700, color: '#9B8AAE', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px' }}>Summary</p>
+            <p style={{ fontSize: 13, color: '#1A0A2E', margin: 0, lineHeight: 1.6, background: '#F8F6FB', borderRadius: 8, padding: '10px 14px' }}>
+              {comm.summary || 'Call completed — no summary generated'}
+            </p>
+          </div>
+        )}
+
+        {/* Transcript */}
+        {comm.transcript && (
+          <div style={{ marginBottom: 18 }}>
+            <p style={{ fontSize: 10, fontWeight: 700, color: '#9B8AAE', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px' }}>Transcript</p>
+            <pre style={{
+              fontSize: 12, color: '#6B5B8A', margin: 0, whiteSpace: 'pre-wrap', fontFamily: 'inherit',
+              lineHeight: 1.6, background: '#F8F6FB', borderRadius: 8, padding: '10px 14px',
+              maxHeight: 280, overflowY: 'auto',
+            }}>
+              {comm.transcript}
+            </pre>
+          </div>
+        )}
+
+        {/* SMS message body */}
+        {!isCall && comm.message_body && (
+          <div>
+            <p style={{ fontSize: 10, fontWeight: 700, color: '#9B8AAE', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px' }}>Message</p>
+            <p style={{ fontSize: 14, color: '#1A0A2E', margin: 0, background: '#F8F6FB', borderRadius: 8, padding: '10px 14px', lineHeight: 1.5 }}>
+              {comm.message_body}
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
 
 // ── Message bubble ────────────────────────────────────────────────────────────
 
-function MessageEntry({ c }: { c: Communication }) {
+function MessageEntry({ c, onSelect }: { c: Communication; onSelect: (c: Communication) => void }) {
   const isOutbound = c.direction === 'outbound' || c.type.includes('outbound')
   const isSms = c.type.startsWith('sms')
 
   if (isSms) {
     return (
-      <div className={`flex ${isOutbound ? 'justify-end' : 'justify-start'} mb-3`}>
+      <div
+        className={`flex ${isOutbound ? 'justify-end' : 'justify-start'} mb-3`}
+        style={{ cursor: 'pointer' }}
+        onClick={() => onSelect(c)}
+        title="Click to view details"
+      >
         <div style={{
           maxWidth: '72%',
           background: isOutbound ? '#5C2977' : '#F0EBF8',
@@ -189,21 +295,34 @@ function MessageEntry({ c }: { c: Communication }) {
   const col = isOutbound ? '#1565C0' : '#6A1B9A'
 
   return (
-    <div className="flex justify-center mb-3">
-      <div style={{ background: bg, border: `1px solid ${col}22`, borderRadius: 12, padding: '10px 16px', maxWidth: '85%', width: '100%' }}>
+    <div
+      className="flex justify-center mb-3"
+      style={{ cursor: 'pointer' }}
+      onClick={() => onSelect(c)}
+      title="Click to view call details"
+    >
+      <div style={{
+        background: bg, border: `1px solid ${col}22`, borderRadius: 12, padding: '10px 16px',
+        maxWidth: '85%', width: '100%',
+        transition: 'box-shadow 0.1s',
+      }}
+        onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)' }}
+        onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = 'none' }}
+      >
         <div className="flex items-center gap-2 mb-1 flex-wrap">
           <span style={{ color: col, fontWeight: 700, fontSize: 13 }}>{icon} {label}</span>
           {c.duration_seconds != null && <span style={{ color: '#6B5B8A', fontSize: 11 }}>{fmtTalk(c.duration_seconds)}</span>}
           {c.disposition && <DispositionBadge disposition={c.disposition} />}
           <span style={{ color: '#9B8AAE', fontSize: 11, marginLeft: 'auto' }}>{fmtMsgTime(c.created_at)}</span>
         </div>
-        {c.recording_url && <RecordingPlayer url={c.recording_url} />}
-        {c.summary && <p style={{ color: '#6B5B8A', fontSize: 12, margin: '4px 0 0', lineHeight: 1.4 }}>{c.summary}</p>}
-        {c.transcript && !c.summary && (
-          <p style={{ color: '#6B5B8A', fontSize: 11, margin: '4px 0 0', fontStyle: 'italic', lineHeight: 1.4 }}>
-            {c.transcript.slice(0, 200)}{c.transcript.length > 200 ? '…' : ''}
-          </p>
+        {c.recording_url && (
+          <span style={{ fontSize: 11, color: '#2E7D32', fontWeight: 600 }}>▶ Recording available</span>
         )}
+        {c.summary
+          ? <p style={{ color: '#6B5B8A', fontSize: 12, margin: '4px 0 0', lineHeight: 1.4 }}>{c.summary}</p>
+          : <p style={{ color: '#9B8AAE', fontSize: 11, margin: '4px 0 0', fontStyle: 'italic' }}>Call completed — no summary generated</p>
+        }
+        <p style={{ color: '#C4B5D8', fontSize: 10, margin: '4px 0 0' }}>Click to view full transcript →</p>
       </div>
     </div>
   )
@@ -238,6 +357,7 @@ export default function SellerInbox() {
   const [filter, setFilter] = useState<InboxFilter>('all')
   const [search, setSearch] = useState('')
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null)
+  const [selectedComm, setSelectedComm] = useState<Communication | null>(null)
   const [smsText, setSmsText] = useState('')
   const [sending, setSending] = useState(false)
   const [sendErr, setSendErr] = useState<string | null>(null)
@@ -245,7 +365,6 @@ export default function SellerInbox() {
   const [calling, setCalling] = useState(false)
   const [callMsg, setCallMsg] = useState<string | null>(null)
   const threadEndRef = useRef<HTMLDivElement>(null)
-  const silentMode = false // kept as constant; toggle removed from this view
 
   useEffect(() => { load() }, [])
 
@@ -271,7 +390,7 @@ export default function SellerInbox() {
     if (filter === 'texts') return t.comms.some(c => c.type.startsWith('sms'))
     if (filter === 'hot') return t.leadScore === 'hot'
     if (filter === 'callback') return t.disposition === 'CALLBACK_NEEDED'
-    if (filter === 'unread') return false // placeholder — no unread tracking yet
+    if (filter === 'unread') return false
     return true
   })
 
@@ -289,11 +408,9 @@ export default function SellerInbox() {
 
   async function handleSend() {
     if (!smsText.trim() || !selected) return
-    const propId = selected.propertyId
-    if (!propId) { setSendErr('No property linked — cannot send SMS.'); return }
     setSending(true); setSendErr(null); setSendOk(false)
     try {
-      await sendSms(propId, selected.phone, smsText.trim())
+      await sendSms(selected.phone, smsText.trim(), selected.propertyId ?? undefined)
       setSmsText(''); setSendOk(true)
       setTimeout(() => setSendOk(false), 2000)
       await load()
@@ -308,11 +425,12 @@ export default function SellerInbox() {
     try {
       await initiateOutboundCall(thread.phone, thread.propertyId ?? undefined)
       setCallMsg('✓ Call initiated')
-      setTimeout(() => setCallMsg(null), 3000)
+      setTimeout(() => setCallMsg(null), 4000)
       await load()
-    } catch {
-      setCallMsg('✗ Call failed')
-      setTimeout(() => setCallMsg(null), 3000)
+    } catch (e: unknown) {
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setCallMsg(detail ? `✗ ${detail}` : '✗ Call failed')
+      setTimeout(() => setCallMsg(null), 6000)
     } finally { setCalling(false) }
   }
 
@@ -336,7 +454,6 @@ export default function SellerInbox() {
             <h1 style={{ fontSize: 18, fontWeight: 700, color: '#1A0A2E' }}>Seller Inbox</h1>
             <button onClick={load} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9B8AAE', fontSize: 13 }}>↻</button>
           </div>
-          {/* Search */}
           <div style={{ position: 'relative' }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9B8AAE" strokeWidth="2"
               style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
@@ -394,7 +511,6 @@ export default function SellerInbox() {
                 onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLDivElement).style.background = '#F8F5FC' }}
                 onMouseLeave={e => { if (!isSelected) (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
               >
-                {/* Avatar */}
                 <div style={{
                   width: 44, height: 44, borderRadius: '50%', background: avatarBg,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -402,7 +518,6 @@ export default function SellerInbox() {
                 }}>
                   {initials}
                 </div>
-                {/* Content */}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="flex items-center justify-between">
                     <span style={{ fontWeight: 700, fontSize: 14, color: '#1A0A2E', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 120 }}>
@@ -446,7 +561,7 @@ export default function SellerInbox() {
         ) : (
           <>
             {/* Thread header */}
-            <div style={{ padding: '12px 20px', borderBottom: '1px solid #EDE8F5', background: '#fff', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ padding: '12px 20px', borderBottom: '1px solid #EDE8F5', background: '#fff', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
               <div style={{ width: 38, height: 38, borderRadius: '50%', background: '#5C2977', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 14, flexShrink: 0 }}>
                 {getInitials(selected.name)}
               </div>
@@ -455,9 +570,12 @@ export default function SellerInbox() {
                 <p style={{ fontSize: 12, color: '#9B8AAE', margin: 0 }}>{fmtPhone(selected.phone)}</p>
               </div>
               {callMsg && (
-                <span style={{ fontSize: 12, color: callMsg.startsWith('✓') ? '#2D7A4F' : '#B71C1C', fontWeight: 600 }}>{callMsg}</span>
+                <span style={{
+                  fontSize: 12, fontWeight: 600,
+                  color: callMsg.startsWith('✓') ? '#2D7A4F' : '#B71C1C',
+                  maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis',
+                }}>{callMsg}</span>
               )}
-              {/* Call button */}
               <button
                 onClick={() => handleCall(selected)}
                 disabled={calling}
@@ -479,7 +597,9 @@ export default function SellerInbox() {
 
             {/* Messages */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
-              {threadComms.map(c => <MessageEntry key={c.id} c={c} />)}
+              {threadComms.map(c => (
+                <MessageEntry key={c.id} c={c} onSelect={setSelectedComm} />
+              ))}
               <div ref={threadEndRef} />
             </div>
 
@@ -502,24 +622,26 @@ export default function SellerInbox() {
                 <textarea
                   value={smsText}
                   onChange={e => setSmsText(e.target.value)}
-                  placeholder={selected.propertyId ? 'Type a message…' : 'No property linked — cannot send SMS'}
-                  disabled={!selected.propertyId}
+                  placeholder="Type a message…"
                   rows={2}
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
                   style={{ flex: 1, borderRadius: 16, border: '1px solid #EDE8F5', padding: '10px 14px', fontSize: 14, resize: 'none', outline: 'none', background: '#fff', color: '#1A0A2E' }}
                 />
                 <button
                   onClick={handleSend}
-                  disabled={sending || !smsText.trim() || !selected.propertyId}
+                  disabled={sending || !smsText.trim()}
                   style={{
                     padding: '10px 18px', borderRadius: 16, border: 'none',
-                    background: (!smsText.trim() || !selected.propertyId) ? '#EDE8F5' : '#5C2977',
-                    color: (!smsText.trim() || !selected.propertyId) ? '#9B8AAE' : '#fff',
+                    background: !smsText.trim() ? '#EDE8F5' : '#5C2977',
+                    color: !smsText.trim() ? '#9B8AAE' : '#fff',
                     fontWeight: 700, fontSize: 14, cursor: sending || !smsText.trim() ? 'default' : 'pointer', flexShrink: 0,
                   }}>
                   {sendOk ? '✓' : sending ? '…' : '→'}
                 </button>
               </div>
+              {!selected.propertyId && (
+                <p style={{ fontSize: 11, color: '#9B8AAE', marginTop: 4 }}>No property linked — message will be sent without template data</p>
+              )}
               {sendErr && <p style={{ fontSize: 12, color: '#B71C1C', marginTop: 6 }}>{sendErr}</p>}
             </div>
           </>
@@ -529,7 +651,6 @@ export default function SellerInbox() {
       {/* ── Right: contact info panel ── */}
       {selected && (
         <div style={{ width: 240, borderLeft: '1px solid #EDE8F5', background: '#fff', overflowY: 'auto', flexShrink: 0, padding: 20 }}>
-          {/* Avatar */}
           <div style={{ textAlign: 'center', marginBottom: 16 }}>
             <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#5C2977', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 20, margin: '0 auto 8px' }}>
               {getInitials(selected.name)}
@@ -549,7 +670,6 @@ export default function SellerInbox() {
 
           <hr style={{ border: 'none', borderTop: '1px solid #EDE8F5', margin: '0 0 16px' }} />
 
-          {/* Phone */}
           <div style={{ marginBottom: 14 }}>
             <p style={{ fontSize: 10, fontWeight: 700, color: '#9B8AAE', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>Phone</p>
             <div className="flex items-center gap-2">
@@ -561,7 +681,6 @@ export default function SellerInbox() {
             </div>
           </div>
 
-          {/* Linked property */}
           {selected.propertyId && (
             <div style={{ marginBottom: 14 }}>
               <p style={{ fontSize: 10, fontWeight: 700, color: '#9B8AAE', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>Linked Property</p>
@@ -572,7 +691,6 @@ export default function SellerInbox() {
             </div>
           )}
 
-          {/* Offer price */}
           {selected.offerPrice != null && (
             <div style={{ marginBottom: 14 }}>
               <p style={{ fontSize: 10, fontWeight: 700, color: '#9B8AAE', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>Offer Price</p>
@@ -584,7 +702,6 @@ export default function SellerInbox() {
 
           <hr style={{ border: 'none', borderTop: '1px solid #EDE8F5', margin: '0 0 16px' }} />
 
-          {/* Recent activity count */}
           <div style={{ marginBottom: 12 }}>
             <p style={{ fontSize: 10, fontWeight: 700, color: '#9B8AAE', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Activity</p>
             {[
@@ -598,6 +715,11 @@ export default function SellerInbox() {
             ))}
           </div>
         </div>
+      )}
+
+      {/* ── Communication detail modal ── */}
+      {selectedComm && (
+        <CommDetailModal comm={selectedComm} onClose={() => setSelectedComm(null)} />
       )}
     </div>
   )

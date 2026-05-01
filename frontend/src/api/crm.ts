@@ -387,8 +387,12 @@ export async function getCommStats(): Promise<CommStats> {
   return data
 }
 
-export async function sendSms(property_id: string, to_phone: string, message: string): Promise<{ sent: boolean; communication_id?: string }> {
-  const { data } = await api.post('/crm/sms/send', { property_id, to_phone, message })
+export async function sendSms(to_phone: string, message: string, property_id?: string | null): Promise<{ sent: boolean; communication_id?: string }> {
+  const { data } = await api.post('/crm/sms/send', {
+    to_phone,
+    message,
+    ...(property_id ? { property_id } : {}),
+  })
   return data
 }
 

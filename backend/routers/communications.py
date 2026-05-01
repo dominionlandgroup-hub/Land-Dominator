@@ -1230,7 +1230,7 @@ async def _process_inbound_sms(from_phone: str, message_text: str) -> None:
 # ── Outbound SMS ─────────────────────────────────────────────────────────────────
 
 class SmsSendRequest(BaseModel):
-    property_id: str
+    property_id: Optional[str] = None
     to_phone: str
     message: str
 
@@ -1408,17 +1408,24 @@ class OutboundCallRequest(BaseModel):
 
 @router.post("/crm/calls/outbound")
 async def initiate_outbound_call(body: OutboundCallRequest) -> dict:
-    """
-    Initiate an outbound call from the Telnyx number to a seller.
-    Telnyx calls the seller directly from your Telnyx DID.
-    AMD (answering machine detection) is enabled — voicemail is left automatically.
-    """
+    """Initiate an outbound call via Telnyx TeXML — routes through the same inbound Myra flow."""
     api_key = _telnyx_key()
     from_phone = _telnyx_phone()
+    connection_id = os.getenv("TELNYX_CONNECTION_ID", "")
+
     if not api_key:
         raise HTTPException(status_code=503, detail="TELNYX_API_KEY not configured")
     if not from_phone:
         raise HTTPException(status_code=503, detail="TELNYX_PHONE_NUMBER not configured")
+    if not connection_id:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "TELNYX_CONNECTION_ID not configured. "
+                "Go to Telnyx portal → Voice → TeXML Applications → your app → "
+                "copy the Connection ID → add it to Railway as TELNYX_CONNECTION_ID."
+            ),
+        )
 
     # Normalize to E.164
     digits = re.sub(r"\D", "", body.to_number)
@@ -1429,20 +1436,16 @@ async def initiate_outbound_call(body: OutboundCallRequest) -> dict:
     else:
         to_e164 = body.to_number if body.to_number.startswith("+") else f"+{digits}"
 
-    amd_webhook = f"{_base_url()}/api/calls/outbound-amd"
+    inbound_webhook = f"{_base_url()}/api/calls/inbound"
 
     try:
         payload: dict = {
+            "connection_id": connection_id,
             "from": from_phone,
             "to": to_e164,
-            "answering_machine_detection": "detect",
-            "webhook_url": amd_webhook,
+            "webhook_url": inbound_webhook,
             "webhook_url_method": "POST",
         }
-        connection_id = os.getenv("TELNYX_CONNECTION_ID", "")
-        if connection_id:
-            payload["connection_id"] = connection_id
-
         async with httpx.AsyncClient(timeout=20) as client:
             r = await client.post(
                 "https://api.telnyx.com/v2/calls",
@@ -1458,7 +1461,6 @@ async def initiate_outbound_call(body: OutboundCallRequest) -> dict:
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
-    # Log call attempt immediately
     comm = await _log_comm(
         property_id=body.property_id,
         comm_type="call_outbound",
