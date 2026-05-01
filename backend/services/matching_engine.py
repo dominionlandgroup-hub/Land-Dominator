@@ -162,7 +162,12 @@ COMP_SEARCH_STEPS = [
     (0.25, '0.25mi'),
     (0.50, '0.50mi'),
     (1.00, '1mi'),
+    (2.00, '2mi'),
+    (3.00, '3mi'),
 ]
+
+# Minimum comps before stopping radius expansion; accept 1 at final step
+_MIN_COMPS_TO_STOP = 2
 
 # Adjacent acreage bands to try within 1mi when exact band has no comps
 _ADJACENT_BANDS: dict[str, list[str]] = {
@@ -1312,25 +1317,34 @@ def run_matching(
                 if debug:
                     print(f"[DEBUG {target_apn}] Premium ZIP {t_zip_str}: comps after ZIP filter = {band_mask.sum()}", flush=True)
 
-            # ═══ DAMIEN PRIORITY ORDER (March 2026) ═══
+            # ═══ SEARCH PRIORITY ORDER ═══
             # Priority 1: SAME STREET within 1mi (always wins)
-            # Priority 2: 0.25mi → 0.50mi → 1.00mi (closest first)
-            # Priority 3: no comps within 1.00mi → NO_COMPS
+            # Priority 2: Expand radius 0.25 → 0.5 → 1 → 2 → 3mi, stop at ≥2 comps
+            #             At each step, augment with adjacent acreage bands if exact band is thin
+            # Priority 3: Accept single comp at largest radius reached
+            # Priority 4: No comps → NO_COMPS
 
             matched_mask = np.zeros(len(vc), dtype=bool)
             radius_label = 'NO_COMPS'
             same_street_used = False
 
+            # Pre-search: classify why we might fail (for unmatched reasons display)
+            _no_match_pre_reason = None
+            if has_acres and band_mask.sum() == 0:
+                _no_match_pre_reason = 'No comps in acreage band'
+            elif t_zip_str and t_zip_str not in ('nan', 'None', ''):
+                zip_comp_count = sum(1 for z in comp_zips if str(z).split('.')[0].strip() == t_zip_str)
+                if zip_comp_count == 0:
+                    _no_match_pre_reason = 'ZIP has no comp data'
+
             target_street = t_streets[ti]
 
             # STEP 0: Check same-street comps first across full 1mi radius
-            # Damien: "SAME STREET FIRST - If a comp exists on the same street, use it"
             if target_street and len(target_street) > 2:
                 street_mask = band_mask & (row_distances <= 1.0) & np.array([s == target_street for s in comp_streets])
                 if street_mask.sum() >= 1:
                     matched_mask = street_mask
                     same_street_used = True
-                    # Determine radius label from closest same-street comp distance
                     closest_ss_dist = float(np.min(row_distances[street_mask]))
                     if closest_ss_dist <= 0.25:
                         radius_label = '0.25mi'
@@ -1344,40 +1358,46 @@ def run_matching(
                             flush=True,
                         )
 
-            # STEP 1-3: If no same-street comps, search by radius (max 1mi)
+            # STEPS 1-N: Radius expansion up to 3mi with adjacent-band augmentation
+            # Stop early once we have ≥2 comps; accept 1 comp as fallback at any step
             if not same_street_used:
+                _zip_mask_arr = np.array([str(z).split('.')[0].strip() == t_zip_str for z in comp_zips]) if is_premium else None
+                adj_bands = _ADJACENT_BANDS.get(band_label, []) if has_acres else []
+
                 for radius, label in COMP_SEARCH_STEPS:
+                    # Start with exact acreage band
                     trial_mask = band_mask & (row_distances <= radius)
+                    n = int(trial_mask.sum())
+
+                    # Augment with adjacent bands if exact band is thin at this radius
+                    if adj_bands and n < _MIN_COMPS_TO_STOP:
+                        for adj_label in adj_bands:
+                            adj_mask = band_masks_dict.get(adj_label, np.zeros(len(vc), dtype=bool))
+                            adj_trial = adj_mask & (row_distances <= radius)
+                            if is_premium and _zip_mask_arr is not None:
+                                adj_trial = adj_trial & _zip_mask_arr
+                            trial_mask = trial_mask | adj_trial
+                            n = int(trial_mask.sum())
+                            if n >= _MIN_COMPS_TO_STOP:
+                                break
+
                     if debug:
                         print(
-                            f"[DEBUG {target_apn}] Step {label}: {trial_mask.sum()} comps within {radius}mi",
+                            f"[DEBUG {target_apn}] Step {label}: {n} comps (exact+adj) within {radius}mi",
                             flush=True,
                         )
-                    if trial_mask.sum() >= 1:
+
+                    if n >= _MIN_COMPS_TO_STOP:
                         matched_mask = trial_mask
                         radius_label = label
                         if debug:
-                            print(f"[DEBUG {target_apn}] SELECTED: {trial_mask.sum()} comps at {label}", flush=True)
+                            print(f"[DEBUG {target_apn}] SELECTED ≥{_MIN_COMPS_TO_STOP}: {n} comps at {label}", flush=True)
                         break
-
-            # STEP 4: If still no comps, try adjacent acreage bands within 1mi
-            if not same_street_used and matched_mask.sum() == 0 and has_acres:
-                adj_bands = _ADJACENT_BANDS.get(band_label, [])
-                for adj_label in adj_bands:
-                    adj_mask = band_masks_dict.get(adj_label, np.zeros(len(vc), dtype=bool))
-                    trial_mask = adj_mask & (row_distances <= 1.0)
-                    # Apply premium ZIP restriction if active
-                    if is_premium:
-                        trial_mask = trial_mask & np.array([str(z).split('.')[0].strip() == t_zip_str for z in comp_zips])
-                    if trial_mask.sum() >= 1:
+                    elif n == 1:
+                        # Keep as best-so-far, continue expanding for more
                         matched_mask = trial_mask
-                        radius_label = '1mi'
-                        if debug:
-                            print(
-                                f"[DEBUG {target_apn}] ADJACENT BAND fallback: {trial_mask.sum()} comps in '{adj_label}' band within 1mi",
-                                flush=True,
-                            )
-                        break
+                        radius_label = label
+                    # n == 0: continue without updating
 
             # County-awareness guard: if nearby comps are all from different counties,
             # treat as no local comps and avoid forced pricing.
@@ -1397,10 +1417,9 @@ def run_matching(
                     matched_mask = np.zeros(len(vc), dtype=bool)
                     radius_label = 'NO_COMPS'
                     cross_county_match = True
-            
-            # If no comps found within 1mi, matched_mask stays empty
+
             if debug and radius_label == 'NO_COMPS':
-                print(f"[DEBUG {target_apn}] NO_COMPS - no comps within 1mi", flush=True)
+                print(f"[DEBUG {target_apn}] NO_COMPS - no comps within 3mi", flush=True)
 
             # ── Acreage similarity filter (band-specific thresholds) ──
             # Micro/nano bands: lots under 0.5ac vary widely, use looser threshold
@@ -1541,6 +1560,7 @@ def run_matching(
         # Use lp_estimate × pricing percentages as fallback pricing
         if pricing['pricing_flag'] == 'NO_COMPS' and tlp_val and tlp_val > 0:
             lp_retail = float(tlp_val)
+            _lp_reason = _no_match_pre_reason or 'No comps within 3 miles'
             pricing.update({
                 'pricing_flag': 'LP_FALLBACK',
                 'pricing_source': 'LP_FALLBACK',
@@ -1549,14 +1569,14 @@ def run_matching(
                 'offer_mid': round(lp_retail * MID_PCT),
                 'offer_high': round(lp_retail * HIGH_PCT),
                 'confidence': 'EST',
-                'no_match_reason': 'No comps within 1 mile',
+                'no_match_reason': _lp_reason,
                 'radius_label': 'LP_FALLBACK',
             })
             # score stays 0 — no comp evidence, LP estimate only
 
         # Set human-readable no_match_reason for records that remain unpriced
         if pricing.get('pricing_flag') == 'NO_COMPS' and not pricing.get('no_match_reason'):
-            pricing['no_match_reason'] = 'No comps within 1 mile and no LP estimate'
+            pricing['no_match_reason'] = _no_match_pre_reason or 'No comps within 3 miles'
 
         if debug:
             print(f"[DEBUG {target_apn}] PRICING RESULT:", flush=True)
@@ -1899,7 +1919,7 @@ def run_matching(
     low_offer_count   = sum(1 for r in results if r.get("pricing_flag") == "LOW_OFFER")
     low_value_count   = sum(1 for r in results if r.get("pricing_flag") == "LOW_VALUE")
     unpriced_count    = sum(1 for r in results if r.get("pricing_flag") in ("NO_COMPS", None))
-    mailable_count    = matched_count + lp_fallback_count
+    mailable_count    = matched_count  # LP_FALLBACK is reference only, not mailable
 
     # Smart floor: 10th percentile of all priced offer_mid values
     _priced_offers = sorted([

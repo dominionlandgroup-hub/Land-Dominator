@@ -182,9 +182,9 @@ async def download_mailing(
     FLAGGED_SUSPECT_FLAGS = set()  # No longer used - simplified per Damien's request
 
     if export_type == "mailable":
-        # Mailable = MATCHED + LP_FALLBACK records (above floor, priced)
-        filtered = [p for p in cleaned if getattr(p, 'pricing_flag', None) in ('MATCHED', 'LP_FALLBACK')]
-        suffix = f"mailable-{len(filtered)}-records"
+        # Mailable = MATCHED only (LP_FALLBACK is reference-only, not recommended for mailing)
+        filtered = [p for p in cleaned if getattr(p, 'pricing_flag', None) == 'MATCHED']
+        suffix = f"comp-matched-{len(filtered)}-records"
     elif export_type == "matched":
         filtered = [p for p in cleaned if getattr(p, 'pricing_flag', None) == 'MATCHED']
         suffix = f"matched-{len(filtered)}-records"
