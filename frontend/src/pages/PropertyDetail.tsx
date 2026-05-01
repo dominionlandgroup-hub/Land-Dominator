@@ -332,7 +332,7 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
               <Field label="Wetlands Coverage (%)" field="wetlands_coverage" type="number" placeholder="0.00" />
               <Field label="Slope AVG (%)" field="slope_avg" type="number" placeholder="0.00" />
               <Field label="Elevation AVG (ft)" field="elevation_avg" type="number" placeholder="0" />
-              <Field label="Assessed Value ($)" field="assessed_value" type="number" placeholder="0" />
+              <Field label="Assessed Value" field="assessed_value" />
             </div>
           </section>
 

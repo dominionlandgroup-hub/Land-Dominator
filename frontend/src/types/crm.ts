@@ -73,7 +73,7 @@ export interface CRMProperty {
   property_zip?: string
   latitude?: number
   longitude?: number
-  assessed_value?: number
+  assessed_value?: string
   fema_coverage?: number
   wetlands_coverage?: number
   buildability?: number

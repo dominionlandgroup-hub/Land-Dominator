@@ -316,7 +316,7 @@ _FLOAT_FIELDS = {
     "offer_range_high", "pricing_offer_price", "claude_ai_comp",
     "latitude", "longitude",
     "fema_coverage", "wetlands_coverage", "buildability", "buildability_acres",
-    "elevation_avg", "road_frontage", "slope_avg", "assessed_value", "price_per_acre",
+    "elevation_avg", "road_frontage", "slope_avg", "price_per_acre",
 }
 
 # Columns that should only fill in a field if it is not already populated by a

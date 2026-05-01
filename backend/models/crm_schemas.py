@@ -81,8 +81,8 @@ class PropertyBase(BaseModel):
     property_city: Optional[str] = None
     property_zip: Optional[str] = None
 
-    # Assessed value (from "Total Assessed Value" in LP export — NUMERIC)
-    assessed_value: Optional[float] = None
+    # Assessed value stored as TEXT to preserve original formatted value (e.g. "$250,000")
+    assessed_value: Optional[str] = None
 
     # Land analysis fields (from Land Portal export)
     fema_coverage: Optional[float] = None
