@@ -9,6 +9,8 @@ from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 
 from routers import upload, dashboard, matching, mailing, campaigns, crm, ai_chat
+from routers import settings as settings_router
+from routers import mail_calendar as mail_cal_router
 
 load_dotenv()
 
@@ -51,9 +53,40 @@ app.include_router(mailing.router)
 app.include_router(campaigns.router)
 app.include_router(crm.router)
 app.include_router(ai_chat.router)
+app.include_router(settings_router.router)
+app.include_router(mail_cal_router.router)
 
 
 # ── Startup migration check ───────────────────────────────────────────
+
+@app.on_event("startup")
+async def start_scheduler() -> None:
+    """Start APScheduler for weekly Monday notification."""
+    try:
+        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        from apscheduler.triggers.cron import CronTrigger
+        from routers.mail_calendar import send_weekly_summary_task
+
+        scheduler = AsyncIOScheduler()
+        scheduler.add_job(
+            send_weekly_summary_task,
+            CronTrigger(day_of_week="mon", hour=8, minute=0),
+            id="weekly_summary",
+            replace_existing=True,
+        )
+        scheduler.start()
+        app.state.scheduler = scheduler
+        print("Scheduler started — weekly summary fires every Monday 08:00")
+    except Exception as exc:
+        print(f"Scheduler startup warning: {exc}")
+
+
+@app.on_event("shutdown")
+async def stop_scheduler() -> None:
+    scheduler = getattr(app.state, "scheduler", None)
+    if scheduler and scheduler.running:
+        scheduler.shutdown(wait=False)
+
 
 @app.on_event("startup")
 async def check_crm_schema() -> None:

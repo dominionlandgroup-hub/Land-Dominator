@@ -1,5 +1,5 @@
 import api from './client'
-import type { CRMProperty, CRMContact, CRMDeal, CRMCampaign, ImportResult } from '../types/crm'
+import type { CRMProperty, CRMContact, CRMDeal, CRMCampaign, ImportResult, MailDrop, MailDropPreview, BuyBox } from '../types/crm'
 
 // ── Properties ────────────────────────────────────────────────────────
 
@@ -93,12 +93,27 @@ export async function getCrmCampaign(id: string): Promise<CRMCampaign> {
   return data
 }
 
-export async function createCrmCampaign(name: string, notes?: string): Promise<CRMCampaign> {
-  const { data } = await api.post<CRMCampaign>('/crm/campaigns', { name, notes })
+export async function createCrmCampaign(
+  name: string,
+  opts?: {
+    notes?: string
+    total_budget?: number
+    cost_per_piece?: number
+    weekly_budget?: number
+    pieces_per_week?: number
+    send_day?: string
+    mail_house_email?: string
+    start_date?: string
+  }
+): Promise<CRMCampaign> {
+  const { data } = await api.post<CRMCampaign>('/crm/campaigns', { name, ...opts })
   return data
 }
 
-export async function updateCrmCampaign(id: string, updates: { name?: string; notes?: string }): Promise<CRMCampaign> {
+export async function updateCrmCampaign(
+  id: string,
+  updates: Partial<CRMCampaign>
+): Promise<CRMCampaign> {
   const { data } = await api.patch<CRMCampaign>(`/crm/campaigns/${id}`, updates)
   return data
 }
@@ -219,4 +234,82 @@ export async function updateDeal(id: string, body: Partial<CRMDeal>): Promise<CR
 
 export async function deleteDeal(id: string): Promise<void> {
   await api.delete(`/crm/deals/${id}`)
+}
+
+// ── Mail Drops ────────────────────────────────────────────────────────
+
+export async function listMailDrops(campaignId?: string): Promise<MailDrop[]> {
+  const { data } = await api.get<MailDrop[]>('/crm/mail-drops', {
+    params: campaignId ? { campaign_id: campaignId } : undefined,
+  })
+  return data
+}
+
+export async function previewMailDrop(
+  campaign_id: string,
+  scheduled_date: string
+): Promise<MailDropPreview> {
+  const { data } = await api.post<MailDropPreview>('/crm/mail-drops/preview', {
+    campaign_id,
+    scheduled_date,
+  })
+  return data
+}
+
+export async function createMailDrop(
+  campaign_id: string,
+  scheduled_date: string,
+  week_number?: number
+): Promise<MailDrop> {
+  const { data } = await api.post<MailDrop>('/crm/mail-drops', {
+    campaign_id,
+    scheduled_date,
+    week_number,
+  })
+  return data
+}
+
+export async function approveMailDrop(id: string): Promise<MailDrop> {
+  const { data } = await api.patch<MailDrop>(`/crm/mail-drops/${id}/approve`)
+  return data
+}
+
+export async function sendMailDrop(id: string): Promise<MailDrop> {
+  const { data } = await api.post<MailDrop>(`/crm/mail-drops/${id}/send`)
+  return data
+}
+
+export async function downloadMailDropCsv(id: string, filename?: string): Promise<void> {
+  const { data } = await api.get(`/crm/mail-drops/${id}/csv`, { responseType: 'blob' })
+  const url = URL.createObjectURL(new Blob([data], { type: 'text/csv' }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename ?? `mail_list_${id.slice(0, 8)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+export async function deleteMailDrop(id: string): Promise<void> {
+  await api.delete(`/crm/mail-drops/${id}`)
+}
+
+// ── Settings ──────────────────────────────────────────────────────────
+
+export async function getSetting(key: string): Promise<{ key: string; value: unknown }> {
+  const { data } = await api.get<{ key: string; value: unknown }>(`/crm/settings/${key}`)
+  return data
+}
+
+export async function upsertSetting(key: string, value: unknown): Promise<{ key: string; value: unknown }> {
+  const { data } = await api.put<{ key: string; value: unknown }>(`/crm/settings/${key}`, { value })
+  return data
+}
+
+export async function getBuyBox(): Promise<BuyBox> {
+  const res = await getSetting('buy_box')
+  return (res.value as BuyBox) ?? {}
+}
+
+export async function saveBuyBox(box: BuyBox): Promise<void> {
+  await upsertSetting('buy_box', box)
 }

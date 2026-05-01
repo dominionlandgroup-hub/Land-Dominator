@@ -154,4 +154,56 @@ export interface CRMCampaign {
   updated_at?: string
   property_count?: number
   by_status?: Record<string, number>
+  total_budget?: number
+  cost_per_piece?: number
+  weekly_budget?: number
+  pieces_per_week?: number
+  send_day?: string
+  mail_house_email?: string
+  start_date?: string
+  amount_spent?: number
+}
+
+export type MailDropStatus = 'scheduled' | 'approved' | 'sent' | 'error'
+
+export interface MailDrop {
+  id: string
+  campaign_id?: string
+  campaign_name?: string
+  week_number?: number
+  scheduled_date?: string
+  pieces_count?: number
+  estimated_cost?: number
+  status: MailDropStatus
+  approved_at?: string
+  sent_at?: string
+  email_sent_to?: string
+  suppression_summary?: string
+  error?: string
+  created_at: string
+  updated_at?: string
+}
+
+export interface MailDropPreview {
+  campaign_id: string
+  scheduled_date: string
+  total_records: number
+  suppressed_count: number
+  eligible_count: number
+  estimated_cost: number
+  cost_per_piece: number
+}
+
+export interface BuyBox {
+  target_state?: string
+  target_county?: string
+  min_acreage?: number
+  max_acreage?: number
+  min_price?: number
+  max_price?: number
+  offer_pct?: number
+  mail_house_email?: string
+  weekly_send_day?: string
+  weekly_budget?: number
+  cost_per_piece?: number
 }

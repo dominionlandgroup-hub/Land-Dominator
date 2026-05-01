@@ -45,6 +45,11 @@ export default function CRMCampaigns() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [showNewModal, setShowNewModal] = useState(false)
   const [newName, setNewName] = useState('')
+  const [newBudget, setNewBudget] = useState('')
+  const [newCostPerPiece, setNewCostPerPiece] = useState('0.55')
+  const [newWeeklyBudget, setNewWeeklyBudget] = useState('')
+  const [newSendDay, setNewSendDay] = useState('')
+  const [newMailHouseEmail, setNewMailHouseEmail] = useState('')
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -58,13 +63,25 @@ export default function CRMCampaigns() {
     finally { setLoading(false) }
   }
 
+  function resetNewForm() {
+    setNewName(''); setNewBudget(''); setNewCostPerPiece('0.55')
+    setNewWeeklyBudget(''); setNewSendDay(''); setNewMailHouseEmail('')
+    setCreateError(null)
+  }
+
   async function handleCreate() {
     if (!newName.trim()) return
     setCreating(true); setCreateError(null)
     try {
-      const camp = await createCrmCampaign(newName.trim())
+      const camp = await createCrmCampaign(newName.trim(), {
+        total_budget: newBudget ? parseFloat(newBudget) : undefined,
+        cost_per_piece: newCostPerPiece ? parseFloat(newCostPerPiece) : undefined,
+        weekly_budget: newWeeklyBudget ? parseFloat(newWeeklyBudget) : undefined,
+        send_day: newSendDay || undefined,
+        mail_house_email: newMailHouseEmail || undefined,
+      })
       setCampaigns(prev => [camp, ...prev])
-      setNewName(''); setShowNewModal(false)
+      resetNewForm(); setShowNewModal(false)
     } catch { setCreateError('Failed to create campaign.') }
     finally { setCreating(false) }
   }
@@ -240,7 +257,9 @@ export default function CRMCampaigns() {
                         <span className="text-sm font-semibold" style={{ color: '#5C2977' }}>{stats.total.toLocaleString()}</span>
                       </td>
                       <td style={{ padding: '12px 16px' }}>
-                        <span className="text-sm" style={{ color: '#9B8AAE' }}>$0</span>
+                        <span className="text-sm" style={{ color: camp.amount_spent ? '#1A0A2E' : '#9B8AAE' }}>
+                          {camp.amount_spent ? `$${(camp.amount_spent).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '$0'}
+                        </span>
                       </td>
                       <td style={{ padding: '12px 16px' }}>
                         <span className="text-sm font-medium" style={{ color: '#1A0A2E' }}>{stats.deals.toLocaleString()}</span>
@@ -299,24 +318,113 @@ export default function CRMCampaigns() {
         <div
           className="fixed inset-0 z-50 flex items-center justify-center"
           style={{ background: 'rgba(26,10,46,0.45)' }}
-          onClick={e => { if (e.target === e.currentTarget) { setShowNewModal(false); setNewName(''); setCreateError(null) } }}
+          onClick={e => { if (e.target === e.currentTarget) { resetNewForm(); setShowNewModal(false) } }}
         >
-          <div className="card" style={{ width: 440, maxWidth: '90vw', padding: 24 }}>
+          <div className="card" style={{ width: 500, maxWidth: '95vw', padding: 24 }}>
             <h2 className="section-heading mb-4">New Campaign</h2>
-            <input
-              type="text"
-              className="input-base w-full text-sm mb-3"
-              placeholder="e.g. Brunswick County April 2026"
-              value={newName}
-              onChange={e => setNewName(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleCreate()}
-              disabled={creating}
-              maxLength={80}
-              autoFocus
-            />
+
+            <div className="space-y-3 mb-4">
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: '#6B5B8A' }}>Campaign Name *</label>
+                <input
+                  type="text"
+                  className="input-base w-full text-sm"
+                  placeholder="e.g. Brunswick County April 2026"
+                  value={newName}
+                  onChange={e => setNewName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleCreate()}
+                  disabled={creating}
+                  maxLength={80}
+                  autoFocus
+                />
+              </div>
+
+              <div style={{ borderTop: '1px solid #EDE8F5', paddingTop: 12, marginTop: 4 }}>
+                <p className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: '#9B8AAE' }}>Budget & Mail Settings</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold mb-1" style={{ color: '#6B5B8A' }}>Total Budget ($)</label>
+                    <input
+                      type="number"
+                      className="input-base w-full text-sm"
+                      placeholder="e.g. 5000"
+                      value={newBudget}
+                      onChange={e => {
+                        setNewBudget(e.target.value)
+                        const cpp = parseFloat(newCostPerPiece) || 0.55
+                        const total = parseFloat(e.target.value) || 0
+                        if (total > 0 && cpp > 0) {
+                          const weeks = Math.ceil((total / cpp) / 200)
+                          if (weeks > 0) setNewWeeklyBudget((total / Math.max(weeks, 1)).toFixed(2))
+                        }
+                      }}
+                      disabled={creating}
+                      min={0}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold mb-1" style={{ color: '#6B5B8A' }}>Cost Per Piece ($)</label>
+                    <input
+                      type="number"
+                      className="input-base w-full text-sm"
+                      placeholder="0.55"
+                      value={newCostPerPiece}
+                      onChange={e => setNewCostPerPiece(e.target.value)}
+                      disabled={creating}
+                      step={0.01}
+                      min={0}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold mb-1" style={{ color: '#6B5B8A' }}>Weekly Budget ($)</label>
+                    <input
+                      type="number"
+                      className="input-base w-full text-sm"
+                      placeholder="e.g. 500"
+                      value={newWeeklyBudget}
+                      onChange={e => setNewWeeklyBudget(e.target.value)}
+                      disabled={creating}
+                      min={0}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold mb-1" style={{ color: '#6B5B8A' }}>Send Day</label>
+                    <select
+                      className="input-base w-full text-sm"
+                      value={newSendDay}
+                      onChange={e => setNewSendDay(e.target.value)}
+                      disabled={creating}
+                    >
+                      <option value="">Select day…</option>
+                      {['monday','tuesday','wednesday','thursday','friday'].map(d => (
+                        <option key={d} value={d}>{d.charAt(0).toUpperCase() + d.slice(1)}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs font-semibold mb-1" style={{ color: '#6B5B8A' }}>Mail House Email</label>
+                    <input
+                      type="email"
+                      className="input-base w-full text-sm"
+                      placeholder="orders@mailhouse.com"
+                      value={newMailHouseEmail}
+                      onChange={e => setNewMailHouseEmail(e.target.value)}
+                      disabled={creating}
+                    />
+                  </div>
+                </div>
+                {newBudget && newCostPerPiece && (
+                  <p className="text-xs mt-2" style={{ color: '#9B8AAE' }}>
+                    ≈ {Math.floor((parseFloat(newBudget) || 0) / (parseFloat(newCostPerPiece) || 0.55)).toLocaleString()} pieces total
+                    {newWeeklyBudget && ` · ${Math.floor((parseFloat(newWeeklyBudget) || 0) / (parseFloat(newCostPerPiece) || 0.55)).toLocaleString()} pieces/week`}
+                  </p>
+                )}
+              </div>
+            </div>
+
             {createError && <p className="text-sm mb-3" style={{ color: '#B71C1C' }}>{createError}</p>}
             <div className="flex gap-2 justify-end">
-              <button className="btn-secondary" onClick={() => { setShowNewModal(false); setNewName(''); setCreateError(null) }}>Cancel</button>
+              <button className="btn-secondary" onClick={() => { resetNewForm(); setShowNewModal(false) }}>Cancel</button>
               <button className="btn-primary" onClick={handleCreate} disabled={creating || !newName.trim()}>
                 {creating ? 'Creating…' : 'Create Campaign'}
               </button>

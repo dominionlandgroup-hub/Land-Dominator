@@ -17,6 +17,7 @@ import SellerInbox from './pages/SellerInbox'
 import BuyerInbox from './pages/BuyerInbox'
 import Boards from './pages/Boards'
 import SettingsPage from './pages/SettingsPage'
+import MailCalendar from './pages/MailCalendar'
 
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -71,6 +72,7 @@ function PageContent() {
     case 'boards-seller':    return <Boards view="boards-seller" />
     case 'boards-buyer':     return <Boards view="boards-buyer" />
     case 'boards-inventory': return <Boards view="boards-inventory" />
+    case 'mail-calendar':    return <MailCalendar />
     case 'settings':         return <SettingsPage />
     case 'welcome':          return <WelcomeScreen />
     default:                 return <CRMDashboard />

@@ -201,6 +201,14 @@ class CRMCampaignBase(BaseModel):
     name: str
     notes: Optional[str] = None
     color: Optional[str] = None
+    total_budget: Optional[float] = None
+    cost_per_piece: Optional[float] = None
+    weekly_budget: Optional[float] = None
+    pieces_per_week: Optional[int] = None
+    send_day: Optional[str] = None
+    mail_house_email: Optional[str] = None
+    start_date: Optional[str] = None
+    amount_spent: Optional[float] = None
 
 
 class CRMCampaignCreate(CRMCampaignBase):
@@ -211,6 +219,14 @@ class CRMCampaignUpdate(BaseModel):
     name: Optional[str] = None
     notes: Optional[str] = None
     color: Optional[str] = None
+    total_budget: Optional[float] = None
+    cost_per_piece: Optional[float] = None
+    weekly_budget: Optional[float] = None
+    pieces_per_week: Optional[int] = None
+    send_day: Optional[str] = None
+    mail_house_email: Optional[str] = None
+    start_date: Optional[str] = None
+    amount_spent: Optional[float] = None
 
 
 class CRMCampaign(CRMCampaignBase):
