@@ -94,18 +94,18 @@ export interface MatchFilters {
   max_acreage: number | null
   exclude_flood: boolean
   only_flood: boolean
-  min_buildability: number | null
-  vacant_only: boolean
-  require_road_frontage: boolean
-  exclude_landlocked: boolean
-  exclude_land_locked: boolean
-  require_tlp: boolean
-  require_tlp_estimate: boolean
-  price_ceiling: number | null
+  min_buildability?: number | null
+  vacant_only?: boolean
+  require_road_frontage?: boolean
+  exclude_landlocked?: boolean
+  exclude_land_locked?: boolean
+  require_tlp?: boolean
+  require_tlp_estimate?: boolean
+  price_ceiling?: number | null
   // Damien's requirements (March 2026)
-  exclude_with_buildings: boolean     // Exclude if Building Sq Ft > 0 (default: true)
-  min_road_frontage: number           // Minimum 50ft road frontage (default: 50.0)
-  max_retail_price: number            // Price ceiling $200K - filters premium/waterfront (default: 200000)
+  exclude_with_buildings?: boolean
+  min_road_frontage?: number
+  max_retail_price?: number
   min_offer_floor: number             // Flag as LOW_OFFER if offer < this (default: 10000)
   min_lp_estimate: number             // Flag as LOW_VALUE if retail < this (default: 20000)
 }

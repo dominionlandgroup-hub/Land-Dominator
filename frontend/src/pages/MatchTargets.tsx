@@ -36,19 +36,12 @@ export default function MatchTargets() {
   // ── Filter state ────────────────────────────────────────────────────────
   const init = lastFilters
 
-  const [minScore, setMinScore] = useState<number>(Number(init?.min_match_score ?? 0))
+  const [minScore] = useState<number>(Number(init?.min_match_score ?? 0))
   const [zipFilter, setZipFilter] = useState<string[]>((init?.zip_filter as string[]) ?? [])
   const [zipInputText, setZipInputText] = useState<string>(((init?.zip_filter as string[]) ?? []).join(', '))
   const [minAcreage, setMinAcreage] = useState<string>(init?.min_acreage != null ? String(init.min_acreage) : '')
   const [maxAcreage, setMaxAcreage] = useState<string>(init?.max_acreage != null ? String(init.max_acreage) : '')
   const [floodZoneFilter, setFloodZoneFilter] = useState<'all' | 'exclude' | 'only'>((init?.flood_zone_filter as 'all' | 'exclude' | 'only') ?? 'exclude')
-  const [minBuildability, setMinBuildability] = useState<number>(Number(init?.min_buildability ?? 80))
-  const [excludeLandLocked, setExcludeLandLocked] = useState<boolean>(init ? Boolean(init.exclude_land_locked || init.exclude_landlocked) : true)
-  const [requireRoadFrontage, setRequireRoadFrontage] = useState<boolean>(init ? Boolean(init.require_road_frontage) : true)
-  const [maxSlope, setMaxSlope] = useState<number>(10)
-  const [vacantOnly, setVacantOnly] = useState<boolean>(Boolean(init?.vacant_only))
-  const [requireTlp, setRequireTlp] = useState<boolean>(Boolean(init?.require_tlp_estimate || init?.require_tlp))
-  const [priceCeiling, setPriceCeiling] = useState<string>(init?.price_ceiling != null ? String(init.price_ceiling) : '')
   const [minOfferFloor, setMinOfferFloor] = useState<string>('10000')
   const [minLpEstimate, setMinLpEstimate] = useState<string>('20000')
   const [assignmentFee, setAssignmentFee] = useState<string>('5000')
@@ -152,16 +145,7 @@ export default function MatchTargets() {
       max_acreage: maxAcreage ? parseFloat(maxAcreage) : null,
       exclude_flood: floodZoneFilter === 'exclude',
       only_flood: floodZoneFilter === 'only',
-      min_buildability: minBuildability > 0 ? minBuildability : null,
-      vacant_only: vacantOnly,
-      require_road_frontage: requireRoadFrontage,
-      exclude_landlocked: excludeLandLocked,
-      exclude_land_locked: excludeLandLocked,
-      require_tlp: requireTlp,
-      require_tlp_estimate: requireTlp,
-      price_ceiling: priceCeiling ? parseFloat(priceCeiling) : null,
       exclude_with_buildings: true,
-      min_road_frontage: 50.0,
       max_retail_price: 200000,
       min_offer_floor: minOfferFloor ? parseFloat(minOfferFloor) : 10000,
       min_lp_estimate: minLpEstimate ? parseFloat(minLpEstimate) : 20000,
@@ -188,14 +172,10 @@ export default function MatchTargets() {
     filterParts.push(`ZIPs ${zips}${extra}`)
   }
   if (minAcreage || maxAcreage) filterParts.push(`${minAcreage || '0'}–${maxAcreage || '∞'} acres`)
-  if (minBuildability > 0) filterParts.push(`Buildability ${minBuildability}%+`)
-  if (maxSlope < 30) filterParts.push(`Slope ≤${maxSlope}%`)
   if (floodZoneFilter === 'exclude') filterParts.push('No flood zone')
   if (floodZoneFilter === 'only') filterParts.push('Flood zones only')
-  if (excludeLandLocked) filterParts.push('No landlocked')
-  if (requireRoadFrontage) filterParts.push('Road frontage required')
-  if (requireTlp) filterParts.push('TLP required')
-  if (priceCeiling) filterParts.push(`TLP ≤ $${Number(priceCeiling).toLocaleString()}`)
+  if (minOfferFloor) filterParts.push(`Offer floor $${Number(minOfferFloor).toLocaleString()}`)
+  if (minLpEstimate) filterParts.push(`Min retail $${Number(minLpEstimate).toLocaleString()}`)
   const filterSummary = filterParts.length > 0
     ? `Active filters: ${filterParts.join(' · ')}`
     : 'No filters active — matching all targets'
@@ -324,58 +304,13 @@ export default function MatchTargets() {
           {uploadError && <p className="text-red-400 text-sm mt-2">{uploadError}</p>}
         </div>
 
-        {/* ── ZIP Filter ──────────────────────────────────────── */}
+        {/* ── Filters ─────────────────────────────────────────── */}
         <div className="card mb-6">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <p className="text-sm font-medium" style={{ color: '#1A0A2E' }}>ZIP Code Filter</p>
-              <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>Enter ZIP codes separated by commas, or use your Buy Box ZIPs</p>
-            </div>
-            <div className="flex gap-2">
-              {top10Zips.length > 0 && (
-                <button
-                  className="btn-secondary text-xs"
-                  style={{ padding: '6px 12px' }}
-                  onClick={useBuyBoxZips}
-                >
-                  Use Buy Box ZIPs
-                </button>
-              )}
-              {zipFilter.length > 0 && (
-                <button
-                  className="text-xs"
-                  style={{ color: '#6B5B8A' }}
-                  onClick={clearZips}
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-          </div>
-
-          <input
-            type="text"
-            className="input-base text-sm w-full"
-            placeholder="e.g. 37876, 37862, 37801 (leave empty to match all ZIPs)"
-            value={zipInputText}
-            onChange={e => handleZipInput(e.target.value)}
-          />
-          {zipFilter.length > 0 && (
-            <p className="text-xs mt-2" style={{ color: '#6B5B8A' }}>
-              {zipFilter.length} ZIP{zipFilter.length !== 1 ? 's' : ''} selected: {zipFilter.join(', ')}
-            </p>
-          )}
-        </div>
-
-        {/* ── Smart Filters ───────────────────────────────────── */}
-        <div className="card mb-6">
-          <h2 className="font-semibold mb-5" style={{ color: '#1A0A2E' }}>
-            Smart Filters
-            <span className="text-xs font-normal ml-2" style={{ color: '#6B5B8A' }}>Defaults match your buy box settings</span>
-          </h2>
+          <h2 className="font-semibold mb-5" style={{ color: '#1A0A2E' }}>Filters</h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Acreage Range */}
+
+            {/* 1. Acreage Range */}
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B5B8A' }}>Acreage Range</p>
               <div className="flex items-start gap-3">
@@ -409,7 +344,7 @@ export default function MatchTargets() {
               </div>
             </div>
 
-            {/* Flood Zone */}
+            {/* 2. Flood Zone */}
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B5B8A' }}>Flood Zone</p>
               <div className="inline-flex rounded-lg overflow-hidden" style={{ border: '1px solid #E8E0F0' }}>
@@ -420,71 +355,56 @@ export default function MatchTargets() {
               <p className="text-[10px] mt-1.5" style={{ color: '#9B8AAE' }}>Exclude = no FEMA flood zones (recommended)</p>
             </div>
 
-            {/* Buildability */}
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B5B8A' }}>Buildability Minimum</p>
-              <SliderRow label="" value={minBuildability} onChange={setMinBuildability} min={0} max={100} step={5} display={minBuildability > 0 ? `${minBuildability}%+` : 'Any'} />
-              <p className="text-[10px] mt-1" style={{ color: '#9B8AAE' }}>80% is the buy box recommendation</p>
-            </div>
-
-            {/* Max Slope */}
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B5B8A' }}>Maximum Slope</p>
-              <SliderRow label="" value={maxSlope} onChange={setMaxSlope} min={0} max={30} step={1} display={`≤${maxSlope}%`} />
-              <p className="text-[10px] mt-1" style={{ color: '#9B8AAE' }}>10% is the buy box recommendation</p>
-            </div>
-
-            {/* Land Locked */}
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B5B8A' }}>Landlocked Parcels</p>
-              <div className="inline-flex rounded-lg overflow-hidden" style={{ border: '1px solid #E8E0F0' }}>
-                <button className="px-4 py-2 text-xs transition-all" style={excludeLandLocked ? { background: '#5C2977', color: 'white' } : { background: '#FFFFFF', color: '#6B5B8A' }} onClick={() => setExcludeLandLocked(true)}>Exclude</button>
-                <button className="px-4 py-2 text-xs transition-all" style={!excludeLandLocked ? { background: '#5C2977', color: 'white' } : { background: '#FFFFFF', color: '#6B5B8A' }} onClick={() => setExcludeLandLocked(false)}>Include</button>
-              </div>
-            </div>
-
-            {/* Road Frontage */}
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B5B8A' }}>Road Frontage</p>
-              <div className="inline-flex rounded-lg overflow-hidden" style={{ border: '1px solid #E8E0F0' }}>
-                <button className="px-4 py-2 text-xs transition-all" style={requireRoadFrontage ? { background: '#5C2977', color: 'white' } : { background: '#FFFFFF', color: '#6B5B8A' }} onClick={() => setRequireRoadFrontage(true)}>Required</button>
-                <button className="px-4 py-2 text-xs transition-all" style={!requireRoadFrontage ? { background: '#5C2977', color: 'white' } : { background: '#FFFFFF', color: '#6B5B8A' }} onClick={() => setRequireRoadFrontage(false)}>Optional</button>
-              </div>
-            </div>
-
-            {/* Min Offer Floor */}
+            {/* 3. Minimum Offer Floor */}
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B5B8A' }}>Minimum Offer Floor</p>
-              <input type="number" step="1000" min="0" placeholder="e.g. 10000"
+              <input type="number" step="1000" min="0" placeholder="10000"
                 className="input-base text-xs py-2 w-full"
                 value={minOfferFloor}
                 onChange={e => setMinOfferFloor(e.target.value)} />
               <p className="text-[10px] mt-1" style={{ color: '#9B8AAE' }}>Below this → flagged LOW_OFFER (kept in results)</p>
             </div>
 
-            {/* Min Retail Value */}
+            {/* 4. Minimum Retail Value */}
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B5B8A' }}>Minimum Retail Value</p>
-              <input type="number" step="1000" min="0" placeholder="e.g. 20000"
+              <input type="number" step="1000" min="0" placeholder="20000"
                 className="input-base text-xs py-2 w-full"
                 value={minLpEstimate}
                 onChange={e => setMinLpEstimate(e.target.value)} />
               <p className="text-[10px] mt-1" style={{ color: '#9B8AAE' }}>Below this → flagged LOW_VALUE (kept in results)</p>
             </div>
+
           </div>
 
-          {/* Advanced toggles */}
-          <div className="mt-5 pt-4" style={{ borderTop: '1px solid #E8E0F0' }}>
-            <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#6B5B8A' }}>Additional Filters</p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <ToggleOption label="Vacant land only" checked={vacantOnly} onChange={setVacantOnly} />
-              <ToggleOption label="Require TLP estimate" checked={requireTlp} onChange={setRequireTlp} />
-            </div>
-            {requireTlp && (
-              <div className="mt-3 max-w-xs">
-                <label className="text-xs block mb-1" style={{ color: '#6B5B8A' }}>Price ceiling (TLP Estimate)</label>
-                <input type="number" min="0" step="1000" placeholder="e.g. 120000" className="input-base text-xs py-2" value={priceCeiling} onChange={e => setPriceCeiling(e.target.value)} />
+          {/* 5. ZIP Filter */}
+          <div className="mt-5 pt-5" style={{ borderTop: '1px solid #E8E0F0' }}>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#6B5B8A' }}>ZIP Filter</p>
+              <div className="flex gap-2">
+                {top10Zips.length > 0 && (
+                  <button className="text-xs px-3 py-1 rounded-lg border transition-colors"
+                    style={{ borderColor: '#E8E0F0', color: '#5C2977', background: '#F8F6FB' }}
+                    onClick={useBuyBoxZips}>
+                    Use Buy Box ZIPs
+                  </button>
+                )}
+                {zipFilter.length > 0 && (
+                  <button className="text-xs" style={{ color: '#9B8AAE' }} onClick={clearZips}>Clear</button>
+                )}
               </div>
+            </div>
+            <input
+              type="text"
+              className="input-base text-sm w-full"
+              placeholder="e.g. 37876, 37862, 37801 (leave empty to match all ZIPs)"
+              value={zipInputText}
+              onChange={e => handleZipInput(e.target.value)}
+            />
+            {zipFilter.length > 0 && (
+              <p className="text-xs mt-1.5" style={{ color: '#6B5B8A' }}>
+                {zipFilter.length} ZIP{zipFilter.length !== 1 ? 's' : ''} selected: {zipFilter.join(', ')}
+              </p>
             )}
           </div>
         </div>
@@ -811,51 +731,6 @@ export default function MatchTargets() {
 
 // ── Sub-components ─────────────────────────────────────────────────────────
 
-function SliderRow({ label, value, onChange, min, max, step, display }: {
-  label: string; value: number; onChange: (v: number) => void
-  min: number; max: number; step: number; display: string
-}) {
-  return (
-    <div>
-      {label && (
-        <div className="flex justify-between text-sm mb-1.5">
-          <span style={{ color: '#6B5B8A' }}>{label}</span>
-          <span className="font-medium" style={{ color: '#5C2977' }}>{display}</span>
-        </div>
-      )}
-      {!label && (
-        <div className="flex justify-end mb-1">
-          <span className="text-sm font-medium" style={{ color: '#5C2977' }}>{display}</span>
-        </div>
-      )}
-      <input type="range" min={min} max={max} step={step} value={value}
-        onChange={e => onChange(Number(e.target.value))}
-        className="w-full cursor-pointer" style={{ accentColor: '#5C2977' }}
-      />
-      <div className="flex justify-between text-xs mt-0.5" style={{ color: '#9B8AAE' }}>
-        <span>{min}</span><span>{max}</span>
-      </div>
-    </div>
-  )
-}
-
-function ToggleOption({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <label className="flex items-center gap-2 cursor-pointer">
-      <div
-        onClick={() => onChange(!checked)}
-        className="w-9 h-5 rounded-full relative transition-colors cursor-pointer"
-        style={{ background: checked ? '#5C2977' : '#E8E0F0' }}
-      >
-        <div
-          className="w-4 h-4 rounded-full absolute top-0.5 transition-transform"
-          style={{ background: checked ? '#FFFFFF' : '#9B8AAE', transform: checked ? 'translateX(18px)' : 'translateX(2px)' }}
-        />
-      </div>
-      <span className="text-xs select-none" style={{ color: checked ? '#1A0A2E' : '#6B5B8A' }}>{label}</span>
-    </label>
-  )
-}
 
 function ScoreBadge({ score }: { score: number }) {
   return (
