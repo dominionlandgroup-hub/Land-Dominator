@@ -416,6 +416,8 @@ export default function Dashboard() {
               zipStats={dashboardData.zip_stats}
               comps={dashboardData.comp_locations}
               sweetSpot={dashboardData.sweet_spot}
+              topStates={dashboardData.top_states ?? []}
+              topCounties={dashboardData.top_counties ?? []}
             />
 
             {/* ── ZIP Stats Table ───────────────────────────────── */}
@@ -452,14 +454,31 @@ export default function Dashboard() {
 
 // ── Buy Box Recipe ────────────────────────────────────────────────────────
 
+const SQFT_PER_ACRE = 43560
+
+function fmtAcre(acres: number): string {
+  if (acres < 1) {
+    return `${acres} acres (${Math.round(acres * SQFT_PER_ACRE).toLocaleString()} sq ft)`
+  }
+  return `${acres} acres`
+}
+
+function fmtSqft(acres: number): string {
+  return `${Math.round(acres * SQFT_PER_ACRE).toLocaleString()} sq ft (${acres} ac)`
+}
+
 function BuyBoxRecipe({
   zipStats,
   comps,
   sweetSpot,
+  topStates,
+  topCounties,
 }: {
   zipStats: ZipStats[]
-  comps: Array<{ lot_acres: number; sale_price: number; zip_code?: string }>
+  comps: Array<{ lot_acres: number; sale_price: number; zip?: string }>
   sweetSpot?: { bucket: string; count: number; total_sales: number; expected_offer_low: number; expected_offer_high: number } | null
+  topStates: string[]
+  topCounties: string[]
 }) {
   const [copied, setCopied] = useState(false)
   const [building, setBuilding] = useState(false)
@@ -477,74 +496,58 @@ function BuyBoxRecipe({
   const acreP75 = percentile(acres, 75)
   const minAcre = acres.length > 0 ? Math.max(0.1, Math.floor(acreP25 * 10) / 10) : 0.5
   const maxAcre = acres.length > 0 ? Math.ceil(acreP75 * 10) / 10 : 5
+  const minSqft = Math.round(minAcre * SQFT_PER_ACRE)
+  const maxSqft = Math.round(maxAcre * SQFT_PER_ACRE)
 
-  // Pricing
-  const prices = comps.map((c) => c.sale_price).filter((v) => Number.isFinite(v) && v > 0).sort((a, b) => a - b)
-  const priceP75 = prices.length > 0 ? percentile(prices, 75) : 0
-  const maxTlp = Math.round(priceP75 * 2)
-  const offerLow = Math.round(maxTlp * 0.35)
-  const offerHigh = Math.round(maxTlp * 0.525)
-
-  // Sweet spot acreage label
-  let acreLabel = `${minAcre}–${maxAcre} acres`
+  // Sweet spot label
+  let sweetLabel = `${minAcre}–${maxAcre} acres`
   if (sweetSpot) {
     const b = sweetSpot.bucket
-    if (b === '0-0.5') acreLabel = '0.1–0.5 acres'
-    else if (b === '0.5-1') acreLabel = '0.5–1 acres'
-    else if (b === '1-2') acreLabel = '1–2 acres'
-    else if (b === '2-5') acreLabel = '2–5 acres'
-    else if (b === '5-10') acreLabel = '5–10 acres'
-    else if (b === '10+') acreLabel = '10–40 acres'
+    if (b === '0-0.5') sweetLabel = '0.1–0.5 acres (4,356–21,780 sq ft)'
+    else if (b === '0.5-1') sweetLabel = '0.5–1 acres (21,780–43,560 sq ft)'
+    else if (b === '1-2') sweetLabel = '1–2 acres'
+    else if (b === '2-5') sweetLabel = '2–5 acres'
+    else if (b === '5-10') sweetLabel = '5–10 acres'
+    else if (b === '10+') sweetLabel = '10–40 acres'
   }
-
-  // Expected list size estimate: ~500 per top ZIP
-  const estListSize = topZips.length * 500
-  const costPerPiece = 0.55
-  const weeklyBudget = 500
-  const estBudget = Math.round(estListSize * costPerPiece)
-  const estWeeks = Math.ceil(estListSize / Math.floor(weeklyBudget / costPerPiece))
 
   const recipeText = [
     '=== LAND PORTAL BUY BOX ===',
+    `Generated: ${new Date().toLocaleDateString()}`,
     '',
-    `LOCATION FILTERS`,
-    `  ZIP Codes: ${topZips.join(', ')}`,
-    `  (Enter each ZIP in Land Portal → Location → ZIP Code)`,
+    '1. LOCATION',
+    topStates.length ? `   State: ${topStates.join(', ')}` : '',
+    topCounties.length ? `   Counties: ${topCounties.join(', ')}` : '',
+    `   ZIP Codes: ${topZips.join(', ')}`,
     '',
-    `PROPERTY TYPE`,
-    `  ✓ Vacant Land`,
-    `  ✗ Residential / Commercial / Other (uncheck all)`,
+    '2. PROPERTY TYPE',
+    '   ✓ Vacant Land only',
+    '   ✗ Exclude active MLS listings',
     '',
-    `SIZE FILTERS`,
-    `  Min Acreage: ${minAcre} acres`,
-    `  Max Acreage: ${maxAcre} acres`,
-    `  (Targeting sweet spot: ${acreLabel})`,
+    '3. LOT SIZE',
+    `   Min: ${minSqft.toLocaleString()} sq ft (${minAcre} acres)`,
+    `   Max: ${maxSqft.toLocaleString()} sq ft (${maxAcre} acres)`,
+    `   Sweet spot: ${sweetLabel}`,
     '',
-    `MLS / LISTING STATUS`,
-    `  ✓ Never Listed (off-market only)`,
-    `  ✗ Currently Listed`,
-    `  ✗ Recently Sold`,
+    '4. LAND QUALITY',
+    '   Buildability: 80% minimum',
+    '   Max slope: 10%',
+    '   Wetlands: Less than 5% coverage',
+    '   FEMA flood zone: Exclude all flood zones',
+    '   Road frontage: Required (minimum 1 ft)',
+    '   Landlocked: Exclude',
     '',
-    `LAND QUALITY`,
-    `  ✓ Buildable`,
-    `  ✓ In-fill lots OK`,
-    `  ✗ Wetlands / Flood Zone (exclude if possible)`,
+    '5. SALE HISTORY',
+    '   Include: Sold in last 5 years',
+    '   Exclude: Unknown sale dates',
+    '   Exclude: Properties sold in last 2 years (recent buyers less motivated)',
     '',
-    `OWNER FILTERS`,
-    `  ✓ Individual / Trust owners (not LLC/Corp)`,
-    `  Owner tenure: 5+ years`,
-    `  ✗ Absentee owners in same county (keep cross-county absentees)`,
-    '',
-    `PRICING / OFFER`,
-    `  Max TLP (target list price): $${maxTlp.toLocaleString()}`,
-    `  Offer range: $${offerLow.toLocaleString()}–$${offerHigh.toLocaleString()} (35–52.5% of TLP)`,
-    `  Formula: TLP = 75th pct sale price × 2; Offer = 52.5% × TLP`,
-    '',
-    `EXPECTED RESULTS`,
-    `  Estimated list size: ~${estListSize.toLocaleString()} parcels`,
-    `  Mail budget (${costPerPiece}/piece): ~$${estBudget.toLocaleString()} total`,
-    `  At $${weeklyBudget}/week: ~${estWeeks} weeks to mail full list`,
-  ].join('\n')
+    '6. OWNER',
+    '   Owner type: Individual / Trust only (not LLC/Corp)',
+    '   Owner tenure: 5+ years',
+    '   Absentee: Cross-county absentees preferred',
+    '   Exclude: LLC / Corp owners',
+  ].filter(Boolean).join('\n')
 
   function handleCopy() {
     navigator.clipboard.writeText(recipeText).then(() => {
@@ -556,23 +559,11 @@ function BuyBoxRecipe({
   async function handleBuildCampaign() {
     setBuilding(true)
     try {
-      const campaign = await createCrmCampaign(
+      await createCrmCampaign(
         `Buy Box — ${topZips.slice(0, 3).join(', ')}${topZips.length > 3 ? '…' : ''}`,
-        {
-          total_budget: estBudget,
-          weekly_budget: weeklyBudget,
-          cost_per_piece: costPerPiece,
-          send_day: 'Tuesday',
-        }
+        { cost_per_piece: 0.55, weekly_budget: 500, send_day: 'Tuesday' }
       )
-      await saveBuyBox({
-        min_acreage: minAcre,
-        max_acreage: maxAcre,
-        max_price: maxTlp,
-        offer_pct: 52.5,
-        weekly_budget: weeklyBudget,
-        cost_per_piece: costPerPiece,
-      })
+      await saveBuyBox({ min_acreage: minAcre, max_acreage: maxAcre, cost_per_piece: 0.55, weekly_budget: 500 })
       setBuilt(true)
       setTimeout(() => setBuilt(false), 3000)
     } catch (e) {
@@ -584,158 +575,217 @@ function BuyBoxRecipe({
   }
 
   function handlePdf() {
+    const pill = (label: string) =>
+      `<span style="background:#5C297715;color:#5C2977;border:1px solid #5C297730;border-radius:4px;padding:2px 8px;font-size:12px;display:inline-block;margin:2px">${label}</span>`
+    const check = (text: string, ok = true) =>
+      `<div style="display:flex;gap:8px;margin-bottom:4px;font-size:13px"><span style="color:${ok ? '#2D7A4F' : '#dc2626'};font-weight:700">${ok ? '✓' : '✗'}</span><span style="color:#1A0A2E">${text}</span></div>`
+    const row = (label: string, value: string) =>
+      `<div style="display:flex;gap:8px;margin-bottom:4px;font-size:13px"><span style="color:#6B5B8A;min-width:200px">${label}</span><span style="color:#1A0A2E;font-weight:600">${value}</span></div>`
+    const sec = (title: string, content: string) =>
+      `<div style="margin-bottom:20px"><h2 style="color:#5C2977;font-size:13px;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #E8E0F0;padding-bottom:6px;margin-bottom:10px">${title}</h2>${content}</div>`
+
     const html = `<!DOCTYPE html><html><head><title>Buy Box Recipe</title>
-<style>body{font-family:monospace;padding:40px;color:#1A0A2E;max-width:800px}
-h1{color:#5C2977;font-size:20px;margin-bottom:24px}
-.section{margin-bottom:20px}.section h2{color:#5C2977;font-size:13px;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #E8E0F0;padding-bottom:6px;margin-bottom:10px}
-.row{display:flex;gap:8px;margin-bottom:4px;font-size:13px}.label{color:#6B5B8A;min-width:200px}.value{color:#1A0A2E;font-weight:600}
-.zips{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}.zip{background:#5C297715;color:#5C2977;border:1px solid #5C297740;border-radius:4px;padding:2px 8px;font-size:12px}
-.highlight{background:#D5A94015;border:1px solid #D5A94040;border-radius:8px;padding:16px;margin-top:8px}
-@media print{@page{margin:24px}}</style></head><body>
-<h1>Land Portal Buy Box Recipe</h1>
-<p style="color:#6B5B8A;font-size:12px;margin-bottom:24px">Generated ${new Date().toLocaleDateString()} · Based on ${comps.length.toLocaleString()} sold comps</p>
-<div class="section"><h2>Location</h2>
-<div class="row"><span class="label">Top ZIPs by sales volume</span></div>
-<div class="zips">${topZips.map(z => `<span class="zip">${z}</span>`).join('')}</div></div>
-<div class="section"><h2>Property Type</h2>
-<div class="row"><span class="label">Asset type</span><span class="value">Vacant Land only</span></div>
-<div class="row"><span class="label">Listing status</span><span class="value">Never listed (off-market)</span></div></div>
-<div class="section"><h2>Size Filters</h2>
-<div class="row"><span class="label">Min acreage</span><span class="value">${minAcre} acres</span></div>
-<div class="row"><span class="label">Max acreage</span><span class="value">${maxAcre} acres</span></div>
-<div class="row"><span class="label">Sweet spot</span><span class="value">${acreLabel}</span></div></div>
-<div class="section"><h2>Owner Filters</h2>
-<div class="row"><span class="label">Owner type</span><span class="value">Individual / Trust (not LLC/Corp)</span></div>
-<div class="row"><span class="label">Owner tenure</span><span class="value">5+ years</span></div>
-<div class="row"><span class="label">Absentee</span><span class="value">Cross-county absentees preferred</span></div></div>
-<div class="section"><h2>Pricing &amp; Offer</h2>
-<div class="highlight">
-<div class="row"><span class="label">Max TLP (target list price)</span><span class="value">$${maxTlp.toLocaleString()}</span></div>
-<div class="row"><span class="label">Offer low (35%)</span><span class="value">$${offerLow.toLocaleString()}</span></div>
-<div class="row"><span class="label">Offer high (52.5%)</span><span class="value">$${offerHigh.toLocaleString()}</span></div>
-<div class="row" style="margin-top:8px;font-size:11px;color:#6B5B8A"><span>TLP = 75th percentile sale price × 2 = $${Math.round(priceP75).toLocaleString()} × 2</span></div></div></div>
-<div class="section"><h2>Expected Results</h2>
-<div class="row"><span class="label">Estimated list size</span><span class="value">~${estListSize.toLocaleString()} parcels</span></div>
-<div class="row"><span class="label">Total mail budget</span><span class="value">~$${estBudget.toLocaleString()} at $${costPerPiece}/piece</span></div>
-<div class="row"><span class="label">Weeks to mail full list</span><span class="value">~${estWeeks} weeks at $${weeklyBudget}/week</span></div></div>
+<style>body{font-family:-apple-system,sans-serif;padding:40px;color:#1A0A2E;max-width:800px}@media print{@page{margin:24px}}</style></head><body>
+<h1 style="color:#5C2977;font-size:20px;margin-bottom:8px">Land Portal Buy Box Recipe</h1>
+<p style="color:#6B5B8A;font-size:12px;margin-bottom:28px">Generated ${new Date().toLocaleDateString()} · Based on ${comps.length.toLocaleString()} sold comps</p>
+${sec('1. Location',
+  (topStates.length ? row('State', topStates.join(', ')) : '') +
+  (topCounties.length ? row('Counties', '') + `<div style="margin:4px 0 8px">${topCounties.map(pill).join('')}</div>` : '') +
+  row('ZIP Codes', '') + `<div style="margin:4px 0">${topZips.map(pill).join('')}</div>`
+)}
+${sec('2. Property Type',
+  check('Vacant Land only') + check('Exclude active MLS listings')
+)}
+${sec('3. Lot Size',
+  row('Min lot size', `${minSqft.toLocaleString()} sq ft (${minAcre} acres)`) +
+  row('Max lot size', `${maxSqft.toLocaleString()} sq ft (${maxAcre} acres)`) +
+  row('Sweet spot', sweetLabel)
+)}
+${sec('4. Land Quality',
+  row('Buildability minimum', '80%') +
+  row('Maximum slope', '10%') +
+  row('Wetlands coverage', 'Less than 5%') +
+  check('Exclude all FEMA flood zones', false) +
+  check('Exclude landlocked parcels', false) +
+  row('Road frontage', 'Required — minimum 1 ft')
+)}
+${sec('5. Sale History',
+  check('Include: sold in last 5 years') +
+  check('Exclude: unknown sale dates', false) +
+  check('Exclude: sold in last 2 years (less motivated sellers)', false)
+)}
+${sec('6. Owner',
+  row('Owner type', 'Individual / Trust only') +
+  check('Exclude LLC / Corp owners', false) +
+  row('Owner tenure', '5+ years') +
+  row('Absentee', 'Cross-county absentees preferred')
+)}
 </body></html>`
     const w = window.open('', '_blank')
-    if (w) {
-      w.document.write(html)
-      w.document.close()
-      setTimeout(() => w.print(), 400)
-    }
+    if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 400) }
   }
 
   if (topZips.length === 0) return null
 
+  const cardStyle = { background: '#F8F6FB', border: '1px solid #E8E0F0' }
+  const hdr = (title: string) => (
+    <p className="text-[10px] uppercase tracking-wider font-semibold mb-3" style={{ color: '#5C2977' }}>{title}</p>
+  )
+
   return (
     <div className="card mb-6" style={{ border: '1.5px solid rgba(213,169,64,0.35)' }}>
-      <div className="flex items-start justify-between mb-4">
+      <div className="flex items-start justify-between mb-5">
         <div>
           <h2 className="font-semibold" style={{ color: '#1A0A2E' }}>Land Portal Buy Box Recipe</h2>
           <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>
-            Exact filter settings derived from your {comps.length.toLocaleString()} sold comps
+            Exact filter settings derived from your {comps.length.toLocaleString()} sold comps — paste directly into Land Portal
           </p>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={handleCopy}
-            className="btn-secondary text-xs"
-            style={{ padding: '6px 12px' }}
-          >
+          <button onClick={handleCopy} className="btn-secondary text-xs" style={{ padding: '6px 12px' }}>
             {copied ? '✓ Copied!' : 'Copy Buy Box'}
           </button>
-          <button
-            onClick={handlePdf}
-            className="btn-secondary text-xs"
-            style={{ padding: '6px 12px' }}
-          >
+          <button onClick={handlePdf} className="btn-secondary text-xs" style={{ padding: '6px 12px' }}>
             Download PDF
           </button>
-          <button
-            onClick={handleBuildCampaign}
-            className="btn-primary text-xs"
-            style={{ padding: '6px 12px' }}
-            disabled={building}
-          >
+          <button onClick={handleBuildCampaign} className="btn-primary text-xs" style={{ padding: '6px 12px' }} disabled={building}>
             {built ? '✓ Campaign Created!' : building ? 'Creating…' : 'Build Campaign'}
           </button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {/* Location */}
-        <div className="rounded-xl p-4" style={{ background: '#F8F6FB', border: '1px solid #E8E0F0' }}>
-          <p className="text-[10px] uppercase tracking-wider font-semibold mb-3" style={{ color: '#5C2977' }}>Location</p>
-          <p className="text-xs mb-2" style={{ color: '#6B5B8A' }}>Top ZIPs by sales volume — enter in Land Portal → Location → ZIP Code</p>
-          <div className="flex flex-wrap gap-1.5 mt-2">
-            {topZips.map((z) => (
-              <span key={z} className="font-mono text-[11px] px-2 py-0.5 rounded" style={{ background: 'rgba(92,41,119,0.1)', color: '#5C2977', border: '1px solid rgba(92,41,119,0.2)' }}>
-                {z}
-              </span>
-            ))}
+
+        {/* Section 1 — Location */}
+        <div className="rounded-xl p-4 lg:col-span-3" style={cardStyle}>
+          {hdr('1 · Location')}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+            {topStates.length > 0 && (
+              <div>
+                <p className="mb-1" style={{ color: '#6B5B8A' }}>State</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {topStates.map((s) => (
+                    <span key={s} className="font-semibold px-2 py-0.5 rounded text-[11px]" style={{ background: 'rgba(92,41,119,0.1)', color: '#5C2977', border: '1px solid rgba(92,41,119,0.2)' }}>{s}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {topCounties.length > 0 && (
+              <div>
+                <p className="mb-1" style={{ color: '#6B5B8A' }}>Counties — enter each in Land Portal → Location → County</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {topCounties.map((c) => (
+                    <span key={c} className="text-[11px] px-2 py-0.5 rounded" style={{ background: 'rgba(92,41,119,0.08)', color: '#5C2977', border: '1px solid rgba(92,41,119,0.15)' }}>{c}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div>
+              <p className="mb-1" style={{ color: '#6B5B8A' }}>ZIP Codes — enter each in Land Portal → Location → ZIP Code</p>
+              <div className="flex flex-wrap gap-1.5">
+                {topZips.map((z) => (
+                  <span key={z} className="font-mono text-[11px] px-2 py-0.5 rounded" style={{ background: 'rgba(92,41,119,0.1)', color: '#3D1A5C', border: '1px solid rgba(92,41,119,0.2)' }}>{z}</span>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Property Type & Size */}
-        <div className="rounded-xl p-4" style={{ background: '#F8F6FB', border: '1px solid #E8E0F0' }}>
-          <p className="text-[10px] uppercase tracking-wider font-semibold mb-3" style={{ color: '#5C2977' }}>Property Type &amp; Size</p>
+        {/* Section 2 — Property Type */}
+        <div className="rounded-xl p-4" style={cardStyle}>
+          {hdr('2 · Property Type')}
+          <div className="space-y-2 text-xs">
+            <div className="flex gap-2"><span style={{ color: '#2D7A4F', fontWeight: 700 }}>✓</span><span style={{ color: '#1A0A2E' }}>Vacant Land only</span></div>
+            <div className="flex gap-2"><span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>Residential / Commercial (uncheck)</span></div>
+            <div className="flex gap-2"><span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>Exclude active MLS listings</span></div>
+            <div className="flex gap-2"><span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>Exclude recently listed (off-market only)</span></div>
+          </div>
+        </div>
+
+        {/* Section 3 — Lot Size */}
+        <div className="rounded-xl p-4" style={cardStyle}>
+          {hdr('3 · Lot Size')}
           <div className="space-y-2 text-xs">
             <div className="flex justify-between">
-              <span style={{ color: '#6B5B8A' }}>Asset type</span>
-              <span style={{ color: '#2D7A4F', fontWeight: 600 }}>Vacant Land only</span>
+              <span style={{ color: '#6B5B8A' }}>Min lot size</span>
+              <span style={{ color: '#1A0A2E', fontWeight: 600 }}>{fmtSqft(minAcre)}</span>
             </div>
             <div className="flex justify-between">
-              <span style={{ color: '#6B5B8A' }}>Listing status</span>
-              <span style={{ color: '#1A0A2E', fontWeight: 600 }}>Never listed</span>
+              <span style={{ color: '#6B5B8A' }}>Max lot size</span>
+              <span style={{ color: '#1A0A2E', fontWeight: 600 }}>{fmtSqft(maxAcre)}</span>
             </div>
-            <div className="flex justify-between">
-              <span style={{ color: '#6B5B8A' }}>Min acreage</span>
-              <span style={{ color: '#1A0A2E', fontWeight: 600 }}>{minAcre} acres</span>
-            </div>
-            <div className="flex justify-between">
-              <span style={{ color: '#6B5B8A' }}>Max acreage</span>
-              <span style={{ color: '#1A0A2E', fontWeight: 600 }}>{maxAcre} acres</span>
-            </div>
-            <div className="flex justify-between">
+            <div className="mt-2 pt-2 flex justify-between" style={{ borderTop: '1px solid #E8E0F0' }}>
               <span style={{ color: '#6B5B8A' }}>Sweet spot</span>
-              <span style={{ color: '#8B4DB8', fontWeight: 600 }}>{acreLabel}</span>
+              <span style={{ color: '#8B4DB8', fontWeight: 600 }}>{sweetLabel}</span>
             </div>
           </div>
         </div>
 
-        {/* Pricing */}
-        <div className="rounded-xl p-4" style={{ background: 'rgba(213,169,64,0.06)', border: '1px solid rgba(213,169,64,0.25)' }}>
-          <p className="text-[10px] uppercase tracking-wider font-semibold mb-3" style={{ color: '#8B6A00' }}>Pricing &amp; Offer</p>
+        {/* Section 4 — Land Quality */}
+        <div className="rounded-xl p-4" style={cardStyle}>
+          {hdr('4 · Land Quality')}
           <div className="space-y-2 text-xs">
             <div className="flex justify-between">
-              <span style={{ color: '#6B5B8A' }}>Max TLP</span>
-              <span style={{ color: '#1A0A2E', fontWeight: 700 }}>${maxTlp.toLocaleString()}</span>
+              <span style={{ color: '#6B5B8A' }}>Buildability minimum</span>
+              <span style={{ color: '#2D7A4F', fontWeight: 600 }}>80%</span>
             </div>
             <div className="flex justify-between">
-              <span style={{ color: '#6B5B8A' }}>Offer low (35%)</span>
-              <span style={{ color: '#D5A940', fontWeight: 600 }}>${offerLow.toLocaleString()}</span>
+              <span style={{ color: '#6B5B8A' }}>Maximum slope</span>
+              <span style={{ color: '#1A0A2E', fontWeight: 600 }}>10%</span>
             </div>
             <div className="flex justify-between">
-              <span style={{ color: '#6B5B8A' }}>Offer high (52.5%)</span>
-              <span style={{ color: '#D5A940', fontWeight: 700 }}>${offerHigh.toLocaleString()}</span>
+              <span style={{ color: '#6B5B8A' }}>Wetlands coverage</span>
+              <span style={{ color: '#1A0A2E', fontWeight: 600 }}>Less than 5%</span>
             </div>
-            <div className="mt-2 pt-2" style={{ borderTop: '1px solid rgba(213,169,64,0.2)' }}>
-              <p className="text-[10px]" style={{ color: '#8B6A00' }}>
-                TLP = 75th pct sale price (${Math.round(priceP75).toLocaleString()}) × 2
-              </p>
+            <div className="flex gap-2 items-start">
+              <span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span>
+              <span style={{ color: '#6B5B8A' }}>FEMA flood zones (exclude all)</span>
+            </div>
+            <div className="flex gap-2 items-start">
+              <span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span>
+              <span style={{ color: '#6B5B8A' }}>Landlocked parcels (exclude)</span>
+            </div>
+            <div className="flex justify-between">
+              <span style={{ color: '#6B5B8A' }}>Road frontage</span>
+              <span style={{ color: '#2D7A4F', fontWeight: 600 }}>Required (min 1 ft)</span>
             </div>
           </div>
         </div>
 
-        {/* Owner Filters */}
-        <div className="rounded-xl p-4" style={{ background: '#F8F6FB', border: '1px solid #E8E0F0' }}>
-          <p className="text-[10px] uppercase tracking-wider font-semibold mb-3" style={{ color: '#5C2977' }}>Owner Filters</p>
+        {/* Section 5 — Sale History */}
+        <div className="rounded-xl p-4" style={cardStyle}>
+          {hdr('5 · Sale History')}
+          <div className="space-y-2 text-xs">
+            <div className="flex gap-2">
+              <span style={{ color: '#2D7A4F', fontWeight: 700 }}>✓</span>
+              <span style={{ color: '#1A0A2E' }}>Sold comps: last 5 years</span>
+            </div>
+            <div className="flex gap-2">
+              <span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span>
+              <span style={{ color: '#6B5B8A' }}>Exclude unknown sale dates</span>
+            </div>
+            <div className="flex gap-2">
+              <span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span>
+              <span style={{ color: '#6B5B8A' }}>Exclude sold last 2 years (recent buyers less motivated)</span>
+            </div>
+            <div className="flex gap-2">
+              <span style={{ color: '#2D7A4F', fontWeight: 700 }}>✓</span>
+              <span style={{ color: '#1A0A2E' }}>Absentee owners preferred</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Section 6 — Owner */}
+        <div className="rounded-xl p-4" style={cardStyle}>
+          {hdr('6 · Owner')}
           <div className="space-y-2 text-xs">
             <div className="flex justify-between">
               <span style={{ color: '#6B5B8A' }}>Owner type</span>
-              <span style={{ color: '#1A0A2E', fontWeight: 600 }}>Individual / Trust</span>
+              <span style={{ color: '#1A0A2E', fontWeight: 600 }}>Individual / Trust only</span>
+            </div>
+            <div className="flex gap-2">
+              <span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span>
+              <span style={{ color: '#6B5B8A' }}>LLC / Corp owners (exclude)</span>
             </div>
             <div className="flex justify-between">
               <span style={{ color: '#6B5B8A' }}>Owner tenure</span>
@@ -743,60 +793,11 @@ h1{color:#5C2977;font-size:20px;margin-bottom:24px}
             </div>
             <div className="flex justify-between">
               <span style={{ color: '#6B5B8A' }}>Absentee</span>
-              <span style={{ color: '#1A0A2E', fontWeight: 600 }}>Cross-county preferred</span>
-            </div>
-            <div className="flex justify-between">
-              <span style={{ color: '#6B5B8A' }}>Exclude</span>
-              <span style={{ color: '#dc2626', fontWeight: 600 }}>LLC / Corp owners</span>
+              <span style={{ color: '#8B4DB8', fontWeight: 600 }}>Cross-county preferred</span>
             </div>
           </div>
         </div>
 
-        {/* Land Quality */}
-        <div className="rounded-xl p-4" style={{ background: '#F8F6FB', border: '1px solid #E8E0F0' }}>
-          <p className="text-[10px] uppercase tracking-wider font-semibold mb-3" style={{ color: '#5C2977' }}>Land Quality</p>
-          <div className="space-y-2 text-xs">
-            <div className="flex gap-2 items-center">
-              <span style={{ color: '#2D7A4F', fontWeight: 700 }}>✓</span>
-              <span style={{ color: '#1A0A2E' }}>Buildable parcels</span>
-            </div>
-            <div className="flex gap-2 items-center">
-              <span style={{ color: '#2D7A4F', fontWeight: 700 }}>✓</span>
-              <span style={{ color: '#1A0A2E' }}>In-fill lots OK</span>
-            </div>
-            <div className="flex gap-2 items-center">
-              <span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span>
-              <span style={{ color: '#6B5B8A' }}>Wetlands / Flood zone</span>
-            </div>
-            <div className="flex gap-2 items-center">
-              <span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span>
-              <span style={{ color: '#6B5B8A' }}>Landlocked parcels</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Expected Results */}
-        <div className="rounded-xl p-4" style={{ background: 'rgba(45,122,79,0.06)', border: '1px solid rgba(45,122,79,0.2)' }}>
-          <p className="text-[10px] uppercase tracking-wider font-semibold mb-3" style={{ color: '#2D7A4F' }}>Expected Results</p>
-          <div className="space-y-2 text-xs">
-            <div className="flex justify-between">
-              <span style={{ color: '#6B5B8A' }}>Est. list size</span>
-              <span style={{ color: '#1A0A2E', fontWeight: 700 }}>~{estListSize.toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between">
-              <span style={{ color: '#6B5B8A' }}>Total budget</span>
-              <span style={{ color: '#1A0A2E', fontWeight: 600 }}>~${estBudget.toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between">
-              <span style={{ color: '#6B5B8A' }}>At $500/week</span>
-              <span style={{ color: '#2D7A4F', fontWeight: 600 }}>~{estWeeks} weeks</span>
-            </div>
-            <div className="flex justify-between">
-              <span style={{ color: '#6B5B8A' }}>Cost per piece</span>
-              <span style={{ color: '#1A0A2E', fontWeight: 600 }}>${costPerPiece}/piece</span>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   )

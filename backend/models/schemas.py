@@ -63,6 +63,8 @@ class DashboardResponse(BaseModel):
     comp_locations: List[CompLocation] = []
     insight: str = ""
     sweet_spot: Optional[SweetSpot] = None
+    top_states: List[str] = []
+    top_counties: List[str] = []
 
 
 class MatchFilters(BaseModel):

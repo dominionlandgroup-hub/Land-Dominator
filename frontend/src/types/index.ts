@@ -42,6 +42,8 @@ export interface DashboardData {
   comp_locations: CompLocation[]
   insight: string
   sweet_spot?: SweetSpot | null
+  top_states: string[]
+  top_counties: string[]
 }
 
 export interface CompLocation {

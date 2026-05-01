@@ -54,6 +54,8 @@ async def get_dashboard_stats(
         comp_locations=comp_locations,
         insight=insight,
         sweet_spot=sweet_spot,
+        top_states=summary.get("top_states", []),
+        top_counties=summary.get("top_counties", []),
     )
 
 

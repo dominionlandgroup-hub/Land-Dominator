@@ -162,6 +162,18 @@ def compute_summary(df: pd.DataFrame) -> Dict[str, Any]:
             ]
         )
 
+    # Top states and counties by comp count
+    top_states: List[str] = []
+    top_counties: List[str] = []
+    state_col = next((c for c in ["Parcel State", "State"] if c in valid.columns), None)
+    county_col = next((c for c in ["Parcel County", "Parcel Address County", "County"] if c in valid.columns), None)
+    if state_col:
+        counts = valid[state_col].dropna().value_counts()
+        top_states = [str(s) for s in counts.index if str(s) not in ("nan", "None", "")][:5]
+    if county_col:
+        counts = valid[county_col].dropna().value_counts()
+        top_counties = [str(c) for c in counts.index if str(c) not in ("nan", "None", "")][:10]
+
     return {
         "total_comps": total_rows,
         "valid_comps": int(valid_mask.sum()),
@@ -169,6 +181,8 @@ def compute_summary(df: pd.DataFrame) -> Dict[str, Any]:
         "median_acreage": median_acreage,
         "median_price_per_acre": median_price_per_acre,
         "available_zips": available_zips,
+        "top_states": top_states,
+        "top_counties": top_counties,
     }
 
 
