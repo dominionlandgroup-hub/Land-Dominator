@@ -573,20 +573,6 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
             </div>
           </section>
 
-          {/* Marketing */}
-          <section className="card-static">
-            <h2 className="section-heading mb-4">Marketing Details</h2>
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="Marketing Price" field="marketing_price" type="number" placeholder="0" />
-              <Field label="Nearest City" field="marketing_nearest_city" />
-              <Field label="Title" field="marketing_title" />
-              <div />
-              <div className="col-span-2">
-                <Field label="Description" field="marketing_description" type="textarea" />
-              </div>
-            </div>
-          </section>
-
           {/* Pricing */}
           <section className="card-static">
             <h2 className="section-heading mb-4">Pricing Fields</h2>
