@@ -341,6 +341,40 @@ export async function sendSms(property_id: string, to_phone: string, message: st
   return data
 }
 
+// ── Property Documents ────────────────────────────────────────────────────────
+
+export interface PropertyDocument {
+  id: string
+  created_at: string
+  property_id: string
+  filename: string
+  file_size: number | null
+  file_type: string | null
+  storage_path: string
+  uploaded_by: string | null
+}
+
+export async function listPropertyDocuments(propertyId: string): Promise<PropertyDocument[]> {
+  const { data } = await api.get<PropertyDocument[]>(`/crm/properties/${propertyId}/documents`)
+  return data
+}
+
+export async function uploadPropertyDocument(propertyId: string, file: File): Promise<PropertyDocument> {
+  const form = new FormData()
+  form.append('file', file)
+  const { data } = await api.post<PropertyDocument>(`/crm/properties/${propertyId}/documents`, form)
+  return data
+}
+
+export async function deleteDocument(docId: string): Promise<void> {
+  await api.delete(`/crm/documents/${docId}`)
+}
+
+export async function getDocumentDownloadUrl(docId: string): Promise<string> {
+  const { data } = await api.get<{ url: string }>(`/crm/documents/${docId}/download`)
+  return data.url
+}
+
 // ── Market Research ──────────────────────────────────────────────────────────
 
 export interface CountyRecommendation {

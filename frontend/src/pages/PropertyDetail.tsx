@@ -1,6 +1,43 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import type { CRMProperty, PropertyStatus, Communication } from '../types/crm'
-import { pullLpData, sendSms, listPropertyCommunications } from '../api/crm'
+import type { PropertyDocument } from '../api/crm'
+import { pullLpData, sendSms, listPropertyCommunications, listPropertyDocuments, uploadPropertyDocument, deleteDocument, getDocumentDownloadUrl } from '../api/crm'
+
+// ── Display helpers ───────────────────────────────────────────────────────────
+function fmtLandLocked(v: string | null | undefined): string {
+  if (!v) return '—'
+  const up = v.trim().toLowerCase()
+  if (['true', 'yes', 'y', '1'].includes(up)) return 'Yes'
+  if (['false', 'no', 'n', '0'].includes(up)) return 'No'
+  return v
+}
+
+function fmtPct(v: number | null | undefined, emptyLabel = 'None detected'): string {
+  if (v == null || v === 0) return emptyLabel
+  return `${Number(v).toFixed(1)}%`
+}
+
+function fmtFloodZone(v: string | null | undefined): string {
+  if (!v) return '—'
+  const z = v.trim().toUpperCase()
+  if (z === 'X' || z === 'X500') return `Minimal Risk (Zone ${z})`
+  if (z.startsWith('A') || z.startsWith('V')) return `High Risk (Zone ${z})`
+  return `Zone ${z}`
+}
+
+function buildabilityColor(v: number | null | undefined): string {
+  if (v == null) return '#9B8AAE'
+  if (v >= 80) return '#2D7A4F'
+  if (v >= 50) return '#D5A940'
+  return '#dc2626'
+}
+
+function fmtFileSize(bytes: number | null | undefined): string {
+  if (!bytes) return ''
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
 
 interface Props {
   property: CRMProperty | null
@@ -37,6 +74,11 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
   const [smsSuccess, setSmsSuccess] = useState<string | null>(null)
   const [comms, setComms] = useState<Communication[]>([])
   const [commsLoading, setCommsLoading] = useState(false)
+  const [docs, setDocs] = useState<PropertyDocument[]>([])
+  const [docsLoading, setDocsLoading] = useState(false)
+  const [docUploading, setDocUploading] = useState(false)
+  const [docError, setDocError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const isNew = !property
 
   useEffect(() => {
@@ -46,7 +88,49 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
       .then(setComms)
       .catch(() => {/* table may not exist yet */})
       .finally(() => setCommsLoading(false))
+
+    setDocsLoading(true)
+    listPropertyDocuments(property.id)
+      .then(setDocs)
+      .catch(() => {})
+      .finally(() => setDocsLoading(false))
   }, [property?.id])
+
+  async function handleDocUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file || !property?.id) return
+    setDocUploading(true)
+    setDocError(null)
+    try {
+      const doc = await uploadPropertyDocument(property.id, file)
+      setDocs(prev => [doc, ...prev])
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setDocError(detail ?? 'Upload failed. Check that the property-documents storage bucket exists in Supabase.')
+    } finally {
+      setDocUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  async function handleDocDelete(docId: string) {
+    if (!confirm('Delete this document?')) return
+    try {
+      await deleteDocument(docId)
+      setDocs(prev => prev.filter(d => d.id !== docId))
+    } catch {
+      setDocError('Delete failed.')
+    }
+  }
+
+  async function handleDocDownload(docId: string) {
+    try {
+      const url = await getDocumentDownloadUrl(docId)
+      window.open(url, '_blank')
+    } catch {
+      setDocError('Could not get download link.')
+    }
+  }
 
   function openSmsModal() {
     const firstName = form.owner_first_name || form.owner_full_name?.split(' ')[0] || 'there'
@@ -383,9 +467,66 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
           {/* Land Analysis */}
           <section className="card-static">
             <h2 className="section-heading mb-4">Land Analysis</h2>
+
+            {/* Read-only summary row for key LP fields */}
+            <div className="grid grid-cols-4 gap-3 mb-4 p-3 rounded-xl" style={{ background: '#F8F5FC', border: '1px solid #EDE8F5' }}>
+              <div>
+                <p className="label-caps mb-1">Buildability</p>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: buildabilityColor(form.buildability as number | undefined) }} />
+                  <span className="text-sm font-semibold" style={{ color: buildabilityColor(form.buildability as number | undefined) }}>
+                    {form.buildability != null ? `${Number(form.buildability).toFixed(1)}%` : '—'}
+                  </span>
+                </div>
+              </div>
+              <div>
+                <p className="label-caps mb-1">Land Locked</p>
+                <p className="text-sm font-medium" style={{ color: fmtLandLocked(form.land_locked as string | undefined) === 'Yes' ? '#dc2626' : '#1A0A2E' }}>
+                  {fmtLandLocked(form.land_locked as string | undefined)}
+                </p>
+              </div>
+              <div>
+                <p className="label-caps mb-1">Flood Zone</p>
+                <p className="text-sm font-medium" style={{ color: '#1A0A2E' }}>
+                  {fmtFloodZone(form.dd_flood_zone as string | undefined)}
+                </p>
+              </div>
+              <div>
+                <p className="label-caps mb-1">FEMA Coverage</p>
+                <p className="text-sm font-medium" style={{ color: '#1A0A2E' }}>
+                  {fmtPct(form.fema_coverage as number | undefined)}
+                </p>
+              </div>
+              <div>
+                <p className="label-caps mb-1">Wetlands</p>
+                <p className="text-sm font-medium" style={{ color: '#1A0A2E' }}>
+                  {fmtPct(form.wetlands_coverage as number | undefined)}
+                </p>
+              </div>
+              <div>
+                <p className="label-caps mb-1">Road Frontage</p>
+                <p className="text-sm font-medium" style={{ color: '#1A0A2E' }}>
+                  {form.road_frontage != null ? `${Number(form.road_frontage).toFixed(0)} ft` : '—'}
+                </p>
+              </div>
+              <div>
+                <p className="label-caps mb-1">Slope AVG</p>
+                <p className="text-sm font-medium" style={{ color: '#1A0A2E' }}>
+                  {form.slope_avg != null ? `${Number(form.slope_avg).toFixed(1)}%` : '—'}
+                </p>
+              </div>
+              <div>
+                <p className="label-caps mb-1">Elevation AVG</p>
+                <p className="text-sm font-medium" style={{ color: '#1A0A2E' }}>
+                  {form.elevation_avg != null ? `${Number(form.elevation_avg).toFixed(0)} ft` : '—'}
+                </p>
+              </div>
+            </div>
+
+            {/* Editable fields */}
             <div className="grid grid-cols-3 gap-4">
               <Field label="Land Use" field="land_use" />
-              <Field label="Land Locked" field="land_locked" placeholder="Yes / No" />
+              <Field label="Land Locked (raw)" field="land_locked" placeholder="true / false / Y / N" />
               <Field label="School District" field="school_district" />
               <Field label="Buildability (%)" field="buildability" type="number" placeholder="0.00" />
               <Field label="Buildability Area (ac)" field="buildability_acres" type="number" placeholder="0.00" />
@@ -508,6 +649,77 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
               />
             </div>
           </section>
+
+          {/* Documents */}
+          {!isNew && (
+            <section className="card-static">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="section-heading">Documents</h2>
+                <div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                    className="hidden"
+                    onChange={handleDocUpload}
+                  />
+                  <button
+                    className="btn-secondary text-xs"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={docUploading}
+                  >
+                    {docUploading ? 'Uploading…' : '+ Upload Document'}
+                  </button>
+                </div>
+              </div>
+              {docError && (
+                <p className="text-xs mb-3" style={{ color: '#B71C1C' }}>{docError}</p>
+              )}
+              {docsLoading ? (
+                <p className="text-xs" style={{ color: '#9B8AAE' }}>Loading…</p>
+              ) : docs.length === 0 ? (
+                <p className="text-xs" style={{ color: '#9B8AAE' }}>No documents yet. Upload a PDF, Word doc, or image.</p>
+              ) : (
+                <div className="space-y-2">
+                  {docs.map(doc => (
+                    <div key={doc.id} className="flex items-center justify-between rounded-lg px-4 py-3"
+                      style={{ background: '#F8F5FC', border: '1px solid #EDE8F5' }}>
+                      <div className="flex items-center gap-3 min-w-0">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9B8AAE" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                          <polyline points="14 2 14 8 20 8"/>
+                        </svg>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate" style={{ color: '#1A0A2E' }}>{doc.filename}</p>
+                          <p className="text-[11px]" style={{ color: '#9B8AAE' }}>
+                            {doc.file_type?.split('/')[1]?.toUpperCase() ?? 'FILE'}
+                            {doc.file_size ? ` · ${fmtFileSize(doc.file_size)}` : ''}
+                            {' · '}{new Date(doc.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+                        <button
+                          className="btn-secondary text-xs"
+                          style={{ padding: '4px 10px' }}
+                          onClick={() => handleDocDownload(doc.id)}
+                        >
+                          Download
+                        </button>
+                        <button
+                          className="text-xs"
+                          style={{ color: '#dc2626', padding: '4px 8px' }}
+                          onClick={() => handleDocDelete(doc.id)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
 
           {/* Communications History */}
           {!isNew && (

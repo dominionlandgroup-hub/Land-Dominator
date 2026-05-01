@@ -161,6 +161,8 @@ PEBBLE_MAP: dict[str, str] = {
     "mail names": "owner_full_name",          # fallback — see _FALLBACK_COLS
     "owner 1 first name": "owner_first_name",
     "owner 1 last name": "owner_last_name",
+    "owner 2 first name": "_owner2_first",
+    "owner 2 last name": "_owner2_last",
 
     # Land Portal mailing address columns
     "mail full address": "owner_mailing_address",
@@ -185,6 +187,7 @@ PEBBLE_MAP: dict[str, str] = {
     "tax delinquent year": "dd_back_taxes",
     "land locked": "land_locked",
     "fema flood coverage": "fema_coverage",
+    "fl fema flood zone": "dd_flood_zone",
     "wetlands coverage": "wetlands_coverage",
     "buildability total (%)": "buildability",
     "buildability area (acres)": "buildability_acres",
@@ -194,8 +197,7 @@ PEBBLE_MAP: dict[str, str] = {
     "road frontage": "road_frontage",
     "slope avg": "slope_avg",
 
-    # Land Portal comp link
-    "hyperlink": "comp1_link",
+    # NOTE: "hyperlink" removed — comp links only come from LP API pull, not CSV
 
     # Land Portal geo
     "latitude": "latitude",
@@ -324,6 +326,27 @@ _FLOAT_FIELDS = {
 _FALLBACK_COLS: set[str] = {"mail names", "calc acreage"}
 
 
+def _looks_like_lp_name(s: str) -> bool:
+    """True if string looks like Land Portal 'LAST FIRST MIDDLE' format (all caps, 2+ words)."""
+    stripped = s.replace("&", "").replace("AND", "").strip()
+    return len(stripped) > 3 and stripped == stripped.upper() and " " in stripped
+
+
+def _reformat_lp_name(raw: str) -> str:
+    """Convert 'FOSTER DAVID A & SMITH MARY B' → 'David Foster & Mary Smith'."""
+    owners = re.split(r"\s*&\s*", raw)
+    formatted = []
+    for owner in owners:
+        words = owner.strip().split()
+        if len(words) >= 2:
+            first = words[1].capitalize()
+            last = words[0].capitalize()
+            formatted.append(f"{first} {last}")
+        elif words:
+            formatted.append(words[0].title())
+    return " & ".join(formatted)
+
+
 def _map_pebble_row(row: dict, col_to_field: dict[str, str]) -> dict:
     """Map one CSV row to a crm_properties insert dict."""
     result: dict = {}
@@ -347,6 +370,13 @@ def _map_pebble_row(row: dict, col_to_field: dict[str, str]) -> dict:
                 extra_phones.append(s)
             continue
 
+        # Temp owner-2 fields — stored temporarily, combined below
+        if field in ("_owner2_first", "_owner2_last"):
+            s = _safe_str(value)
+            if s:
+                result[field] = s
+            continue
+
         if field in _FLOAT_FIELDS:
             v = _safe_float(value)
             if v is not None and (not is_fallback or field not in result):
@@ -358,6 +388,29 @@ def _map_pebble_row(row: dict, col_to_field: dict[str, str]) -> dict:
 
     if extra_phones:
         result["additional_phones"] = extra_phones
+
+    # ── Owner name post-processing ────────────────────────────────────────
+    first1 = (result.get("owner_first_name") or "").strip()
+    last1  = (result.get("owner_last_name")  or "").strip()
+    first2 = result.pop("_owner2_first", "").strip()
+    last2  = result.pop("_owner2_last",  "").strip()
+
+    if first1 or last1:
+        # Case A: LP gave us separate Owner 1 (and maybe Owner 2) columns
+        name1 = f"{first1} {last1}".strip()
+        name2 = f"{first2} {last2}".strip() if (first2 or last2) else ""
+        full = f"{name1} & {name2}" if name2 else name1
+        result["owner_full_name"] = full
+    elif result.get("owner_full_name"):
+        # Case B: only a combined name string — reformat if it's in LP "LAST FIRST" format
+        raw = result["owner_full_name"]
+        if _looks_like_lp_name(raw):
+            result["owner_full_name"] = _reformat_lp_name(raw)
+            # Also populate first/last from owner 1 for convenience
+            parts = result["owner_full_name"].split(" & ")
+            name_parts = parts[0].split(" ", 1)
+            result.setdefault("owner_first_name", name_parts[0])
+            result.setdefault("owner_last_name", name_parts[1] if len(name_parts) > 1 else "")
 
     return result
 
@@ -1011,15 +1064,24 @@ async def delete_all_properties() -> dict:
         count_res = sb.table("crm_properties").select("*", count="exact").limit(0).execute()
         count = count_res.count or 0
 
+        # Step 0: null communications references (FK to crm_properties)
+        try:
+            sb.table("crm_communications").update({"property_id": None}).not_.is_("property_id", "null").execute()
+        except Exception:
+            pass  # table may not exist yet
+
         # Step 1: clear all FK references so cascade constraints don't block delete
         sb.table("crm_properties").update({
             "campaign_id": None,
         }).gte("created_at", "1900-01-01T00:00:00+00:00").execute()
 
         # Step 2: clear any deals that reference these properties to avoid reverse FK
-        sb.table("crm_deals").update({
-            "property_id": None,
-        }).gte("created_at", "1900-01-01T00:00:00+00:00").execute()
+        try:
+            sb.table("crm_deals").update({
+                "property_id": None,
+            }).gte("created_at", "1900-01-01T00:00:00+00:00").execute()
+        except Exception:
+            pass  # table may not exist yet
 
         # Step 3: delete
         sb.table("crm_properties").delete().gte("created_at", "1900-01-01T00:00:00+00:00").execute()
@@ -1429,6 +1491,151 @@ async def delete_deal(deal_id: str) -> None:
     try:
         sb = get_supabase()
         sb.table("crm_deals").delete().eq("id", deal_id).execute()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ── Property Documents ────────────────────────────────────────────────────────
+
+from fastapi import UploadFile, File as FastAPIFile
+
+DOCUMENTS_MIGRATION_SQL = """
+CREATE TABLE IF NOT EXISTS crm_property_documents (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at   TIMESTAMPTZ DEFAULT NOW(),
+  property_id  UUID REFERENCES crm_properties(id) ON DELETE CASCADE,
+  filename     TEXT NOT NULL,
+  file_size    INTEGER,
+  file_type    TEXT,
+  storage_path TEXT NOT NULL,
+  uploaded_by  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_crm_docs_property ON crm_property_documents(property_id);
+""".strip()
+
+_ALLOWED_DOC_TYPES = {
+    "application/pdf", "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "image/jpeg", "image/png",
+}
+_STORAGE_BUCKET = "property-documents"
+
+
+@router.post("/properties/{property_id}/documents")
+async def upload_property_document(
+    property_id: str,
+    file: UploadFile = FastAPIFile(...),
+) -> dict:
+    """Upload a document (PDF, DOC, DOCX, JPG, PNG) and store in Supabase Storage."""
+    try:
+        sb = get_supabase()
+        content = await file.read()
+        content_type = file.content_type or "application/octet-stream"
+        if content_type not in _ALLOWED_DOC_TYPES:
+            raise HTTPException(status_code=415, detail=f"Unsupported file type: {content_type}")
+
+        # Insert metadata row to get an ID for the storage path
+        row = {
+            "property_id": property_id,
+            "filename": file.filename or "document",
+            "file_size": len(content),
+            "file_type": content_type,
+            "storage_path": "__pending__",
+            "created_at": _now(),
+        }
+        ins = sb.table("crm_property_documents").insert(row).execute()
+        doc = ins.data[0]
+        doc_id = doc["id"]
+
+        storage_path = f"{property_id}/{doc_id}_{file.filename or 'document'}"
+
+        # Upload to Supabase Storage
+        try:
+            sb.storage.from_(_STORAGE_BUCKET).upload(
+                storage_path,
+                content,
+                {"content-type": content_type},
+            )
+        except Exception as exc:
+            # Rollback metadata row if storage upload fails
+            sb.table("crm_property_documents").delete().eq("id", doc_id).execute()
+            raise HTTPException(status_code=500, detail=f"Storage upload failed: {exc}")
+
+        # Update storage_path
+        sb.table("crm_property_documents").update({"storage_path": storage_path}).eq("id", doc_id).execute()
+        doc["storage_path"] = storage_path
+        return doc
+    except HTTPException:
+        raise
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/properties/{property_id}/documents")
+async def list_property_documents(property_id: str) -> list:
+    """List all documents for a property."""
+    try:
+        sb = get_supabase()
+        res = (
+            sb.table("crm_property_documents")
+            .select("*")
+            .eq("property_id", property_id)
+            .order("created_at", desc=True)
+            .execute()
+        )
+        return res.data or []
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.delete("/documents/{doc_id}", status_code=204)
+async def delete_document(doc_id: str) -> None:
+    """Delete a document record and its storage object."""
+    try:
+        sb = get_supabase()
+        res = sb.table("crm_property_documents").select("storage_path").eq("id", doc_id).execute()
+        if not res.data:
+            raise HTTPException(status_code=404, detail="Document not found")
+        storage_path = res.data[0].get("storage_path", "")
+        if storage_path and storage_path != "__pending__":
+            try:
+                sb.storage.from_(_STORAGE_BUCKET).remove([storage_path])
+            except Exception:
+                pass  # best-effort; delete metadata regardless
+        sb.table("crm_property_documents").delete().eq("id", doc_id).execute()
+    except HTTPException:
+        raise
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/documents/{doc_id}/download")
+async def get_document_download_url(doc_id: str) -> dict:
+    """Return a signed download URL valid for 1 hour."""
+    try:
+        sb = get_supabase()
+        res = sb.table("crm_property_documents").select("*").eq("id", doc_id).execute()
+        if not res.data:
+            raise HTTPException(status_code=404, detail="Document not found")
+        doc = res.data[0]
+        storage_path = doc.get("storage_path", "")
+        if not storage_path or storage_path == "__pending__":
+            raise HTTPException(status_code=404, detail="Document not yet stored")
+        signed = sb.storage.from_(_STORAGE_BUCKET).create_signed_url(storage_path, 3600)
+        url = signed.get("signedURL") or signed.get("signed_url") or signed.get("data", {}).get("signedURL", "")
+        if not url:
+            raise HTTPException(status_code=500, detail="Could not generate signed URL")
+        return {"url": url, "filename": doc.get("filename"), "expires_in": 3600}
+    except HTTPException:
+        raise
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     except Exception as exc:
