@@ -1,40 +1,29 @@
 import React, { useEffect, useState } from 'react'
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Cell, ReferenceLine,
-} from 'recharts'
 import { useApp } from '../context/AppContext'
 import { fetchDashboard } from '../api/client'
 import { createCrmCampaign, saveBuyBox } from '../api/crm'
 import LoadingSpinner from '../components/LoadingSpinner'
-import DataTable from '../components/DataTable'
-import type { Column } from '../components/DataTable'
-import type { ZipStats } from '../types'
+import type { ZipStats, CompLocation, SweetSpot } from '../types'
 import CompMap from '../components/CompMap'
 import WelcomeScreen from './WelcomeScreen'
-
-const CHART_COLORS = ['#5C2977','#8B4DB8','#D5A940','#7B3E99','#A068C8','#2D7A4F','#B8860B','#C05000','#3D1A5C','#6B5B8A','#4CAF7A','#9B8AAE']
 
 export default function Dashboard() {
   const { compsStats, dashboardData, setDashboardData, setCurrentPage } = useApp()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [selectedZips, setSelectedZips] = useState<string[]>([])
-  const [viewMode, setViewMode] = useState<'charts' | 'map'>('charts')
-  const [mapVisibleZips, setMapVisibleZips] = useState<string[]>([])
 
   useEffect(() => {
     if (!compsStats) return
-    if (dashboardData && selectedZips.length === 0) return
+    if (dashboardData) return
     load()
-  }, [compsStats, selectedZips])
+  }, [compsStats])
 
   async function load() {
     if (!compsStats) return
     setLoading(true)
     setError(null)
     try {
-      const data = await fetchDashboard(compsStats.session_id, selectedZips)
+      const data = await fetchDashboard(compsStats.session_id, [])
       setDashboardData(data)
     } catch {
       setError('Failed to load dashboard. Please try again.')
@@ -47,103 +36,23 @@ export default function Dashboard() {
     return <WelcomeScreen contextualMessage="Upload sold comps to unlock ZIP analytics and map intelligence." />
   }
 
-  const zipOptions = dashboardData?.available_zips ?? []
-
-  useEffect(() => {
-    setMapVisibleZips([])
-  }, [dashboardData?.available_zips.join(',')])
-
-  function toggleZip(zip: string) {
-    setSelectedZips((prev) => prev.includes(zip) ? prev.filter((z) => z !== zip) : [...prev, zip])
+  // Sweet spot stat
+  const sp = dashboardData?.sweet_spot
+  let sweetBand = '—'
+  let sweetPct = 0
+  if (sp) {
+    const b = sp.bucket
+    sweetBand = b === '0-0.5' ? '0–0.5 acres' : b === '0.5-1' ? '0.5–1 acres' : b === '1-2' ? '1–2 acres' : b === '2-5' ? '2–5 acres' : b === '5-10' ? '5–10 acres' : b === '10+' ? '10+ acres' : b
+    sweetPct = sp.total_sales > 0 ? Math.round((sp.count / sp.total_sales) * 100) : 0
   }
 
-  function toggleMapZip(zip: string) {
-    setMapVisibleZips((prev) => prev.includes(zip) ? prev.filter((z) => z !== zip) : [...prev, zip])
-  }
-
-  // Chart data
-  const volumeData = (dashboardData?.zip_stats ?? []).map((z) => ({
-    zip: z.zip_code,
-    sales: z.sales_count,
-  }))
-
-  const ppaData = (dashboardData?.zip_stats ?? [])
-    .filter((z) => z.median_price_per_acre != null)
-    .sort((a, b) => (b.median_price_per_acre ?? 0) - (a.median_price_per_acre ?? 0))
-    .map((z) => ({
-      zip: z.zip_code,
-      ppa: Math.round(z.median_price_per_acre ?? 0),
-    }))
-
-  const maxPPA = Math.max(...ppaData.map((d) => d.ppa), 1)
-
-  const market = computeMarketIntelligence(dashboardData?.zip_stats ?? [], dashboardData?.comp_locations ?? [], dashboardData?.sweet_spot)
-
-  // Table columns
-  const cols: Column<ZipStats>[] = [
-    {
-      key: 'zip_code', header: 'ZIP', sortable: true,
-      render: (v) => <span className="font-mono" style={{ color: '#5C2977', fontWeight: 600, cursor: 'pointer' }}>{String(v)}</span>,
-    },
-    {
-      key: 'sales_count', header: 'Sales', sortable: true, align: 'right',
-      render: (v) => <span style={{ color: '#5C2977', fontWeight: 600 }}>{String(v)}</span>,
-    },
-    {
-      key: 'median_lot_size', header: 'Median Ac', sortable: true, align: 'right',
-      render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span>{(v as number).toFixed(2)}</span>,
-    },
-    {
-      key: 'min_lot_size', header: 'Min Ac', sortable: true, align: 'right', defaultHidden: true,
-      render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span>{(v as number).toFixed(2)}</span>,
-    },
-    {
-      key: 'max_lot_size', header: 'Max Ac', sortable: true, align: 'right', defaultHidden: true,
-      render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span>{(v as number).toFixed(2)}</span>,
-    },
-    {
-      key: 'min_sale_price', header: 'Min Price', sortable: true, align: 'right', defaultHidden: true,
-      render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span>${Math.round(v as number).toLocaleString()}</span>,
-    },
-    {
-      key: 'max_sale_price', header: 'Max Price', sortable: true, align: 'right',
-      render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span>${Math.round(v as number).toLocaleString()}</span>,
-    },
-    {
-      key: 'median_price_per_acre', header: 'Median $/Ac', sortable: true, align: 'right',
-      render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : (
-        <span className="font-semibold" style={{ color: (v as number) > 500000 ? '#D5A940' : '#D5A940' }}>
-          ${Math.round(v as number).toLocaleString()}
-        </span>
-      ),
-    },
-    {
-      key: 'avg_price_per_acre', header: 'Avg $/Ac', sortable: true, align: 'right', defaultHidden: true,
-      render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span>${Math.round(v as number).toLocaleString()}</span>,
-    },
-    {
-      key: 'price_band_lt50k', header: 'Price Bands', align: 'left',
-      render: (_, row) => <PriceBandPills row={row} />,
-    },
-    {
-      key: 'acreage_band_0_1', header: 'Acreage Mix', align: 'left', defaultHidden: true,
-      render: (_, row) => <AcreageBandPills row={row} />,
-    },
-  ]
-
-  const tooltipStyle = {
-    contentStyle: { background: '#3D1A5C', border: '1px solid rgba(213,169,64,0.3)', borderRadius: 8, fontSize: 12 },
-    labelStyle: { color: '#FFFFFF', fontWeight: 600 },
-    itemStyle: { color: '#E8D5F5' },
-    cursor: { fill: 'rgba(92,41,119,0.06)' },
-  }
+  const topZip = dashboardData?.zip_stats[0]
 
   return (
     <div className="flex flex-col min-h-screen">
-      {/* Page header */}
       <div className="page-header">
         <div>
-          <h1 className="text-lg" style={{ color: '#1A0A2E', fontWeight: 700 }}>ZIP Code Intelligence Dashboard</h1>
+          <h1 className="text-lg" style={{ color: '#1A0A2E', fontWeight: 700 }}>Market Analysis</h1>
           <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>
             {compsStats.valid_rows.toLocaleString()} valid sold comps · {dashboardData?.available_zips.length ?? '…'} ZIP codes
           </p>
@@ -163,69 +72,38 @@ export default function Dashboard() {
       </div>
 
       <div className="p-8 max-w-[1400px] mx-auto w-full">
-        {/* ── Summary Stats Cards ─────────────────────────────────── */}
+
+        {/* ── Section 1: 4 Stat Cards ──────────────────────────── */}
         {dashboardData && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             <SummaryCard
-              label="Valid Comps"
+              label="Sweet Spot"
+              value={sweetBand}
+              sub={sweetPct > 0 ? `${sweetPct}% of all sales` : 'Most common size'}
+              icon={<IconTarget />}
+              accent="#8B4DB8"
+            />
+            <SummaryCard
+              label="Most Active ZIP"
+              value={topZip?.zip_code ?? '—'}
+              sub={topZip ? `${topZip.sales_count} sales` : ''}
+              icon={<IconPin />}
+              accent="#D5A940"
+            />
+            <SummaryCard
+              label="Median Sale Price"
+              value={dashboardData.median_price ? `$${Math.round(dashboardData.median_price).toLocaleString()}` : '—'}
+              sub="across all comps"
+              icon={<IconDollar />}
+              accent="#D5A940"
+            />
+            <SummaryCard
+              label="Total Valid Comps"
               value={dashboardData.valid_comps.toLocaleString()}
               sub={`of ${dashboardData.total_comps.toLocaleString()} total`}
               icon={<IconDB />}
               accent="#5C2977"
             />
-            <SummaryCard
-              label="Median Sale Price"
-              value={dashboardData.median_price ? `$${Math.round(dashboardData.median_price).toLocaleString()}` : '—'}
-              sub="across all ZIPs"
-              icon={<IconDollar />}
-              accent="#D5A940"
-            />
-            <SummaryCard
-              label="Median $/Acre"
-              value={dashboardData.median_price_per_acre
-                ? `$${Math.round(dashboardData.median_price_per_acre).toLocaleString()}`
-                : '—'}
-              sub="all valid comps"
-              icon={<IconAcre />}
-              accent="#8B4DB8"
-            />
-            <SummaryCard
-              label="Most Active ZIP"
-              value={dashboardData.zip_stats[0]?.zip_code ?? '—'}
-              sub={dashboardData.zip_stats[0] ? `${dashboardData.zip_stats[0].sales_count} sales` : ''}
-              icon={<IconPin />}
-              accent="#D5A940"
-            />
-          </div>
-        )}
-
-        {/* ── ZIP Filter ─────────────────────────────────────────── */}
-        {zipOptions.length > 0 && (
-          <div className="card mb-6">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-medium" style={{ color: '#1A0A2E' }}>Filter by ZIP Code</p>
-              {selectedZips.length > 0 && (
-                <button className="text-xs hover:opacity-80 transition-opacity" style={{ color: '#5C2977' }} onClick={() => setSelectedZips([])}>
-                  Clear all
-                </button>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {zipOptions.map((zip) => (
-                <button
-                  key={zip}
-                  onClick={() => toggleZip(zip)}
-                  className="px-3 py-1 rounded-full text-sm font-medium transition-all"
-                  style={
-                    selectedZips.includes(zip)
-                      ? { background: '#5C2977', color: '#FFFFFF', border: '1px solid #5C2977', boxShadow: '0 2px 8px rgba(92,41,119,0.3)' }
-                      : { background: '#FFFFFF', color: '#5C2977', border: '1.5px solid #D4B8E8' }
-                  }
-                >
-                  {zip}
-                </button>
-              ))}
-            </div>
           </div>
         )}
 
@@ -243,175 +121,7 @@ export default function Dashboard() {
 
         {dashboardData && !loading && (
           <>
-            <div className="card mb-6">
-              <div className="flex items-center justify-between">
-                <h2 className="font-semibold text-sm" style={{ color: '#1A0A2E' }}>Dashboard View</h2>
-                <div className="inline-flex gap-1">
-                  <button
-                    className={`toggle-btn${viewMode === 'charts' ? ' active' : ''}`}
-                    onClick={() => setViewMode('charts')}
-                  >
-                    Charts
-                  </button>
-                  <button
-                    className={`toggle-btn${viewMode === 'map' ? ' active' : ''}`}
-                    onClick={() => setViewMode('map')}
-                  >
-                    Map
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* ── Insight Panel ─────────────────────────────────── */}
-            {dashboardData.insight && (
-              <div className="insight-panel mb-6">
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-none" style={{ background: 'rgba(92,41,119,0.1)' }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D5A940" strokeWidth="2">
-                      <circle cx="12" cy="12" r="10"/>
-                      <line x1="12" y1="8" x2="12" y2="12"/>
-                      <line x1="12" y1="16" x2="12.01" y2="16"/>
-                    </svg>
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold mb-1" style={{ color: '#5C2977' }}>Market Intelligence</p>
-                    <p className="text-sm leading-relaxed" style={{ color: '#3D2B5E' }}>{dashboardData.insight}</p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ── Charts row ────────────────────────────────────── */}
-            {viewMode === 'charts' && (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-              {/* Sales Volume */}
-              <div className="card">
-                <h2 className="font-semibold text-sm mb-1" style={{ color: '#1A0A2E' }}>Sales Volume by ZIP</h2>
-                <p className="text-xs mb-4" style={{ color: '#6B5B8A' }}>Number of valid sales per ZIP code (sorted descending)</p>
-                <ResponsiveContainer width="100%" height={240}>
-                  <BarChart data={volumeData} margin={{ left: 0, right: 8, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(92,41,119,0.06)" vertical={false} />
-                    <XAxis dataKey="zip" tick={{ fill: '#6B5B8A', fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fill: '#6B5B8A', fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <Tooltip {...tooltipStyle} formatter={(v: number) => [v.toLocaleString(), 'Sales']} />
-                    <Bar dataKey="sales" radius={[4, 4, 0, 0]}>
-                      {volumeData.map((_, i) => (
-                        <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-
-              {/* Median PPA */}
-              <div className="card">
-                <h2 className="font-semibold text-sm mb-1" style={{ color: '#1A0A2E' }}>Median Price Per Acre by ZIP</h2>
-                <p className="text-xs mb-4" style={{ color: '#6B5B8A' }}>Outlier ZIPs indicate waterfront or premium areas</p>
-                <ResponsiveContainer width="100%" height={240}>
-                  <BarChart data={ppaData} margin={{ left: 0, right: 8, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(92,41,119,0.06)" vertical={false} />
-                    <XAxis dataKey="zip" tick={{ fill: '#6B5B8A', fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <YAxis
-                      tick={{ fill: '#6B5B8A', fontSize: 11 }}
-                      tickFormatter={(v) => v >= 1000 ? `$${(v / 1000).toFixed(0)}K` : `$${v}`}
-                      axisLine={false} tickLine={false}
-                    />
-                    <Tooltip
-                      {...tooltipStyle}
-                      formatter={(v: number) => [`$${v.toLocaleString()}/ac`, 'Median $/Acre']}
-                    />
-                    <Bar dataKey="ppa" radius={[4, 4, 0, 0]}>
-                      {ppaData.map((entry, i) => (
-                        <Cell
-                          key={i}
-                          fill={entry.ppa > maxPPA * 0.7 ? '#D5A940' : CHART_COLORS[i % CHART_COLORS.length]}
-                        />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-              </div>
-            )}
-
-            {viewMode === 'map' && (
-              <div className="card mb-6">
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="font-semibold text-sm" style={{ color: '#1A0A2E' }}>Sold Comps Map</h2>
-                  {mapVisibleZips.length > 0 && (
-                    <button className="text-xs" style={{ color: '#5C2977' }} onClick={() => setMapVisibleZips([])}>
-                      Show all ZIPs
-                    </button>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-2 mb-4">
-                  {zipOptions.map((zip, i) => (
-                    <button
-                      key={zip}
-                      onClick={() => toggleMapZip(zip)}
-                      className="px-2.5 py-1 rounded-full text-xs font-medium border"
-                      style={mapVisibleZips.length === 0 || mapVisibleZips.includes(zip)
-                        ? { borderColor: CHART_COLORS[i % CHART_COLORS.length], color: CHART_COLORS[i % CHART_COLORS.length], background: `${CHART_COLORS[i % CHART_COLORS.length]}20` }
-                        : { borderColor: '#E8E0F0', color: '#6B5B8A', background: '#F8F6FB' }}
-                    >
-                      {zip}
-                    </button>
-                  ))}
-                </div>
-                <CompMap
-                  comps={dashboardData.comp_locations}
-                  availableZips={zipOptions}
-                  visibleZips={mapVisibleZips}
-                  onZipToggle={toggleMapZip}
-                />
-              </div>
-            )}
-
-            <div className="card mb-6">
-              <h2 className="font-semibold mb-3" style={{ color: '#1A0A2E' }}>Market Intelligence</h2>
-              <p className="text-sm leading-relaxed mb-4" style={{ color: '#3D2B5E' }}>
-                {market.paragraph}
-              </p>
-
-              <div className="rounded-xl p-4" style={{ background: '#F8F6FB', border: '1px solid #E8E0F0' }}>
-                <p className="text-xs uppercase tracking-wider mb-3" style={{ color: '#6B5B8A' }}>Recommended Target Profile</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <span style={{ color: '#6B5B8A' }}>Ideal acreage range:</span>{' '}
-                    <span style={{ color: '#1A0A2E' }}>{market.idealAcreageRange}</span>
-                  </div>
-                  <div>
-                    <span style={{ color: '#6B5B8A' }}>Expected offer range:</span>{' '}
-                    <span style={{ color: '#D5A940' }}>{market.expectedOfferRange}</span>
-                  </div>
-                  <div>
-                    <span style={{ color: '#6B5B8A' }}>Target ZIPs:</span>
-                    <div className="flex flex-wrap gap-1.5 mt-1">
-                      {market.targetZips.length > 0 ? market.targetZips.map((z) => (
-                        <button
-                          key={z}
-                          onClick={() => toggleZip(z)}
-                          className="badge badge-blue text-[10px]"
-                        >
-                          {z}
-                        </button>
-                      )) : <span className="text-xs" style={{ color: '#6B5B8A' }}>No ZIPs with 20+ sales</span>}
-                    </div>
-                  </div>
-                  <div>
-                    <span style={{ color: '#6B5B8A' }}>Avoid ZIPs:</span>
-                    <div className="flex flex-wrap gap-1.5 mt-1">
-                      {market.avoidZips.length > 0 ? market.avoidZips.map((z) => (
-                        <span key={z} className="badge badge-red text-[10px]">{z}</span>
-                      )) : <span className="text-xs" style={{ color: '#6B5B8A' }}>None</span>}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* ── Buy Box Recipe ─────────────────────────────────── */}
+            {/* ── Section 2: Buy Box Recipe ────────────────────────── */}
             <BuyBoxRecipe
               zipStats={dashboardData.zip_stats}
               comps={dashboardData.comp_locations}
@@ -420,25 +130,14 @@ export default function Dashboard() {
               topCounties={dashboardData.top_counties ?? []}
             />
 
-            {/* ── ZIP Stats Table ───────────────────────────────── */}
-            <div className="card">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="font-semibold" style={{ color: '#1A0A2E' }}>
-                  ZIP Performance Table
-                  <span className="text-sm font-normal ml-2" style={{ color: '#6B5B8A' }}>
-                    ({dashboardData.zip_stats.length} ZIPs)
-                  </span>
-                </h2>
-              </div>
-              <DataTable<ZipStats>
-                columns={cols}
-                data={dashboardData.zip_stats}
-                pageSize={25}
-                emptyMessage="No comp data found for selected ZIPs"
-                searchable
-                searchKeys={['zip_code']}
-              />
-            </div>
+            {/* ── Section 3: Top 10 Markets ────────────────────────── */}
+            <TopMarketsCard
+              zipStats={dashboardData.zip_stats}
+              comps={dashboardData.comp_locations}
+            />
+
+            {/* ── Section 4: Full ZIP Data ─────────────────────────── */}
+            <CollapsibleZipTable zipStats={dashboardData.zip_stats} />
 
             <div className="mt-6 flex justify-end">
               <button className="btn-primary" onClick={() => setCurrentPage('match-targets')}>
@@ -452,16 +151,206 @@ export default function Dashboard() {
   )
 }
 
+// ── Top Markets Card ──────────────────────────────────────────────────────
+
+function zipDotColor(z: ZipStats, outlierSet: Set<string>): string {
+  if (outlierSet.has(z.zip_code)) return '#dc2626'
+  if (z.sales_count >= 20) return '#2D7A4F'
+  if (z.sales_count >= 10) return '#D5A940'
+  return '#dc2626'
+}
+
+function TopMarketsCard({ zipStats, comps }: { zipStats: ZipStats[]; comps: CompLocation[] }) {
+  const [showMap, setShowMap] = useState(false)
+  const [showOutliers, setShowOutliers] = useState(false)
+  const [showThin, setShowThin] = useState(false)
+
+  const sorted = [...zipStats].sort((a, b) => b.sales_count - a.sales_count)
+  const top10 = sorted.slice(0, 10)
+  const top10Zips = top10.map(z => z.zip_code)
+
+  const ppas = zipStats.map(z => z.median_price_per_acre).filter((v): v is number => v != null && Number.isFinite(v) && v > 0)
+  const overallMedian = median(ppas)
+  const outlierSet = new Set<string>(
+    overallMedian > 0
+      ? zipStats.filter(z => (z.median_price_per_acre ?? 0) > 3 * overallMedian).map(z => z.zip_code)
+      : []
+  )
+  const thinZips = zipStats.filter(z => z.sales_count < 10).map(z => z.zip_code)
+  const avoidZips = [...outlierSet, ...thinZips]
+
+  return (
+    <div className="card mb-6">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="font-semibold" style={{ color: '#1A0A2E' }}>Top 10 Markets</h2>
+          <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>Ranked by sales volume · color shows market quality</p>
+        </div>
+        <button className="btn-secondary text-xs" onClick={() => setShowMap(v => !v)}>
+          {showMap ? 'Hide Map' : 'View on Map'}
+        </button>
+      </div>
+
+      {/* Legend */}
+      <div className="flex items-center gap-4 mb-4 text-xs" style={{ color: '#6B5B8A' }}>
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full inline-block" style={{ background: '#2D7A4F' }} />Top market (20+ sales)</span>
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full inline-block" style={{ background: '#D5A940' }} />Good (10–19 sales)</span>
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full inline-block" style={{ background: '#dc2626' }} />Avoid (thin/outlier)</span>
+      </div>
+
+      {/* Top 10 ranked list */}
+      <div className="rounded-xl overflow-hidden mb-4" style={{ border: '1px solid #E8E0F0' }}>
+        <div className="grid text-[10px] uppercase tracking-wider px-4 py-2" style={{ gridTemplateColumns: '32px 12px 1fr 80px 100px', color: '#6B5B8A', background: '#F8F6FB', borderBottom: '1px solid #E8E0F0' }}>
+          <span>#</span><span></span><span>ZIP</span><span className="text-right">Sales</span><span className="text-right">Median $/Acre</span>
+        </div>
+        {top10.map((z, i) => {
+          const dot = zipDotColor(z, outlierSet)
+          return (
+            <div
+              key={z.zip_code}
+              className="grid items-center px-4 py-2.5"
+              style={{ gridTemplateColumns: '32px 12px 1fr 80px 100px', background: i % 2 === 0 ? '#FFFFFF' : '#FAFAF8', borderBottom: i < 9 ? '1px solid #F0EBF8' : 'none' }}
+            >
+              <span className="text-xs font-bold" style={{ color: '#9B8AAE' }}>{i + 1}</span>
+              <div className="w-2 h-2 rounded-full" style={{ background: dot }} />
+              <span className="font-mono font-semibold text-sm" style={{ color: '#5C2977' }}>{z.zip_code}</span>
+              <span className="text-xs text-right font-medium" style={{ color: '#1A0A2E' }}>{z.sales_count.toLocaleString()}</span>
+              <span className="text-xs text-right" style={{ color: '#D5A940' }}>
+                {z.median_price_per_acre != null ? `$${Math.round(z.median_price_per_acre).toLocaleString()}` : '—'}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Avoid section */}
+      {(outlierSet.size > 0 || thinZips.length > 0) && (
+        <div className="rounded-lg px-4 py-3 mb-4 text-xs space-y-1" style={{ background: 'rgba(220,38,38,0.04)', border: '1px solid rgba(220,38,38,0.12)' }}>
+          <p className="font-medium mb-1.5" style={{ color: '#9B1C1C' }}>Excluded from targets</p>
+          {outlierSet.size > 0 && (
+            <div>
+              <span style={{ color: '#6B5B8A' }}>{outlierSet.size} outlier ZIPs excluded (premium/waterfront areas)</span>
+              <button className="ml-2 underline" style={{ color: '#5C2977' }} onClick={() => setShowOutliers(v => !v)}>
+                {showOutliers ? 'hide' : 'view all'}
+              </button>
+              {showOutliers && (
+                <p className="mt-1 font-mono text-[10px] leading-relaxed" style={{ color: '#9B8AAE' }}>
+                  {[...outlierSet].join(', ')}
+                </p>
+              )}
+            </div>
+          )}
+          {thinZips.length > 0 && (
+            <div>
+              <span style={{ color: '#6B5B8A' }}>{thinZips.length} thin data ZIPs excluded (fewer than 10 sales)</span>
+              <button className="ml-2 underline" style={{ color: '#5C2977' }} onClick={() => setShowThin(v => !v)}>
+                {showThin ? 'hide' : 'view all'}
+              </button>
+              {showThin && (
+                <p className="mt-1 font-mono text-[10px] leading-relaxed" style={{ color: '#9B8AAE' }}>
+                  {thinZips.join(', ')}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Map toggle */}
+      {showMap && (
+        <CompMap
+          comps={comps}
+          availableZips={zipStats.map(z => z.zip_code)}
+          visibleZips={top10Zips}
+          onZipToggle={() => {}}
+          topZips={top10Zips}
+          avoidZips={avoidZips}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Collapsible ZIP Table ─────────────────────────────────────────────────
+
+function CollapsibleZipTable({ zipStats }: { zipStats: ZipStats[] }) {
+  const [expanded, setExpanded] = useState(false)
+  const [showAll, setShowAll] = useState(false)
+
+  const ppas = zipStats.map(z => z.median_price_per_acre).filter((v): v is number => v != null && Number.isFinite(v) && v > 0)
+  const overallMedian = median(ppas)
+  const outlierSet = new Set<string>(
+    overallMedian > 0
+      ? zipStats.filter(z => (z.median_price_per_acre ?? 0) > 3 * overallMedian).map(z => z.zip_code)
+      : []
+  )
+
+  const filtered = showAll
+    ? [...zipStats].sort((a, b) => b.sales_count - a.sales_count)
+    : [...zipStats].filter(z => z.sales_count >= 10 && !outlierSet.has(z.zip_code)).sort((a, b) => b.sales_count - a.sales_count)
+
+  return (
+    <div className="card mb-6">
+      <div className="flex items-center justify-between">
+        <h2 className="font-semibold" style={{ color: '#1A0A2E' }}>
+          ZIP Code Data
+          <span className="text-sm font-normal ml-2" style={{ color: '#6B5B8A' }}>
+            ({zipStats.length} total ZIPs)
+          </span>
+        </h2>
+        <button
+          className="btn-secondary text-xs"
+          onClick={() => setExpanded(v => !v)}
+        >
+          {expanded ? 'Collapse ▲' : `View all ${zipStats.length} ZIPs ▼`}
+        </button>
+      </div>
+
+      {expanded && (
+        <div className="mt-4">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs" style={{ color: '#6B5B8A' }}>
+              Showing {filtered.length} ZIPs
+              {!showAll && ' with 10+ sales, excluding outliers'}
+            </p>
+            <button className="text-xs underline" style={{ color: '#5C2977' }} onClick={() => setShowAll(v => !v)}>
+              {showAll ? 'Hide thin/outlier ZIPs' : 'Show all ZIPs'}
+            </button>
+          </div>
+
+          <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #E8E0F0' }}>
+            <div className="grid text-[10px] uppercase tracking-wider px-4 py-2" style={{ gridTemplateColumns: '1fr 70px 100px 90px', color: '#6B5B8A', background: '#F8F6FB', borderBottom: '1px solid #E8E0F0' }}>
+              <span>ZIP</span>
+              <span className="text-right">Sales</span>
+              <span className="text-right">Max Price</span>
+              <span className="text-right">Median Acres</span>
+            </div>
+            {filtered.map((z, i) => (
+              <div
+                key={z.zip_code}
+                className="grid items-center px-4 py-2"
+                style={{ gridTemplateColumns: '1fr 70px 100px 90px', background: i % 2 === 0 ? '#FFFFFF' : '#FAFAF8', borderBottom: i < filtered.length - 1 ? '1px solid #F0EBF8' : 'none' }}
+              >
+                <span className="font-mono text-xs font-semibold" style={{ color: '#5C2977' }}>{z.zip_code}</span>
+                <span className="text-xs text-right" style={{ color: '#1A0A2E' }}>{z.sales_count.toLocaleString()}</span>
+                <span className="text-xs text-right" style={{ color: '#D5A940' }}>
+                  {z.max_sale_price ? `$${Math.round(z.max_sale_price).toLocaleString()}` : '—'}
+                </span>
+                <span className="text-xs text-right" style={{ color: '#6B5B8A' }}>
+                  {z.median_lot_size != null ? `${z.median_lot_size.toFixed(2)} ac` : '—'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Buy Box Recipe ────────────────────────────────────────────────────────
 
 const SQFT_PER_ACRE = 43560
-
-function fmtAcre(acres: number): string {
-  if (acres < 1) {
-    return `${acres} acres (${Math.round(acres * SQFT_PER_ACRE).toLocaleString()} sq ft)`
-  }
-  return `${acres} acres`
-}
 
 function fmtSqft(acres: number): string {
   return `${Math.round(acres * SQFT_PER_ACRE).toLocaleString()} sq ft (${acres} ac)`
@@ -476,7 +365,7 @@ function BuyBoxRecipe({
 }: {
   zipStats: ZipStats[]
   comps: Array<{ lot_acres: number; sale_price: number; zip?: string }>
-  sweetSpot?: { bucket: string; count: number; total_sales: number; expected_offer_low: number; expected_offer_high: number } | null
+  sweetSpot?: SweetSpot | null
   topStates: string[]
   topCounties: string[]
 }) {
@@ -484,22 +373,14 @@ function BuyBoxRecipe({
   const [building, setBuilding] = useState(false)
   const [built, setBuilt] = useState(false)
 
-  // Top ZIPs by sales count
-  const topZips = [...zipStats]
-    .sort((a, b) => b.sales_count - a.sales_count)
-    .slice(0, 10)
-    .map((z) => z.zip_code)
+  const topZips = [...zipStats].sort((a, b) => b.sales_count - a.sales_count).slice(0, 10).map(z => z.zip_code)
 
-  // Acreage percentiles from comp_locations
-  const acres = comps.map((c) => c.lot_acres).filter((v) => Number.isFinite(v) && v > 0).sort((a, b) => a - b)
-  const acreP25 = percentile(acres, 25)
-  const acreP75 = percentile(acres, 75)
-  const minAcre = acres.length > 0 ? Math.max(0.1, Math.floor(acreP25 * 10) / 10) : 0.5
-  const maxAcre = acres.length > 0 ? Math.ceil(acreP75 * 10) / 10 : 5
+  const acres = comps.map(c => c.lot_acres).filter(v => Number.isFinite(v) && v > 0).sort((a, b) => a - b)
+  const minAcre = acres.length > 0 ? Math.max(0.1, Math.floor(percentile(acres, 25) * 10) / 10) : 0.5
+  const maxAcre = acres.length > 0 ? Math.ceil(percentile(acres, 75) * 10) / 10 : 5
   const minSqft = Math.round(minAcre * SQFT_PER_ACRE)
   const maxSqft = Math.round(maxAcre * SQFT_PER_ACRE)
 
-  // Sweet spot label
   let sweetLabel = `${minAcre}–${maxAcre} acres`
   if (sweetSpot) {
     const b = sweetSpot.bucket
@@ -540,7 +421,7 @@ function BuyBoxRecipe({
     '5. SALE HISTORY',
     '   Include: Sold in last 5 years',
     '   Exclude: Unknown sale dates',
-    '   Exclude: Properties sold in last 2 years (recent buyers less motivated)',
+    '   Exclude: Properties sold in last 2 years',
     '',
     '6. OWNER',
     '   Owner type: Individual / Trust only (not LLC/Corp)',
@@ -550,10 +431,7 @@ function BuyBoxRecipe({
   ].filter(Boolean).join('\n')
 
   function handleCopy() {
-    navigator.clipboard.writeText(recipeText).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
+    navigator.clipboard.writeText(recipeText).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000) })
   }
 
   async function handleBuildCampaign() {
@@ -567,8 +445,7 @@ function BuyBoxRecipe({
       setBuilt(true)
       setTimeout(() => setBuilt(false), 3000)
     } catch (e) {
-      alert('Failed to create campaign. Check console.')
-      console.error(e)
+      alert('Failed to create campaign. Check console.'); console.error(e)
     } finally {
       setBuilding(false)
     }
@@ -593,32 +470,21 @@ ${sec('1. Location',
   (topCounties.length ? row('Counties', '') + `<div style="margin:4px 0 8px">${topCounties.map(pill).join('')}</div>` : '') +
   row('ZIP Codes', '') + `<div style="margin:4px 0">${topZips.map(pill).join('')}</div>`
 )}
-${sec('2. Property Type',
-  check('Vacant Land only') + check('Exclude active MLS listings')
-)}
+${sec('2. Property Type', check('Vacant Land only') + check('Exclude active MLS listings'))}
 ${sec('3. Lot Size',
   row('Min lot size', `${minSqft.toLocaleString()} sq ft (${minAcre} acres)`) +
   row('Max lot size', `${maxSqft.toLocaleString()} sq ft (${maxAcre} acres)`) +
   row('Sweet spot', sweetLabel)
 )}
 ${sec('4. Land Quality',
-  row('Buildability minimum', '80%') +
-  row('Maximum slope', '10%') +
-  row('Wetlands coverage', 'Less than 5%') +
-  check('Exclude all FEMA flood zones', false) +
-  check('Exclude landlocked parcels', false) +
-  row('Road frontage', 'Required — minimum 1 ft')
+  row('Buildability minimum', '80%') + row('Maximum slope', '10%') + row('Wetlands coverage', 'Less than 5%') +
+  check('Exclude all FEMA flood zones', false) + check('Exclude landlocked parcels', false) + row('Road frontage', 'Required — minimum 1 ft')
 )}
 ${sec('5. Sale History',
-  check('Include: sold in last 5 years') +
-  check('Exclude: unknown sale dates', false) +
-  check('Exclude: sold in last 2 years (less motivated sellers)', false)
+  check('Include: sold in last 5 years') + check('Exclude: unknown sale dates', false) + check('Exclude: sold in last 2 years', false)
 )}
 ${sec('6. Owner',
-  row('Owner type', 'Individual / Trust only') +
-  check('Exclude LLC / Corp owners', false) +
-  row('Owner tenure', '5+ years') +
-  row('Absentee', 'Cross-county absentees preferred')
+  row('Owner type', 'Individual / Trust only') + check('Exclude LLC / Corp owners', false) + row('Owner tenure', '5+ years') + row('Absentee', 'Cross-county absentees preferred')
 )}
 </body></html>`
     const w = window.open('', '_blank')
@@ -655,7 +521,6 @@ ${sec('6. Owner',
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-
         {/* Section 1 — Location */}
         <div className="rounded-xl p-4 lg:col-span-3" style={cardStyle}>
           {hdr('1 · Location')}
@@ -664,7 +529,7 @@ ${sec('6. Owner',
               <div>
                 <p className="mb-1" style={{ color: '#6B5B8A' }}>State</p>
                 <div className="flex flex-wrap gap-1.5">
-                  {topStates.map((s) => (
+                  {topStates.map(s => (
                     <span key={s} className="font-semibold px-2 py-0.5 rounded text-[11px]" style={{ background: 'rgba(92,41,119,0.1)', color: '#5C2977', border: '1px solid rgba(92,41,119,0.2)' }}>{s}</span>
                   ))}
                 </div>
@@ -672,18 +537,18 @@ ${sec('6. Owner',
             )}
             {topCounties.length > 0 && (
               <div>
-                <p className="mb-1" style={{ color: '#6B5B8A' }}>Counties — enter each in Land Portal → Location → County</p>
+                <p className="mb-1" style={{ color: '#6B5B8A' }}>Counties — Land Portal → Location → County</p>
                 <div className="flex flex-wrap gap-1.5">
-                  {topCounties.map((c) => (
+                  {topCounties.map(c => (
                     <span key={c} className="text-[11px] px-2 py-0.5 rounded" style={{ background: 'rgba(92,41,119,0.08)', color: '#5C2977', border: '1px solid rgba(92,41,119,0.15)' }}>{c}</span>
                   ))}
                 </div>
               </div>
             )}
             <div>
-              <p className="mb-1" style={{ color: '#6B5B8A' }}>ZIP Codes — enter each in Land Portal → Location → ZIP Code</p>
+              <p className="mb-1" style={{ color: '#6B5B8A' }}>Top 10 ZIPs — Land Portal → Location → ZIP Code</p>
               <div className="flex flex-wrap gap-1.5">
-                {topZips.map((z) => (
+                {topZips.map(z => (
                   <span key={z} className="font-mono text-[11px] px-2 py-0.5 rounded" style={{ background: 'rgba(92,41,119,0.1)', color: '#3D1A5C', border: '1px solid rgba(92,41,119,0.2)' }}>{z}</span>
                 ))}
               </div>
@@ -725,30 +590,12 @@ ${sec('6. Owner',
         <div className="rounded-xl p-4" style={cardStyle}>
           {hdr('4 · Land Quality')}
           <div className="space-y-2 text-xs">
-            <div className="flex justify-between">
-              <span style={{ color: '#6B5B8A' }}>Buildability minimum</span>
-              <span style={{ color: '#2D7A4F', fontWeight: 600 }}>80%</span>
-            </div>
-            <div className="flex justify-between">
-              <span style={{ color: '#6B5B8A' }}>Maximum slope</span>
-              <span style={{ color: '#1A0A2E', fontWeight: 600 }}>10%</span>
-            </div>
-            <div className="flex justify-between">
-              <span style={{ color: '#6B5B8A' }}>Wetlands coverage</span>
-              <span style={{ color: '#1A0A2E', fontWeight: 600 }}>Less than 5%</span>
-            </div>
-            <div className="flex gap-2 items-start">
-              <span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span>
-              <span style={{ color: '#6B5B8A' }}>FEMA flood zones (exclude all)</span>
-            </div>
-            <div className="flex gap-2 items-start">
-              <span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span>
-              <span style={{ color: '#6B5B8A' }}>Landlocked parcels (exclude)</span>
-            </div>
-            <div className="flex justify-between">
-              <span style={{ color: '#6B5B8A' }}>Road frontage</span>
-              <span style={{ color: '#2D7A4F', fontWeight: 600 }}>Required (min 1 ft)</span>
-            </div>
+            <div className="flex justify-between"><span style={{ color: '#6B5B8A' }}>Buildability minimum</span><span style={{ color: '#2D7A4F', fontWeight: 600 }}>80%</span></div>
+            <div className="flex justify-between"><span style={{ color: '#6B5B8A' }}>Maximum slope</span><span style={{ color: '#1A0A2E', fontWeight: 600 }}>10%</span></div>
+            <div className="flex justify-between"><span style={{ color: '#6B5B8A' }}>Wetlands coverage</span><span style={{ color: '#1A0A2E', fontWeight: 600 }}>Less than 5%</span></div>
+            <div className="flex gap-2"><span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>FEMA flood zones (exclude all)</span></div>
+            <div className="flex gap-2"><span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>Landlocked parcels (exclude)</span></div>
+            <div className="flex justify-between"><span style={{ color: '#6B5B8A' }}>Road frontage</span><span style={{ color: '#2D7A4F', fontWeight: 600 }}>Required (min 1 ft)</span></div>
           </div>
         </div>
 
@@ -756,22 +603,10 @@ ${sec('6. Owner',
         <div className="rounded-xl p-4" style={cardStyle}>
           {hdr('5 · Sale History')}
           <div className="space-y-2 text-xs">
-            <div className="flex gap-2">
-              <span style={{ color: '#2D7A4F', fontWeight: 700 }}>✓</span>
-              <span style={{ color: '#1A0A2E' }}>Sold comps: last 5 years</span>
-            </div>
-            <div className="flex gap-2">
-              <span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span>
-              <span style={{ color: '#6B5B8A' }}>Exclude unknown sale dates</span>
-            </div>
-            <div className="flex gap-2">
-              <span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span>
-              <span style={{ color: '#6B5B8A' }}>Exclude sold last 2 years (recent buyers less motivated)</span>
-            </div>
-            <div className="flex gap-2">
-              <span style={{ color: '#2D7A4F', fontWeight: 700 }}>✓</span>
-              <span style={{ color: '#1A0A2E' }}>Absentee owners preferred</span>
-            </div>
+            <div className="flex gap-2"><span style={{ color: '#2D7A4F', fontWeight: 700 }}>✓</span><span style={{ color: '#1A0A2E' }}>Sold comps: last 5 years</span></div>
+            <div className="flex gap-2"><span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>Exclude unknown sale dates</span></div>
+            <div className="flex gap-2"><span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>Exclude sold last 2 years (recent buyers less motivated)</span></div>
+            <div className="flex gap-2"><span style={{ color: '#2D7A4F', fontWeight: 700 }}>✓</span><span style={{ color: '#1A0A2E' }}>Absentee owners preferred</span></div>
           </div>
         </div>
 
@@ -779,110 +614,18 @@ ${sec('6. Owner',
         <div className="rounded-xl p-4" style={cardStyle}>
           {hdr('6 · Owner')}
           <div className="space-y-2 text-xs">
-            <div className="flex justify-between">
-              <span style={{ color: '#6B5B8A' }}>Owner type</span>
-              <span style={{ color: '#1A0A2E', fontWeight: 600 }}>Individual / Trust only</span>
-            </div>
-            <div className="flex gap-2">
-              <span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span>
-              <span style={{ color: '#6B5B8A' }}>LLC / Corp owners (exclude)</span>
-            </div>
-            <div className="flex justify-between">
-              <span style={{ color: '#6B5B8A' }}>Owner tenure</span>
-              <span style={{ color: '#1A0A2E', fontWeight: 600 }}>5+ years</span>
-            </div>
-            <div className="flex justify-between">
-              <span style={{ color: '#6B5B8A' }}>Absentee</span>
-              <span style={{ color: '#8B4DB8', fontWeight: 600 }}>Cross-county preferred</span>
-            </div>
+            <div className="flex justify-between"><span style={{ color: '#6B5B8A' }}>Owner type</span><span style={{ color: '#1A0A2E', fontWeight: 600 }}>Individual / Trust only</span></div>
+            <div className="flex gap-2"><span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>LLC / Corp owners (exclude)</span></div>
+            <div className="flex justify-between"><span style={{ color: '#6B5B8A' }}>Owner tenure</span><span style={{ color: '#1A0A2E', fontWeight: 600 }}>5+ years</span></div>
+            <div className="flex justify-between"><span style={{ color: '#6B5B8A' }}>Absentee</span><span style={{ color: '#8B4DB8', fontWeight: 600 }}>Cross-county preferred</span></div>
           </div>
         </div>
-
       </div>
     </div>
   )
 }
 
-function computeMarketIntelligence(
-  zipStats: ZipStats[], 
-  comps: Array<{ lot_acres: number; sale_price: number }>,
-  sweetSpot?: { bucket: string; count: number; total_sales: number; expected_offer_low: number; expected_offer_high: number } | null
-) {
-  const mostLiquid = zipStats.length > 0 ? zipStats.reduce((a, b) => a.sales_count >= b.sales_count ? a : b) : null
-  const ppas = zipStats.map((z) => z.median_price_per_acre).filter((v): v is number => v != null && Number.isFinite(v))
-  const overallMedian = median(ppas)
-  const outliers = overallMedian > 0
-    ? zipStats.filter((z) => (z.median_price_per_acre ?? 0) > 3 * overallMedian).map((z) => z.zip_code)
-    : []
-  const thin = zipStats.filter((z) => z.sales_count < 10).map((z) => z.zip_code)
-  const targetZips = zipStats.filter((z) => z.sales_count >= 20).map((z) => z.zip_code)
-
-  // Use backend sweet_spot if available, otherwise fallback to zip_stats bands
-  let sweetBand = '0.0–0.5 acres'
-  let sweetCount = 0
-  let sweetPct = 0
-  
-  if (sweetSpot) {
-    // Format bucket name for display
-    const bucket = sweetSpot.bucket
-    if (bucket === '0-0.5') sweetBand = '0.0–0.5 acres'
-    else if (bucket === '0.5-1') sweetBand = '0.5–1 acres'
-    else if (bucket === '1-2') sweetBand = '1–2 acres'
-    else if (bucket === '2-5') sweetBand = '2–5 acres'
-    else if (bucket === '5-10') sweetBand = '5–10 acres'
-    else if (bucket === '10+') sweetBand = '10+ acres'
-    else sweetBand = bucket
-    
-    sweetCount = sweetSpot.count
-    sweetPct = sweetSpot.total_sales > 0 ? Math.round((sweetCount / sweetSpot.total_sales) * 100) : 0
-  } else {
-    // Fallback to zip_stats acreage bands
-    const bandCounts: Record<string, number> = {
-      '<1 acre': zipStats.reduce((sum, z) => sum + (z.acreage_band_0_1 ?? 0), 0),
-      '1–5 acres': zipStats.reduce((sum, z) => sum + (z.acreage_band_1_5 ?? 0), 0),
-      '5–10 acres': zipStats.reduce((sum, z) => sum + (z.acreage_band_5_10 ?? 0), 0),
-      '10+ acres': zipStats.reduce((sum, z) => sum + (z.acreage_band_gt10 ?? 0), 0),
-    }
-    const totalBandSales = Object.values(bandCounts).reduce((a, b) => a + b, 0)
-    Object.entries(bandCounts).forEach(([band, count]) => {
-      if (count > sweetCount) { sweetCount = count; sweetBand = band }
-    })
-    sweetPct = totalBandSales > 0 ? Math.round((sweetCount / totalBandSales) * 100) : 0
-  }
-
-  // For expected offer range, use comp_locations prices if available, else zip_stats
-  let p25 = 0, p75 = 0
-  const validPrices = comps.map((c) => c.sale_price).filter((v) => Number.isFinite(v) && v > 0).sort((a, b) => a - b)
-  if (validPrices.length > 0) {
-    p25 = percentile(validPrices, 25)
-    p75 = percentile(validPrices, 75)
-  } else {
-    // Fallback: derive from zip_stats min/max sale prices
-    const minPrices = zipStats.map(z => z.min_sale_price).filter((v): v is number => v != null && v > 0)
-    const maxPrices = zipStats.map(z => z.max_sale_price).filter((v): v is number => v != null && v > 0)
-    if (minPrices.length > 0) p25 = median(minPrices.sort((a, b) => a - b))
-    if (maxPrices.length > 0) p75 = median(maxPrices.sort((a, b) => a - b))
-  }
-
-  const paragraph = [
-    `The sweet spot is parcels ${sweetBand}, accounting for ${sweetPct}% of all sales (${sweetCount.toLocaleString()} transactions).`,
-    mostLiquid ? `The most liquid ZIP is ${mostLiquid.zip_code} with ${mostLiquid.sales_count.toLocaleString()} sales.` : 'No liquid ZIP detected yet.',
-    outliers.length > 0
-      ? `Outlier ZIPs with median $/acre above 3x market median are ${outliers.join(', ')}.`
-      : 'No outlier ZIPs currently exceed 3x the overall median $/acre.',
-    thin.length > 0
-      ? `Thin data ZIPs (<10 sales) are ${thin.join(', ')} and should be treated cautiously.`
-      : 'No thin-data ZIPs were detected.'
-  ].join(' ')
-
-  return {
-    paragraph,
-    idealAcreageRange: `${sweetBand}`,
-    targetZips,
-    expectedOfferRange: p25 > 0 && p75 > 0 ? `$${Math.round(p25).toLocaleString()}–$${Math.round(p75).toLocaleString()}` : 'Insufficient data',
-    avoidZips: thin,
-  }
-}
+// ── Math helpers ──────────────────────────────────────────────────────────
 
 function percentile(arr: number[], pct: number): number {
   if (arr.length === 0) return 0
@@ -919,48 +662,7 @@ function SummaryCard({ label, value, sub, icon, accent }: {
   )
 }
 
-function PriceBandPills({ row }: { row: ZipStats }) {
-  const total = row.price_band_lt50k + row.price_band_50k_100k + row.price_band_100k_250k + row.price_band_gt250k
-  if (total === 0) return <span className="text-xs" style={{ color: '#9B8AAE' }}>—</span>
-  return (
-    <div className="flex gap-1 flex-wrap">
-      {row.price_band_lt50k > 0 && (
-        <span className="badge" style={{ background: 'rgba(45,122,79,0.08)', color: '#2D7A4F', border: '1px solid rgba(45,122,79,0.2)', fontSize: '10px' }}>
-          &lt;$50K·{row.price_band_lt50k}
-        </span>
-      )}
-      {row.price_band_50k_100k > 0 && (
-        <span className="badge" style={{ background: 'rgba(92,41,119,0.08)', color: '#5C2977', border: '1px solid rgba(92,41,119,0.2)', fontSize: '10px' }}>
-          $50–100K·{row.price_band_50k_100k}
-        </span>
-      )}
-      {row.price_band_100k_250k > 0 && (
-        <span className="badge" style={{ background: 'rgba(139,77,184,0.08)', color: '#8B4DB8', border: '1px solid rgba(139,77,184,0.2)', fontSize: '10px' }}>
-          $100–250K·{row.price_band_100k_250k}
-        </span>
-      )}
-      {row.price_band_gt250k > 0 && (
-        <span className="badge" style={{ background: 'rgba(213,169,64,0.1)', color: '#8B6A00', border: '1px solid rgba(213,169,64,0.25)', fontSize: '10px' }}>
-          $250K+·{row.price_band_gt250k}
-        </span>
-      )}
-    </div>
-  )
-}
-
-function AcreageBandPills({ row }: { row: ZipStats }) {
-  return (
-    <div className="flex gap-1 flex-wrap">
-      {row.acreage_band_0_1 > 0 && <span className="badge badge-gray text-[10px]">&lt;1ac·{row.acreage_band_0_1}</span>}
-      {row.acreage_band_1_5 > 0 && <span className="badge badge-blue text-[10px]">1-5ac·{row.acreage_band_1_5}</span>}
-      {row.acreage_band_5_10 > 0 && <span className="badge badge-green text-[10px]">5-10ac·{row.acreage_band_5_10}</span>}
-      {row.acreage_band_gt10 > 0 && <span className="badge badge-yellow text-[10px]">&gt;10ac·{row.acreage_band_gt10}</span>}
-    </div>
-  )
-}
-
-// Small SVG icons for stat cards
 const IconDB = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
 const IconDollar = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-const IconAcre = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+const IconTarget = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
 const IconPin = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>

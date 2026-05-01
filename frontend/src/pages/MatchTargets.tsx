@@ -11,29 +11,7 @@ import { getConfidence } from '../types'
 import MatchMap from '../components/MatchMap'
 import WelcomeScreen from './WelcomeScreen'
 
-const DEFAULT_FILTERS: Omit<MatchFilters, 'session_id' | 'target_session_id'> = {
-  radius_miles: 1,
-  acreage_tolerance_pct: 50,
-  min_match_score: 0,
-  zip_filter: [],
-  flood_zone_filter: 'all',
-  min_acreage: null,
-  max_acreage: null,
-  exclude_flood: false,
-  only_flood: false,
-  min_buildability: null,
-  vacant_only: false,
-  require_road_frontage: false,
-  exclude_landlocked: false,
-  exclude_land_locked: false,
-  require_tlp: false,
-  require_tlp_estimate: false,
-  price_ceiling: null,
-  // Damien's auto-filters (March 2026) - always enabled by default
-  exclude_with_buildings: true,      // Exclude properties with buildings
-  min_road_frontage: 50.0,           // Minimum 50ft road frontage
-  max_retail_price: 200000,          // $200K ceiling to exclude premium/waterfront
-}
+const SQFT_PER_ACRE = 43560
 
 export default function MatchTargets() {
   const {
@@ -51,29 +29,58 @@ export default function MatchTargets() {
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [matchError, setMatchError] = useState<string | null>(null)
   const [fileName, setFileName] = useState<string | null>(null)
-  const [showAdvanced, setShowAdvanced] = useState(true)
   const [resultView, setResultView] = useState<'table' | 'map'>('table')
 
-  // Filter state — pre-fill from lastFilters if available (from "Duplicate Settings")
-  const init = lastFilters ?? DEFAULT_FILTERS
-  // radius_miles is fixed to the engine's hard maximum (max 1 mile)
-  const acreageTol = 50
-  const [minScore, setMinScore] = useState<number>(Number(init.min_match_score ?? 0))
-  const [zipFilter, setZipFilter] = useState<string[]>((init.zip_filter as string[]) ?? [])
-  const [minAcreage, setMinAcreage] = useState<string>(init.min_acreage != null ? String(init.min_acreage) : '')
-  const [maxAcreage, setMaxAcreage] = useState<string>(init.max_acreage != null ? String(init.max_acreage) : '')
-  const [excludeFlood, setExcludeFlood] = useState<boolean>(Boolean(init.exclude_flood))
-  const [onlyFlood, setOnlyFlood] = useState<boolean>(Boolean(init.only_flood))
-  const [floodZoneFilter, setFloodZoneFilter] = useState<'all' | 'exclude' | 'only'>((init.flood_zone_filter as 'all' | 'exclude' | 'only') ?? 'all')
-  const [minBuildability, setMinBuildability] = useState<number>(Number(init.min_buildability ?? 0))
-  const [useBuildability, setUseBuildability] = useState<boolean>(init.min_buildability != null)
-  const [vacantOnly, setVacantOnly] = useState<boolean>(Boolean(init.vacant_only))
-  const [requireRoadFrontage, setRequireRoadFrontage] = useState<boolean>(Boolean(init.require_road_frontage))
-  const [excludeLandLocked, setExcludeLandLocked] = useState<boolean>(Boolean(init.exclude_land_locked || init.exclude_landlocked))
-  const [requireTlp, setRequireTlp] = useState<boolean>(Boolean(init.require_tlp_estimate || init.require_tlp))
-  const [priceCeiling, setPriceCeiling] = useState<string>(init.price_ceiling != null ? String(init.price_ceiling) : '')
+  // ── Filter state ────────────────────────────────────────────────────────
+  const init = lastFilters
 
-  const availableZips = dashboardData?.available_zips ?? []
+  const [minScore, setMinScore] = useState<number>(Number(init?.min_match_score ?? 0))
+  const [zipFilter, setZipFilter] = useState<string[]>((init?.zip_filter as string[]) ?? [])
+  const [zipInputText, setZipInputText] = useState<string>(((init?.zip_filter as string[]) ?? []).join(', '))
+  const [minAcreage, setMinAcreage] = useState<string>(init?.min_acreage != null ? String(init.min_acreage) : '')
+  const [maxAcreage, setMaxAcreage] = useState<string>(init?.max_acreage != null ? String(init.max_acreage) : '')
+  const [floodZoneFilter, setFloodZoneFilter] = useState<'all' | 'exclude' | 'only'>((init?.flood_zone_filter as 'all' | 'exclude' | 'only') ?? 'exclude')
+  const [minBuildability, setMinBuildability] = useState<number>(Number(init?.min_buildability ?? 80))
+  const [excludeLandLocked, setExcludeLandLocked] = useState<boolean>(init ? Boolean(init.exclude_land_locked || init.exclude_landlocked) : true)
+  const [requireRoadFrontage, setRequireRoadFrontage] = useState<boolean>(init ? Boolean(init.require_road_frontage) : true)
+  const [maxSlope, setMaxSlope] = useState<number>(10)
+  const [vacantOnly, setVacantOnly] = useState<boolean>(Boolean(init?.vacant_only))
+  const [requireTlp, setRequireTlp] = useState<boolean>(Boolean(init?.require_tlp_estimate || init?.require_tlp))
+  const [priceCeiling, setPriceCeiling] = useState<string>(init?.price_ceiling != null ? String(init.price_ceiling) : '')
+
+  // Pre-fill acreage from sweet spot when no saved filters
+  useEffect(() => {
+    if (lastFilters || !dashboardData?.sweet_spot) return
+    const b = dashboardData.sweet_spot.bucket
+    if (b === '0-0.5') { setMinAcreage('0.1'); setMaxAcreage('0.5') }
+    else if (b === '0.5-1') { setMinAcreage('0.5'); setMaxAcreage('1') }
+    else if (b === '1-2') { setMinAcreage('1'); setMaxAcreage('2') }
+    else if (b === '2-5') { setMinAcreage('2'); setMaxAcreage('5') }
+    else if (b === '5-10') { setMinAcreage('5'); setMaxAcreage('10') }
+    else if (b === '10+') { setMinAcreage('10'); setMaxAcreage('40') }
+  }, [dashboardData])
+
+  // Top 10 ZIPs from dashboard for "Use Buy Box ZIPs"
+  const top10Zips = [...(dashboardData?.zip_stats ?? [])]
+    .sort((a, b) => b.sales_count - a.sales_count)
+    .slice(0, 10)
+    .map(z => z.zip_code)
+
+  function handleZipInput(text: string) {
+    setZipInputText(text)
+    const parsed = text.split(/[\s,]+/).map(z => z.trim()).filter(z => /^\d{5}$/.test(z))
+    setZipFilter(parsed)
+  }
+
+  function useBuyBoxZips() {
+    setZipFilter(top10Zips)
+    setZipInputText(top10Zips.join(', '))
+  }
+
+  function clearZips() {
+    setZipFilter([])
+    setZipInputText('')
+  }
 
   async function handleFile(file: File) {
     setFileName(file.name)
@@ -100,16 +107,16 @@ export default function MatchTargets() {
     const filters: MatchFilters = {
       session_id: compsStats.session_id,
       target_session_id: targetStats.session_id,
-      radius_miles: 1, // engine hard max (kept for API compat)
-      acreage_tolerance_pct: acreageTol,
+      radius_miles: 1,
+      acreage_tolerance_pct: 50,
       min_match_score: minScore,
       zip_filter: zipFilter,
       flood_zone_filter: floodZoneFilter,
       min_acreage: minAcreage ? parseFloat(minAcreage) : null,
       max_acreage: maxAcreage ? parseFloat(maxAcreage) : null,
-      exclude_flood: floodZoneFilter === 'exclude' || excludeFlood,
-      only_flood: floodZoneFilter === 'only' || onlyFlood,
-      min_buildability: useBuildability ? minBuildability : null,
+      exclude_flood: floodZoneFilter === 'exclude',
+      only_flood: floodZoneFilter === 'only',
+      min_buildability: minBuildability > 0 ? minBuildability : null,
       vacant_only: vacantOnly,
       require_road_frontage: requireRoadFrontage,
       exclude_landlocked: excludeLandLocked,
@@ -117,10 +124,9 @@ export default function MatchTargets() {
       require_tlp: requireTlp,
       require_tlp_estimate: requireTlp,
       price_ceiling: priceCeiling ? parseFloat(priceCeiling) : null,
-      // Damien's auto-filters (March 2026) - always enabled
-      exclude_with_buildings: true,      // Exclude properties with buildings
-      min_road_frontage: 50.0,           // Minimum 50ft road frontage
-      max_retail_price: 200000,          // $200K ceiling filters premium/waterfront
+      exclude_with_buildings: true,
+      min_road_frontage: 50.0,
+      max_retail_price: 200000,
     }
 
     try {
@@ -136,166 +142,64 @@ export default function MatchTargets() {
     }
   }
 
-  function toggleZip(zip: string) {
-    setZipFilter((prev) => prev.includes(zip) ? prev.filter((z) => z !== zip) : [...prev, zip])
+  // Active filters summary line
+  const filterParts: string[] = []
+  if (zipFilter.length > 0) {
+    const zips = zipFilter.slice(0, 2).join(', ')
+    const extra = zipFilter.length > 2 ? ` (+${zipFilter.length - 2} more)` : ''
+    filterParts.push(`ZIPs ${zips}${extra}`)
   }
-
-  // Active filter chips
-  const activeFilters: { label: string; onRemove?: () => void }[] = []
-  activeFilters.push({ label: 'Max 1 mi radius' })
-  activeFilters.push({ label: 'Fixed acreage bands' })
-  if (minScore > 0) activeFilters.push({ label: `Score ≥ ${minScore}`, onRemove: () => setMinScore(0) })
-  if (zipFilter.length > 0) activeFilters.push({ label: `ZIPs: ${zipFilter.join(', ')}`, onRemove: () => setZipFilter([]) })
-  if (minAcreage) activeFilters.push({ label: `Min ${minAcreage} ac`, onRemove: () => setMinAcreage('') })
-  if (maxAcreage) activeFilters.push({ label: `Max ${maxAcreage} ac`, onRemove: () => setMaxAcreage('') })
-  if (floodZoneFilter === 'exclude') activeFilters.push({ label: 'Flood: exclude', onRemove: () => setFloodZoneFilter('all') })
-  if (floodZoneFilter === 'only') activeFilters.push({ label: 'Flood: only', onRemove: () => setFloodZoneFilter('all') })
-  if (useBuildability && minBuildability > 0) activeFilters.push({ label: `Buildable ≥${minBuildability}%`, onRemove: () => { setUseBuildability(false); setMinBuildability(0) } })
-  if (vacantOnly) activeFilters.push({ label: 'Vacant only', onRemove: () => setVacantOnly(false) })
-  if (requireRoadFrontage) activeFilters.push({ label: 'Road frontage', onRemove: () => setRequireRoadFrontage(false) })
-  if (excludeLandLocked) activeFilters.push({ label: 'Not land locked', onRemove: () => setExcludeLandLocked(false) })
-  if (requireTlp) activeFilters.push({ label: 'TLP required', onRemove: () => setRequireTlp(false) })
-  if (priceCeiling) activeFilters.push({ label: `TLP <= $${Number(priceCeiling).toLocaleString()}`, onRemove: () => setPriceCeiling('') })
+  if (minAcreage || maxAcreage) filterParts.push(`${minAcreage || '0'}–${maxAcreage || '∞'} acres`)
+  if (minBuildability > 0) filterParts.push(`Buildability ${minBuildability}%+`)
+  if (maxSlope < 30) filterParts.push(`Slope ≤${maxSlope}%`)
+  if (floodZoneFilter === 'exclude') filterParts.push('No flood zone')
+  if (floodZoneFilter === 'only') filterParts.push('Flood zones only')
+  if (excludeLandLocked) filterParts.push('No landlocked')
+  if (requireRoadFrontage) filterParts.push('Road frontage required')
+  if (requireTlp) filterParts.push('TLP required')
+  if (priceCeiling) filterParts.push(`TLP ≤ $${Number(priceCeiling).toLocaleString()}`)
+  const filterSummary = filterParts.length > 0
+    ? `Active filters: ${filterParts.join(' · ')}`
+    : 'No filters active — matching all targets'
 
   if (!compsStats) {
     return <WelcomeScreen contextualMessage="Upload your comps first to enable matching." />
   }
 
   const cols: Column<MatchedParcel>[] = [
-    {
-      key: 'match_score', header: 'Score', sortable: true, align: 'center',
-      render: (v) => <ScoreBadge score={v as number} />,
-    },
+    { key: 'match_score', header: 'Score', sortable: true, align: 'center', render: (v) => <ScoreBadge score={v as number} /> },
     {
       key: 'confidence', header: 'Conf.', align: 'center', sortable: true,
-      render: (_, row) => {
-        const c = row.confidence || getConfidence(row.matched_comp_count)
-        return <span className={`conf-${c}`}>{c}</span>
-      },
+      render: (_, row) => { const c = row.confidence || getConfidence(row.matched_comp_count); return <span className={`conf-${c}`}>{c}</span> },
     },
     { key: 'apn', header: 'APN', sortable: true, render: (v) => <span className="font-mono text-xs">{String(v || '—')}</span> },
     { key: 'owner_name', header: 'Owner', render: (v) => <span className="max-w-[160px] block truncate text-xs" title={String(v)}>{String(v || '—')}</span> },
-    {
-      key: 'owner_first_name',
-      header: 'Owner First Name',
-      defaultHidden: true,
-      render: (v) => <span className="text-xs">{String(v || '—')}</span>,
-    },
-    {
-      key: 'owner_last_name',
-      header: 'Owner Last Name',
-      defaultHidden: true,
-      render: (v) => <span className="text-xs">{String(v || '—')}</span>,
-    },
+    { key: 'owner_first_name', header: 'Owner First Name', defaultHidden: true, render: (v) => <span className="text-xs">{String(v || '—')}</span> },
+    { key: 'owner_last_name', header: 'Owner Last Name', defaultHidden: true, render: (v) => <span className="text-xs">{String(v || '—')}</span> },
     { key: 'parcel_zip', header: 'ZIP', sortable: true },
     { key: 'parcel_city', header: 'City', defaultHidden: true },
-    {
-      key: 'parcel_address',
-      header: 'Parcel Address',
-      defaultHidden: true,
-      render: (v) => (
-        <span className="max-w-[220px] block truncate text-xs" title={String(v || '')}>
-          {String(v || '—')}
-        </span>
-      ),
-    },
+    { key: 'parcel_address', header: 'Parcel Address', defaultHidden: true, render: (v) => <span className="max-w-[220px] block truncate text-xs" title={String(v || '')}>{String(v || '—')}</span> },
     { key: 'parcel_state', header: 'Parcel State', defaultHidden: true, render: (v) => <span className="text-xs">{String(v || '—')}</span> },
     { key: 'parcel_county', header: 'Parcel County', defaultHidden: true, render: (v) => <span className="text-xs">{String(v || '—')}</span> },
-    {
-      key: 'latitude',
-      header: 'Latitude',
-      defaultHidden: true,
-      align: 'right',
-      render: (v) => (v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">{(v as number).toFixed(5)}</span>),
-    },
-    {
-      key: 'longitude',
-      header: 'Longitude',
-      defaultHidden: true,
-      align: 'right',
-      render: (v) => (v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">{(v as number).toFixed(5)}</span>),
-    },
-    {
-      key: 'lot_acres', header: 'Acres', sortable: true, align: 'right',
-      render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span>{(v as number).toFixed(2)}</span>,
-    },
-    {
-      key: 'acreage_band', header: 'Band', sortable: true, align: 'center',
-      render: (v) => <span className="text-xs" style={{ color: '#6B5B8A' }}>{String(v || '—')}</span>,
-    },
-    {
-      key: 'matched_comp_count', header: 'Comps', sortable: true, align: 'center',
-      render: (v) => <span className="text-xs">{String(v ?? '—')}</span>,
-    },
-    {
-      key: 'comp_count',
-      header: 'Comp Count',
-      sortable: true,
-      align: 'center',
-      defaultHidden: true,
-      render: (v) => <span className="text-xs">{String(v ?? '—')}</span>,
-    },
-    {
-      key: 'closest_comp_distance',
-      header: 'Distance to Closest Comp',
-      sortable: true,
-      align: 'right',
-      defaultHidden: true,
-      render: (v) => (v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">{(v as number).toFixed(2)}</span>),
-    },
-    {
-      key: 'retail_estimate', header: 'Retail Est.', sortable: true, align: 'right',
-      render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : (
-        <span className="text-xs" style={{ color: '#1A0A2E' }}>${Math.round(v as number).toLocaleString()}</span>
-      ),
-      defaultHidden: true,
-    },
-    {
-      key: 'suggested_offer_low', header: 'Offer Low', align: 'right',
-      render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs" style={{ color: '#6B5B8A' }}>${Math.round(v as number).toLocaleString()}</span>,
-    },
-    {
-      key: 'suggested_offer_mid', header: 'Offer Mid', sortable: true, align: 'right',
-      render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : (
-        <span className="font-semibold" style={{ color: '#2D7A4F', fontWeight: 600 }}>${Math.round(v as number).toLocaleString()}</span>
-      ),
-    },
-    {
-      key: 'suggested_offer_high', header: 'Offer High', align: 'right',
-      render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs" style={{ color: '#6B5B8A' }}>${Math.round(v as number).toLocaleString()}</span>,
-    },
-    {
-      key: 'median_comp_sale_price', header: 'Med. Comp $', align: 'right', defaultHidden: true,
-      render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span>,
-    },
-    {
-      key: 'median_ppa', header: 'Med. PPA', align: 'right', defaultHidden: true,
-      render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span>,
-    },
-    {
-      key: 'min_comp_price', header: 'Min Comp $', align: 'right', defaultHidden: true,
-      render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span>,
-    },
-    {
-      key: 'max_comp_price', header: 'Max Comp $', align: 'right', defaultHidden: true,
-      render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span>,
-    },
-    {
-      key: 'outliers_removed', header: 'Outliers', align: 'center', defaultHidden: true,
-      render: (v) => <span className="text-xs">{String(v ?? 0)}</span>,
-    },
-    {
-      key: 'tlp_estimate', header: 'TLP Est.', align: 'right', defaultHidden: true,
-      render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs" style={{ color: '#6B5B8A' }}>${Math.round(v as number).toLocaleString()}</span>,
-    },
-    {
-      key: 'tlp_capped', header: 'TLP Cap', align: 'center', defaultHidden: true,
-      render: (v) => <span className="text-xs">{v ? 'Yes' : 'No'}</span>,
-    },
-    {
-      key: 'flood_zone', header: 'Flood', defaultHidden: true,
-      render: (v) => <span className="text-xs" style={{ color: '#6B5B8A' }}>{String(v || '—')}</span>,
-    },
+    { key: 'latitude', header: 'Latitude', defaultHidden: true, align: 'right', render: (v) => (v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">{(v as number).toFixed(5)}</span>) },
+    { key: 'longitude', header: 'Longitude', defaultHidden: true, align: 'right', render: (v) => (v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">{(v as number).toFixed(5)}</span>) },
+    { key: 'lot_acres', header: 'Acres', sortable: true, align: 'right', render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span>{(v as number).toFixed(2)}</span> },
+    { key: 'acreage_band', header: 'Band', sortable: true, align: 'center', render: (v) => <span className="text-xs" style={{ color: '#6B5B8A' }}>{String(v || '—')}</span> },
+    { key: 'matched_comp_count', header: 'Comps', sortable: true, align: 'center', render: (v) => <span className="text-xs">{String(v ?? '—')}</span> },
+    { key: 'comp_count', header: 'Comp Count', sortable: true, align: 'center', defaultHidden: true, render: (v) => <span className="text-xs">{String(v ?? '—')}</span> },
+    { key: 'closest_comp_distance', header: 'Distance to Closest Comp', sortable: true, align: 'right', defaultHidden: true, render: (v) => (v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">{(v as number).toFixed(2)}</span>) },
+    { key: 'retail_estimate', header: 'Retail Est.', sortable: true, align: 'right', defaultHidden: true, render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs" style={{ color: '#1A0A2E' }}>${Math.round(v as number).toLocaleString()}</span> },
+    { key: 'suggested_offer_low', header: 'Offer Low', align: 'right', render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs" style={{ color: '#6B5B8A' }}>${Math.round(v as number).toLocaleString()}</span> },
+    { key: 'suggested_offer_mid', header: 'Offer Mid', sortable: true, align: 'right', render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="font-semibold" style={{ color: '#2D7A4F' }}>${Math.round(v as number).toLocaleString()}</span> },
+    { key: 'suggested_offer_high', header: 'Offer High', align: 'right', render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs" style={{ color: '#6B5B8A' }}>${Math.round(v as number).toLocaleString()}</span> },
+    { key: 'median_comp_sale_price', header: 'Med. Comp $', align: 'right', defaultHidden: true, render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span> },
+    { key: 'median_ppa', header: 'Med. PPA', align: 'right', defaultHidden: true, render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span> },
+    { key: 'min_comp_price', header: 'Min Comp $', align: 'right', defaultHidden: true, render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span> },
+    { key: 'max_comp_price', header: 'Max Comp $', align: 'right', defaultHidden: true, render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span> },
+    { key: 'outliers_removed', header: 'Outliers', align: 'center', defaultHidden: true, render: (v) => <span className="text-xs">{String(v ?? 0)}</span> },
+    { key: 'tlp_estimate', header: 'TLP Est.', align: 'right', defaultHidden: true, render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs" style={{ color: '#6B5B8A' }}>${Math.round(v as number).toLocaleString()}</span> },
+    { key: 'tlp_capped', header: 'TLP Cap', align: 'center', defaultHidden: true, render: (v) => <span className="text-xs">{v ? 'Yes' : 'No'}</span> },
+    { key: 'flood_zone', header: 'Flood', defaultHidden: true, render: (v) => <span className="text-xs" style={{ color: '#6B5B8A' }}>{String(v || '—')}</span> },
     {
       key: 'buildability_pct', header: 'Build%', sortable: true, align: 'right', defaultHidden: true,
       render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : (
@@ -309,7 +213,7 @@ export default function MatchTargets() {
   return (
     <div className="flex flex-col min-h-screen">
       <LoadingOverlay visible={matchLoading} title="Running matching engine…" />
-      {/* Page header */}
+
       <div className="page-header">
         <div>
           <h1 className="text-lg font-semibold" style={{ color: '#1A0A2E' }}>Match Targets</h1>
@@ -323,8 +227,9 @@ export default function MatchTargets() {
       </div>
 
       <div className="p-8 max-w-[1400px] mx-auto w-full">
+
+        {/* ── Upload + Radius info ────────────────────────────── */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          {/* Upload targets */}
           <div className="card">
             <h2 className="font-semibold mb-4" style={{ color: '#1A0A2E' }}>Target Parcels CSV</h2>
             {targetStats ? (
@@ -337,224 +242,209 @@ export default function MatchTargets() {
                     {targetStats.columns_found.length} columns · {fileName}
                   </p>
                 </div>
-                <button
-                  className="text-xs hover:text-gray-300 transition-colors"
-                  style={{ color: '#6B5B8A' }}
-                  onClick={() => { setTargetStats(null); setFileName(null) }}
-                >
+                <button className="text-xs" style={{ color: '#6B5B8A' }} onClick={() => { setTargetStats(null); setFileName(null) }}>
                   Replace
                 </button>
               </div>
             ) : (
-              <FileUpload
-                label="Drop Target Parcels CSV"
-                hint="Land Portal export — same format as comps"
-                onFile={handleFile}
-                loading={uploadLoading}
-              />
+              <FileUpload label="Drop Target Parcels CSV" hint="Land Portal export — same format as comps" onFile={handleFile} loading={uploadLoading} />
             )}
             {uploadError && <p className="text-red-400 text-sm mt-2">{uploadError}</p>}
           </div>
 
-          {/* Core filters */}
           <div className="card">
-            <h2 className="font-semibold mb-4" style={{ color: '#1A0A2E' }}>Matching Parameters</h2>
-            <div className="space-y-4">
-              {/* Comp radius is fixed at max 1 mile — not user-adjustable */}
+            <h2 className="font-semibold mb-3" style={{ color: '#1A0A2E' }}>Matching Settings</h2>
+            <div className="space-y-3">
               <div className="rounded-lg px-3 py-2" style={{ backgroundColor: '#F3EEFA', border: '1px solid #E0D4F0' }}>
                 <div className="flex justify-between text-sm">
                   <span style={{ color: '#6B5B8A' }}>Comp Radius</span>
                   <span className="font-medium" style={{ color: '#5C2977' }}>Max 1 mi radius</span>
                 </div>
-                <p className="text-xs mt-1" style={{ color: '#9B8AAE' }}>
-                  Comps within 1 mile are used. No fallback beyond 1 mile.
-                </p>
+                <p className="text-xs mt-0.5" style={{ color: '#9B8AAE' }}>Fixed. Comps within 1 mile are used. No fallback beyond 1 mile.</p>
               </div>
               <div className="rounded-lg px-3 py-2" style={{ backgroundColor: '#F3EEFA', border: '1px solid #E0D4F0' }}>
-                <div className="text-sm" style={{ color: '#5C2977' }}>
-                  Acreage matching uses fixed bands: Micro (0–0.5 ac) · Small (0.5–2 ac) · Medium (2–10 ac) · Large (10–50 ac) · XL (50+ ac)
-                </div>
+                <p className="text-xs" style={{ color: '#5C2977' }}>
+                  Acreage bands: Micro (0–0.5 ac) · Small (0.5–2 ac) · Medium (2–10 ac) · Large (10–50 ac) · XL (50+ ac)
+                </p>
               </div>
-              <div title="Only include parcels with a match score at or above this threshold (0 = include all, 5 = highest quality only)">
+              <div title="Only include parcels with a match score at or above this threshold">
                 <SliderRow label="Min Match Score" value={minScore} onChange={setMinScore} min={0} max={5} step={1} display={`${minScore} / 5`} />
               </div>
             </div>
           </div>
         </div>
 
-        {/* ZIP filter */}
-        {availableZips.length > 0 && (
-          <div className="card mb-6">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-medium" style={{ color: '#1A0A2E' }}>
-                ZIP Filter
-                <span className="text-xs font-normal ml-2" style={{ color: '#6B5B8A' }}>(leave empty to match all)</span>
-              </p>
-              {zipFilter.length > 0 && (
-                <button className="text-xs hover:opacity-80 transition-opacity" style={{ color: '#5C2977' }} onClick={() => setZipFilter([])}>Clear all</button>
-              )}
+        {/* ── ZIP Filter ──────────────────────────────────────── */}
+        <div className="card mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <p className="text-sm font-medium" style={{ color: '#1A0A2E' }}>ZIP Code Filter</p>
+              <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>Enter ZIP codes separated by commas, or use your Buy Box ZIPs</p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {availableZips.map((zip) => (
-                <button key={zip} onClick={() => toggleZip(zip)}
-                  className="px-3 py-1 rounded-full text-xs font-medium transition-all"
-                  style={zipFilter.includes(zip)
-                    ? { background: '#5C2977', color: 'white', border: '1px solid #5C2977' }
-                    : { background: '#FFFFFF', color: '#5C2977', border: '1px solid #D4B8E8' }}
-                >{zip}</button>
-              ))}
+            <div className="flex gap-2">
+              {top10Zips.length > 0 && (
+                <button
+                  className="btn-secondary text-xs"
+                  style={{ padding: '6px 12px' }}
+                  onClick={useBuyBoxZips}
+                >
+                  Use Buy Box ZIPs
+                </button>
+              )}
+              {zipFilter.length > 0 && (
+                <button
+                  className="text-xs"
+                  style={{ color: '#6B5B8A' }}
+                  onClick={clearZips}
+                >
+                  Clear
+                </button>
+              )}
             </div>
           </div>
-        )}
 
-        {/* Smart filters */}
-        <div className="card mb-6">
-          <button
-            className="w-full flex items-center justify-between text-sm font-medium"
-            style={{ color: '#1A0A2E' }}
-            onClick={() => setShowAdvanced((v) => !v)}
-          >
-            <span className="flex items-center gap-2">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/>
-              </svg>
-              Smart Filters
-              {[floodZoneFilter !== 'all', vacantOnly, requireRoadFrontage, excludeLandLocked, requireTlp, useBuildability, !!minAcreage, !!maxAcreage, !!priceCeiling].filter(Boolean).length > 0 && (
-                <span className="badge badge-blue text-[10px] px-1.5">
-                  {[floodZoneFilter !== 'all', vacantOnly, requireRoadFrontage, excludeLandLocked, requireTlp, useBuildability, !!minAcreage, !!maxAcreage, !!priceCeiling].filter(Boolean).length} active
-                </span>
-              )}
-            </span>
-            <span style={{ color: '#6B5B8A' }}>{showAdvanced ? '▲' : '▼'}</span>
-          </button>
-
-          {showAdvanced && (
-            <div className="mt-5 space-y-5">
-              {/* Acreage range */}
-              <div>
-                <p className="text-xs font-medium mb-2" style={{ color: '#6B5B8A' }}>ACREAGE RANGE</p>
-                <div className="flex items-center gap-3">
-                  <input type="number" step="0.1" min="0" placeholder="Min acres" className="input-base text-xs py-2"
-                    value={minAcreage} onChange={(e) => setMinAcreage(e.target.value)} />
-                  <span style={{ color: '#6B5B8A' }}>to</span>
-                  <input type="number" step="0.1" min="0" placeholder="Max acres" className="input-base text-xs py-2"
-                    value={maxAcreage} onChange={(e) => setMaxAcreage(e.target.value)} />
-                </div>
-              </div>
-
-              <div className="h-px" style={{ background: 'rgba(92,41,119,0.08)' }} />
-
-              {/* Flood zone */}
-              <div>
-                <p className="text-xs font-medium mb-2" style={{ color: '#6B5B8A' }}>FLOOD ZONE</p>
-                <div className="inline-flex rounded-lg overflow-hidden" style={{ border: '1px solid #E8E0F0' }}>
-                  <button className="px-3 py-1.5 text-xs transition-all" style={floodZoneFilter === 'all' ? { background: '#5C2977', color: 'white' } : { background: '#FFFFFF', color: '#6B5B8A' }} onClick={() => setFloodZoneFilter('all')}>All</button>
-                  <button className="px-3 py-1.5 text-xs transition-all" style={floodZoneFilter === 'exclude' ? { background: '#5C2977', color: 'white' } : { background: '#FFFFFF', color: '#6B5B8A' }} onClick={() => setFloodZoneFilter('exclude')}>Exclude</button>
-                  <button className="px-3 py-1.5 text-xs transition-all" style={floodZoneFilter === 'only' ? { background: '#5C2977', color: 'white' } : { background: '#FFFFFF', color: '#6B5B8A' }} onClick={() => setFloodZoneFilter('only')}>Only</button>
-                </div>
-              </div>
-
-              <div className="h-px" style={{ background: 'rgba(92,41,119,0.08)' }} />
-
-              {/* Buildability */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-medium" style={{ color: '#6B5B8A' }}>BUILDABILITY MINIMUM</p>
-                  <ToggleOption label="Enable" checked={useBuildability} onChange={setUseBuildability} />
-                </div>
-                {useBuildability && (
-                  <SliderRow label="" value={minBuildability} onChange={setMinBuildability} min={0} max={100} step={5} display={`${minBuildability}%+`} />
-                )}
-              </div>
-
-              <div className="h-px" style={{ background: 'rgba(92,41,119,0.08)' }} />
-
-              {/* Parcel flags */}
-              <div>
-                <p className="text-xs font-medium mb-3" style={{ color: '#6B5B8A' }}>PARCEL FLAGS</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <ToggleOption label="Vacant land only" checked={vacantOnly} onChange={setVacantOnly} />
-                  <ToggleOption label="Require road frontage" checked={requireRoadFrontage} onChange={setRequireRoadFrontage} />
-                  <ToggleOption label="Exclude land locked" checked={excludeLandLocked} onChange={setExcludeLandLocked} />
-                  <ToggleOption label="Require TLP estimate" checked={requireTlp} onChange={setRequireTlp} />
-                </div>
-                <div className="mt-3 max-w-xs">
-                  <label className="text-xs block mb-1" style={{ color: '#6B5B8A' }}>Price ceiling (TLP Estimate)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1000"
-                    placeholder="e.g. 120000"
-                    className="input-base text-xs py-2"
-                    value={priceCeiling}
-                    onChange={(e) => setPriceCeiling(e.target.value)}
-                  />
-                </div>
-              </div>
-            </div>
+          <input
+            type="text"
+            className="input-base text-sm w-full"
+            placeholder="e.g. 37876, 37862, 37801 (leave empty to match all ZIPs)"
+            value={zipInputText}
+            onChange={e => handleZipInput(e.target.value)}
+          />
+          {zipFilter.length > 0 && (
+            <p className="text-xs mt-2" style={{ color: '#6B5B8A' }}>
+              {zipFilter.length} ZIP{zipFilter.length !== 1 ? 's' : ''} selected: {zipFilter.join(', ')}
+            </p>
           )}
         </div>
 
-        {/* Filter chips summary */}
-        {activeFilters.length > 0 && (
-          <div className="flex flex-wrap gap-2 mb-5">
-            <span className="text-xs self-center" style={{ color: '#6B5B8A' }}>Active filters:</span>
-            {activeFilters.map((f, i) => (
-              <span key={i} className="filter-chip">
-                {f.label}
-                {f.onRemove && (
-                  <button onClick={f.onRemove} className="hover:text-red-400 transition-colors ml-0.5">×</button>
-                )}
-              </span>
-            ))}
-          </div>
-        )}
+        {/* ── Smart Filters ───────────────────────────────────── */}
+        <div className="card mb-6">
+          <h2 className="font-semibold mb-5" style={{ color: '#1A0A2E' }}>
+            Smart Filters
+            <span className="text-xs font-normal ml-2" style={{ color: '#6B5B8A' }}>Defaults match your buy box settings</span>
+          </h2>
 
-        {/* Run button */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Acreage Range */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B5B8A' }}>Acreage Range</p>
+              <div className="flex items-start gap-3">
+                <div className="flex-1">
+                  <input
+                    type="number" step="0.1" min="0" placeholder="Min acres"
+                    className="input-base text-xs py-2 w-full"
+                    value={minAcreage}
+                    onChange={e => setMinAcreage(e.target.value)}
+                  />
+                  {minAcreage && Number(minAcreage) > 0 && (
+                    <p className="text-[10px] mt-1" style={{ color: '#9B8AAE' }}>
+                      {Math.round(Number(minAcreage) * SQFT_PER_ACRE).toLocaleString()} sq ft
+                    </p>
+                  )}
+                </div>
+                <span className="text-sm mt-2" style={{ color: '#6B5B8A' }}>to</span>
+                <div className="flex-1">
+                  <input
+                    type="number" step="0.1" min="0" placeholder="Max acres"
+                    className="input-base text-xs py-2 w-full"
+                    value={maxAcreage}
+                    onChange={e => setMaxAcreage(e.target.value)}
+                  />
+                  {maxAcreage && Number(maxAcreage) > 0 && (
+                    <p className="text-[10px] mt-1" style={{ color: '#9B8AAE' }}>
+                      {Math.round(Number(maxAcreage) * SQFT_PER_ACRE).toLocaleString()} sq ft
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Flood Zone */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B5B8A' }}>Flood Zone</p>
+              <div className="inline-flex rounded-lg overflow-hidden" style={{ border: '1px solid #E8E0F0' }}>
+                <button className="px-4 py-2 text-xs transition-all" style={floodZoneFilter === 'exclude' ? { background: '#5C2977', color: 'white' } : { background: '#FFFFFF', color: '#6B5B8A' }} onClick={() => setFloodZoneFilter('exclude')}>Exclude</button>
+                <button className="px-4 py-2 text-xs transition-all" style={floodZoneFilter === 'all' ? { background: '#5C2977', color: 'white' } : { background: '#FFFFFF', color: '#6B5B8A' }} onClick={() => setFloodZoneFilter('all')}>Include All</button>
+                <button className="px-4 py-2 text-xs transition-all" style={floodZoneFilter === 'only' ? { background: '#5C2977', color: 'white' } : { background: '#FFFFFF', color: '#6B5B8A' }} onClick={() => setFloodZoneFilter('only')}>Only Flood</button>
+              </div>
+              <p className="text-[10px] mt-1.5" style={{ color: '#9B8AAE' }}>Exclude = no FEMA flood zones (recommended)</p>
+            </div>
+
+            {/* Buildability */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B5B8A' }}>Buildability Minimum</p>
+              <SliderRow label="" value={minBuildability} onChange={setMinBuildability} min={0} max={100} step={5} display={minBuildability > 0 ? `${minBuildability}%+` : 'Any'} />
+              <p className="text-[10px] mt-1" style={{ color: '#9B8AAE' }}>80% is the buy box recommendation</p>
+            </div>
+
+            {/* Max Slope */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B5B8A' }}>Maximum Slope</p>
+              <SliderRow label="" value={maxSlope} onChange={setMaxSlope} min={0} max={30} step={1} display={`≤${maxSlope}%`} />
+              <p className="text-[10px] mt-1" style={{ color: '#9B8AAE' }}>10% is the buy box recommendation</p>
+            </div>
+
+            {/* Land Locked */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B5B8A' }}>Landlocked Parcels</p>
+              <div className="inline-flex rounded-lg overflow-hidden" style={{ border: '1px solid #E8E0F0' }}>
+                <button className="px-4 py-2 text-xs transition-all" style={excludeLandLocked ? { background: '#5C2977', color: 'white' } : { background: '#FFFFFF', color: '#6B5B8A' }} onClick={() => setExcludeLandLocked(true)}>Exclude</button>
+                <button className="px-4 py-2 text-xs transition-all" style={!excludeLandLocked ? { background: '#5C2977', color: 'white' } : { background: '#FFFFFF', color: '#6B5B8A' }} onClick={() => setExcludeLandLocked(false)}>Include</button>
+              </div>
+            </div>
+
+            {/* Road Frontage */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B5B8A' }}>Road Frontage</p>
+              <div className="inline-flex rounded-lg overflow-hidden" style={{ border: '1px solid #E8E0F0' }}>
+                <button className="px-4 py-2 text-xs transition-all" style={requireRoadFrontage ? { background: '#5C2977', color: 'white' } : { background: '#FFFFFF', color: '#6B5B8A' }} onClick={() => setRequireRoadFrontage(true)}>Required</button>
+                <button className="px-4 py-2 text-xs transition-all" style={!requireRoadFrontage ? { background: '#5C2977', color: 'white' } : { background: '#FFFFFF', color: '#6B5B8A' }} onClick={() => setRequireRoadFrontage(false)}>Optional</button>
+              </div>
+            </div>
+          </div>
+
+          {/* Advanced toggles */}
+          <div className="mt-5 pt-4" style={{ borderTop: '1px solid #E8E0F0' }}>
+            <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#6B5B8A' }}>Additional Filters</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <ToggleOption label="Vacant land only" checked={vacantOnly} onChange={setVacantOnly} />
+              <ToggleOption label="Require TLP estimate" checked={requireTlp} onChange={setRequireTlp} />
+            </div>
+            {requireTlp && (
+              <div className="mt-3 max-w-xs">
+                <label className="text-xs block mb-1" style={{ color: '#6B5B8A' }}>Price ceiling (TLP Estimate)</label>
+                <input type="number" min="0" step="1000" placeholder="e.g. 120000" className="input-base text-xs py-2" value={priceCeiling} onChange={e => setPriceCeiling(e.target.value)} />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ── Active Filters Summary ──────────────────────────── */}
+        <div className="mb-5 px-4 py-3 rounded-xl text-xs" style={{ background: '#F8F6FB', border: '1px solid #E8E0F0', color: '#5C2977' }}>
+          {filterSummary}
+        </div>
+
+        {/* ── Run button ──────────────────────────────────────── */}
         <div className="mb-6">
           <button
             disabled={!targetStats || matchLoading}
             onClick={handleMatch}
             style={{
-              width: '100%',
-              padding: '18px 32px',
-              fontSize: 18,
-              fontWeight: 700,
-              letterSpacing: '0.5px',
-              borderRadius: 12,
-              border: 'none',
-              cursor: !targetStats || matchLoading ? 'not-allowed' : 'pointer',
+              width: '100%', padding: '18px 32px', fontSize: 18, fontWeight: 700, letterSpacing: '0.5px',
+              borderRadius: 12, border: 'none', cursor: !targetStats || matchLoading ? 'not-allowed' : 'pointer',
               opacity: !targetStats || matchLoading ? 0.5 : 1,
               background: 'linear-gradient(135deg, #5C2977 0%, #8B4DB8 50%, #D5A940 100%)',
-              backgroundSize: '200% auto',
-              color: 'white',
-              boxShadow: '0 4px 20px rgba(92,41,119,0.35)',
-              transition: 'all 0.3s ease',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 10,
+              color: 'white', boxShadow: '0 4px 20px rgba(92,41,119,0.35)', transition: 'all 0.3s ease',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
             }}
-            onMouseEnter={(e) => {
-              if (!matchLoading && targetStats) {
-                (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 8px 30px rgba(92,41,119,0.5)'
-                ;(e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-2px)'
-                ;(e.currentTarget as HTMLButtonElement).style.background = 'linear-gradient(135deg, #3D1A5C 0%, #5C2977 50%, #D5A940 100%)'
-              }
-            }}
-            onMouseLeave={(e) => {
-              ;(e.currentTarget as HTMLButtonElement).style.boxShadow = '0 4px 20px rgba(92,41,119,0.35)'
-              ;(e.currentTarget as HTMLButtonElement).style.transform = 'none'
-              ;(e.currentTarget as HTMLButtonElement).style.background = 'linear-gradient(135deg, #5C2977 0%, #8B4DB8 50%, #D5A940 100%)'
-            }}
+            onMouseEnter={e => { if (!matchLoading && targetStats) { (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 8px 30px rgba(92,41,119,0.5)'; (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-2px)' } }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 4px 20px rgba(92,41,119,0.35)'; (e.currentTarget as HTMLButtonElement).style.transform = 'none' }}
           >
             {matchLoading ? (
               <><LoadingSpinner size="sm" />Running…</>
             ) : (
               <>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                  <polygon points="5 3 19 12 5 21 5 3"/>
-                </svg>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                 Run Matching Engine
               </>
             )}
@@ -576,34 +466,25 @@ export default function MatchTargets() {
           <>
             {(() => {
               const matchId = matchResult.match_id
-              const matchedUrl = getMatchedLeadsDownloadUrl(matchId, 'matched-leads')
-              const top500Url = getMailingDownloadUrl(matchId, 'top-500', 'top500')
-              const highConfUrl = getMailingDownloadUrl(matchId, 'high-confidence', 'high-confidence')
-              const fullUrl = getMailingDownloadUrl(matchId, 'full-list', 'full')
               return (
                 <div className="card mb-6">
                   <h2 className="font-semibold mb-4" style={{ color: '#1A0A2E' }}>Download Results</h2>
                   <div className="flex flex-wrap gap-2">
-                    <a href={matchedUrl} download className="btn-secondary text-sm no-underline">Download Matched Leads</a>
-                    <a href={top500Url} download className="btn-secondary text-sm no-underline">Top 500</a>
-                    <a href={highConfUrl} download className="btn-secondary text-sm no-underline">High Confidence Only</a>
-                    <a href={fullUrl} download className="btn-secondary text-sm no-underline">Full List</a>
+                    <a href={getMatchedLeadsDownloadUrl(matchId, 'matched-leads')} download className="btn-secondary text-sm no-underline">Download Matched Leads</a>
+                    <a href={getMailingDownloadUrl(matchId, 'top-500', 'top500')} download className="btn-secondary text-sm no-underline">Top 500</a>
+                    <a href={getMailingDownloadUrl(matchId, 'high-confidence', 'high-confidence')} download className="btn-secondary text-sm no-underline">High Confidence Only</a>
+                    <a href={getMailingDownloadUrl(matchId, 'full-list', 'full')} download className="btn-secondary text-sm no-underline">Full List</a>
                   </div>
                 </div>
               )
             })()}
-            {/* Results summary */}
+
             <div className="grid grid-cols-3 gap-4 mb-6">
               <ResultCard label="Total Targets" value={matchResult.total_targets.toLocaleString()} accent="#5C2977" />
               <ResultCard label="Matched" value={matchResult.matched_count.toLocaleString()} accent="#2D7A4F" />
-              <ResultCard
-                label="Match Rate"
-                value={`${matchResult.total_targets > 0 ? Math.round((matchResult.matched_count / matchResult.total_targets) * 100) : 0}%`}
-                accent="#8B4DB8"
-              />
+              <ResultCard label="Match Rate" value={`${matchResult.total_targets > 0 ? Math.round((matchResult.matched_count / matchResult.total_targets) * 100) : 0}%`} accent="#8B4DB8" />
             </div>
 
-            {/* Warnings from matching engine */}
             {matchResult.warnings && matchResult.warnings.filter(w => w.includes('Excluded') || w.includes('WARNING')).length > 0 && (
               <div className="mb-4 p-3 rounded-lg" style={{ background: '#FEF3C7', border: '1px solid #F59E0B' }}>
                 <p className="text-xs font-semibold mb-1" style={{ color: '#92400E' }}>Filters Applied:</p>
@@ -613,11 +494,10 @@ export default function MatchTargets() {
               </div>
             )}
 
-            {/* Score distribution pills */}
             <div className="flex items-center gap-3 mb-5">
               <span className="text-xs" style={{ color: '#6B5B8A' }}>Score distribution:</span>
-              {[5, 4, 3, 2, 1, 0].map((s) => {
-                const count = matchResult.results.filter((r) => r.match_score === s).length
+              {[5, 4, 3, 2, 1, 0].map(s => {
+                const count = matchResult.results.filter(r => r.match_score === s).length
                 if (count === 0) return null
                 return (
                   <span key={s} className="flex items-center gap-1.5">
@@ -635,18 +515,8 @@ export default function MatchTargets() {
                   <span className="text-sm font-normal ml-2" style={{ color: '#6B5B8A' }}>sorted by score</span>
                 </h2>
                 <div className="inline-flex gap-1">
-                  <button
-                    className={`toggle-btn${resultView === 'table' ? ' active' : ''}`}
-                    onClick={() => setResultView('table')}
-                  >
-                    Table
-                  </button>
-                  <button
-                    className={`toggle-btn${resultView === 'map' ? ' active' : ''}`}
-                    onClick={() => setResultView('map')}
-                  >
-                    Map
-                  </button>
+                  <button className={`toggle-btn${resultView === 'table' ? ' active' : ''}`} onClick={() => setResultView('table')}>Table</button>
+                  <button className={`toggle-btn${resultView === 'map' ? ' active' : ''}`} onClick={() => setResultView('map')}>Map</button>
                 </div>
               </div>
               {resultView === 'table' ? (
@@ -659,11 +529,7 @@ export default function MatchTargets() {
                   searchKeys={['apn', 'owner_name', 'parcel_zip', 'parcel_city']}
                 />
               ) : (
-                <MatchMap
-                  targets={matchResult.results}
-                  comps={dashboardData?.comp_locations ?? []}
-                  radiusMiles={1}
-                />
+                <MatchMap targets={matchResult.results} comps={dashboardData?.comp_locations ?? []} radiusMiles={1} />
               )}
             </div>
 
@@ -693,8 +559,13 @@ function SliderRow({ label, value, onChange, min, max, step, display }: {
           <span className="font-medium" style={{ color: '#5C2977' }}>{display}</span>
         </div>
       )}
+      {!label && (
+        <div className="flex justify-end mb-1">
+          <span className="text-sm font-medium" style={{ color: '#5C2977' }}>{display}</span>
+        </div>
+      )}
       <input type="range" min={min} max={max} step={step} value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
+        onChange={e => onChange(Number(e.target.value))}
         className="w-full cursor-pointer" style={{ accentColor: '#5C2977' }}
       />
       <div className="flex justify-between text-xs mt-0.5" style={{ color: '#9B8AAE' }}>
@@ -725,8 +596,8 @@ function ToggleOption({ label, checked, onChange }: { label: string; checked: bo
 function ScoreBadge({ score }: { score: number }) {
   return (
     <span
-      className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold text-white score-badge-${score}`}
-      style={{ background: score === 4 ? '#5C2977' : score === 3 ? '#D5A940' : score === 2 ? '#C06820' : score === 1 ? '#B03030' : '#2D7A4F' }}
+      className="inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold text-white"
+      style={{ background: score === 5 ? '#2D7A4F' : score === 4 ? '#5C2977' : score === 3 ? '#D5A940' : score === 2 ? '#C06820' : '#B03030' }}
     >
       {score}
     </span>
