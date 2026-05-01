@@ -517,30 +517,45 @@ async def db_migrate() -> dict:
 # ══════════════════════════════════════════════════════════════════════
 
 
-def _extract_bad_column(err_msg: str) -> Optional[str]:
-    """Extract a missing-column name from both PostgreSQL and PostgREST error formats.
+def _extract_bad_column(err_msg: str, candidate_cols: Optional[list] = None) -> Optional[str]:
+    """Extract a missing-column name from error message.
 
-    PostgreSQL native: column "foo" of relation "bar" does not exist
-    PostgREST PGRST204: Column 'foo' of relation 'bar' does not exist
-    PostgREST PGRST200: Could not find a relationship between ... and ...
+    Tries regex patterns first (PostgreSQL native + PostgREST PGRST204), then
+    falls back to scanning candidate column names directly in the error string.
+    This two-stage approach handles any error-message format the Supabase client
+    may produce regardless of library version.
     """
-    # Handle both quote styles and both capitalizations
+    lower = err_msg.lower()
+    # Stage 1: regex for known formats
     for pattern in [
         r'[Cc]olumn ["\']([^"\']+)["\'] of relation',
         r'[Cc]olumn ["\']([^"\']+)["\'] does not exist',
-        r"unrecognized configuration parameter ['\"]([^'\"]+)['\"]",
+        r'[Cc]olumn "([^"]+)" does not exist',
+        r"column ([a-z_][a-z0-9_]*) of relation",
+        r"'([a-z_][a-z0-9_]*)' of relation '",
     ]:
-        m = re.search(pattern, err_msg)
+        m = re.search(pattern, err_msg, re.IGNORECASE)
         if m:
-            return m.group(1)
+            col = m.group(1).strip('"\'')
+            return col
+    # Stage 2: if we have the candidate list, check which one appears in the error
+    if candidate_cols:
+        for col in candidate_cols:
+            if col in lower or f'"{col}"' in err_msg or f"'{col}'" in err_msg:
+                return col
     return None
 
 
 def _safe_batch_insert(sb: Any, rows: list[dict]) -> tuple[int, list[str]]:
-    """Insert a batch into crm_properties, stripping any unmigrated columns on failure.
+    """Insert a batch into crm_properties, stripping any unknown columns on failure.
 
-    Returns (imported_count, warning_messages).
-    Handles both PostgreSQL-native and PostgREST PGRST204 error formats.
+    Algorithm:
+    1. Try bulk insert of entire chunk.
+    2. If it fails with a column-related error, identify and strip that column,
+       then retry up to 30 times (handles tables with many missing migrations).
+    3. If the error is NOT column-related, fall back to per-row inserts so at
+       least the good rows land.
+    4. Returns (imported_count, warning_messages).
     """
     if not rows:
         return 0, []
@@ -548,43 +563,38 @@ def _safe_batch_insert(sb: Any, rows: list[dict]) -> tuple[int, list[str]]:
     current = list(rows)
     warnings: list[str] = []
 
-    for attempt in range(20):  # strip up to 20 unknown columns before giving up
+    for attempt in range(30):  # strip up to 30 unknown columns
         try:
             sb.table("crm_properties").insert(current).execute()
             return len(current), warnings
         except Exception as exc:
             err_msg = str(exc)
-            bad_col = _extract_bad_column(err_msg)
-            if bad_col:
-                warnings.append(f"Stripped unmigrated column '{bad_col}' (run db-migrate)")
-                print(f"[safe_insert] attempt={attempt} stripping column '{bad_col}': {err_msg[:200]}", flush=True)
+            candidate_cols = list(current[0].keys()) if current else []
+            bad_col = _extract_bad_column(err_msg, candidate_cols)
+            if bad_col and bad_col in candidate_cols:
+                warnings.append(f"Stripped column '{bad_col}' not in DB (run /crm/db-migrate)")
+                print(f"[safe_insert] attempt={attempt} stripping '{bad_col}' | err: {err_msg[:150]}", flush=True)
                 current = [{k: v for k, v in d.items() if k != bad_col} for d in current]
                 continue
-            # Not a column error — log fully and fall back to per-row inserts
-            print(f"[safe_insert] Non-column batch error (attempt={attempt}): {err_msg[:500]}", flush=True)
+            # Not a recognisable column error — fall back to per-row inserts
+            print(f"[safe_insert] Non-column error (attempt={attempt}): {err_msg[:400]}", flush=True)
             imported = 0
             row_errors: list[str] = []
-            for j, row_data in enumerate(current[:5]):  # only retry first 5 rows to surface error
+            for j, row_data in enumerate(current):
                 try:
                     sb.table("crm_properties").insert(row_data).execute()
                     imported += 1
                 except Exception as row_exc:
                     row_errors.append(f"Row {j + 1}: {str(row_exc)[:300]}")
-            # If first 5 all errored with the same non-column issue, retry remaining
-            if imported == 0 and row_errors:
-                print(f"[safe_insert] Per-row errors: {row_errors[:3]}", flush=True)
-                return 0, warnings + row_errors
-            # Some succeeded — do the rest
-            for j, row_data in enumerate(current[5:], start=5):
-                try:
-                    sb.table("crm_properties").insert(row_data).execute()
-                    imported += 1
-                except Exception as row_exc:
-                    row_errors.append(f"Row {j + 1}: {str(row_exc)[:150]}")
+                    if j == 0:
+                        # Surface the first row error immediately so we can diagnose
+                        print(f"[safe_insert] First row error: {str(row_exc)[:400]}", flush=True)
+            if row_errors:
+                print(f"[safe_insert] {len(row_errors)}/{len(current)} rows failed. First: {row_errors[0]}", flush=True)
             return imported, warnings + row_errors
 
-    print(f"[safe_insert] Exhausted 20 column-strip attempts. Remaining keys: {list(current[0].keys()) if current else []}", flush=True)
-    return 0, warnings + ["Exhausted column-strip attempts — run POST /crm/db-migrate"]
+    print(f"[safe_insert] Gave up after 30 strips. Remaining cols: {list(current[0].keys()) if current else []}", flush=True)
+    return 0, warnings + ["Gave up stripping columns after 30 attempts — run POST /crm/db-migrate"]
 
 @router.post("/properties/import", status_code=202)
 async def import_properties(
@@ -1119,6 +1129,14 @@ async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)
                 "comp_3_ppa": r.get("comp_3_ppa"),
                 # Comp metadata
                 "comp_quality_flags": r.get("comp_quality_flags") or None,
+                # Match engine metadata
+                "match_radius_used": r.get("match_radius_used"),
+                "num_comps_used": r.get("num_comps_used"),
+                "owner_proximity": r.get("owner_proximity") or None,
+                "lp_fallback": r.get("pricing_flag") == "LP_FALLBACK",
+                "score": r.get("score"),
+                "retail_estimate": r.get("retail_estimate"),
+                "acreage_band": r.get("acreage_band") or None,
                 # Land analysis (present when LP CSV columns were in target file)
                 "buildability": r.get("buildability_pct"),
                 "land_locked": r.get("land_locked") or None,
@@ -1137,6 +1155,7 @@ async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)
 
         print(f"[add-match-results] Inserting {len(rows)} rows in chunks of 25", flush=True)
         if rows:
+            print(f"[add-match-results] ALL column names in first row: {list(rows[0].keys())}", flush=True)
             print(f"[add-match-results] First row sample: campaign_id={rows[0].get('campaign_id')} apn={rows[0].get('apn')} offer_price={rows[0].get('offer_price')} lp_estimate={rows[0].get('lp_estimate')}", flush=True)
 
         # Insert in chunks of 25 so any per-row error is isolated
@@ -2119,6 +2138,13 @@ ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS pricing_method_used TEXT;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS recommended_offer NUMERIC;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS confidence_level TEXT;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS dd_zoning TEXT;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS match_radius_used NUMERIC;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS num_comps_used INTEGER;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS owner_proximity TEXT;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS lp_fallback BOOLEAN DEFAULT FALSE;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS score INTEGER;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS retail_estimate NUMERIC;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS acreage_band TEXT;
 """.strip()
 
 
