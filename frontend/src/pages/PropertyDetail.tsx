@@ -238,6 +238,17 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
             </div>
           </section>
 
+          {/* Property Address */}
+          <section className="card-static">
+            <h2 className="section-heading mb-4">Property Address</h2>
+            <div className="grid grid-cols-3 gap-4">
+              <Field label="Property Address" field="property_address" placeholder="123 Land Rd" span={2} />
+              <Field label="State" field="state" placeholder="TX" />
+              <Field label="City" field="property_city" placeholder="Austin" />
+              <Field label="Zip Code" field="property_zip" placeholder="78701" />
+            </div>
+          </section>
+
           {/* Owner */}
           <section className="card-static">
             <h2 className="section-heading mb-4">Owner Information</h2>

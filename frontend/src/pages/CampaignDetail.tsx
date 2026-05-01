@@ -5,6 +5,7 @@ import {
   listProperties, updateProperty, deleteProperties, bulkInsertRows, getCrmCampaign,
   exportPropertiesCsv, startCampaignLpPull, getCampaignLpPullStatus,
 } from '../api/crm'
+import PropertyDetail from './PropertyDetail'
 
 const PAGE_SIZE = 20
 
@@ -59,6 +60,9 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
   const [lpStatus, setLpStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
   const [lpError, setLpError] = useState<string | null>(null)
   const lpPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Property detail drill-in
+  const [viewingProperty, setViewingProperty] = useState<CRMProperty | null>(null)
 
   // Import
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -295,6 +299,32 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
       },
       error: () => { setImportPhase('idle') },
     })
+  }
+
+  async function handlePropertySave(data: Partial<CRMProperty>) {
+    if (!viewingProperty) return
+    await updateProperty(viewingProperty.id, data)
+    loadProperties(page, statusFilter, search)
+    refreshStats()
+  }
+
+  async function handlePropertyDelete() {
+    if (!viewingProperty) return
+    await deleteProperties([viewingProperty.id])
+    setViewingProperty(null)
+    loadProperties(page, statusFilter, search)
+    refreshStats()
+  }
+
+  if (viewingProperty) {
+    return (
+      <PropertyDetail
+        property={viewingProperty}
+        onBack={() => setViewingProperty(null)}
+        onSave={handlePropertySave}
+        onDelete={handlePropertyDelete}
+      />
+    )
   }
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE)
@@ -549,9 +579,9 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
                         background: isSelected ? 'rgba(92,41,119,0.04)' : 'transparent',
                         cursor: 'pointer',
                       }}
-                      onClick={() => toggleSelect(p.id)}
+                      onClick={() => setViewingProperty(p)}
                     >
-                      <td style={{ padding: '10px 12px' }} onClick={e => e.stopPropagation()}>
+                      <td style={{ padding: '10px 12px' }} onClick={e => { e.stopPropagation(); toggleSelect(p.id) }}>
                         <input
                           type="checkbox"
                           checked={isSelected}
