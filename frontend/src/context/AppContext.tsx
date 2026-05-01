@@ -9,6 +9,7 @@ import type {
   AppPage,
 } from '../types'
 import { restoreLatestCompsSession, fetchDashboard } from '../api/client'
+import { getUnreadCount } from '../api/crm'
 
 const LS_COMPS_KEY = 'ld_comps_stats'
 
@@ -49,6 +50,10 @@ interface AppState {
   // Pre-select a specific property when navigating to crm-properties
   selectedPropertyId: string | null
   setSelectedPropertyId: (id: string | null) => void
+
+  // Unread inbox count (polled every 30s)
+  unreadCount: number
+  setUnreadCount: (n: number) => void
 }
 
 const AppContext = createContext<AppState | null>(null)
@@ -72,6 +77,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [currentPage, setCurrentPage] = useState<AppPage>('crm-dashboard')
   const [propertyCampaignId, setPropertyCampaignId] = useState<string | null>(null)
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null)
+  const [unreadCount, setUnreadCount] = useState(0)
 
   const setCompsStats = useCallback((s: UploadStats | null) => {
     _setCompsStats(s)
@@ -80,6 +86,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } else {
       try { localStorage.removeItem(LS_COMPS_KEY) } catch {}
     }
+  }, [])
+
+  // Poll unread count every 30s
+  const pollUnreadRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  useEffect(() => {
+    const poll = () => getUnreadCount().then(setUnreadCount).catch(() => {})
+    poll()
+    pollUnreadRef.current = setInterval(poll, 30000)
+    return () => { if (pollUnreadRef.current) clearInterval(pollUnreadRef.current) }
   }, [])
 
   // Auto-restore comps session from Supabase Storage on app load
@@ -127,6 +142,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setPropertyCampaignId: useCallback((id) => setPropertyCampaignId(id), []),
     selectedPropertyId,
     setSelectedPropertyId: useCallback((id) => setSelectedPropertyId(id), []),
+    unreadCount,
+    setUnreadCount: useCallback((n) => setUnreadCount(n), []),
   }
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>

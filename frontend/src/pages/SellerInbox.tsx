@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { listCommunications, sendSms, initiateOutboundCall } from '../api/crm'
+import { listCommunications, sendSms, initiateOutboundCall, markThreadRead, markAllRead } from '../api/crm'
 import type { Communication } from '../types/crm'
 import { useApp } from '../context/AppContext'
 
@@ -72,6 +72,7 @@ interface Thread {
   email: string | null
   leadScore: string | null
   disposition: string | null
+  hasUnread: boolean
 }
 
 function buildThreads(comms: Communication[]): Thread[] {
@@ -91,6 +92,7 @@ function buildThreads(comms: Communication[]): Thread[] {
     const dispositions = sorted.map(c => c.disposition).filter(Boolean)
     const dispPriority = ['INTERESTED', 'CALLBACK_NEEDED', 'MAYBE', 'NOT_INTERESTED', 'WRONG_NUMBER', 'NO_ANSWER']
     const topDisp = dispPriority.find(d => dispositions.includes(d)) || null
+    const hasUnread = sorted.some(c => c.is_read === false && c.direction === 'inbound')
     threads.push({
       phone,
       name,
@@ -103,17 +105,14 @@ function buildThreads(comms: Communication[]): Thread[] {
       email: null,
       leadScore: topScore,
       disposition: topDisp,
+      hasUnread,
     })
   }
-  return threads.sort((a, b) => new Date(b.lastComm.created_at).getTime() - new Date(a.lastComm.created_at).getTime())
-}
-
-// ── Score dot ─────────────────────────────────────────────────────────────────
-
-function ScoreDot({ score }: { score: string | null }) {
-  if (!score) return null
-  const color = score === 'hot' ? '#E65100' : score === 'warm' ? '#F59E0B' : '#78909C'
-  return <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, display: 'inline-block', flexShrink: 0 }} />
+  // Sort: unread first, then by most recent activity
+  return threads.sort((a, b) => {
+    if (a.hasUnread !== b.hasUnread) return a.hasUnread ? -1 : 1
+    return new Date(b.lastComm.created_at).getTime() - new Date(a.lastComm.created_at).getTime()
+  })
 }
 
 // ── Disposition badge ─────────────────────────────────────────────────────────
@@ -155,7 +154,6 @@ function CommDetailModal({ comm, onClose }: { comm: Communication; onClose: () =
         style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 560, maxHeight: '82vh', overflowY: 'auto' }}
         onClick={e => e.stopPropagation()}
       >
-        {/* Header */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
           <div>
             <h2 style={{ fontSize: 16, fontWeight: 700, color: '#1A0A2E', margin: 0 }}>
@@ -166,12 +164,9 @@ function CommDetailModal({ comm, onClose }: { comm: Communication; onClose: () =
             <p style={{ fontSize: 12, color: '#9B8AAE', margin: '3px 0 0' }}>{fmtMsgTime(comm.created_at)}</p>
           </div>
           <button onClick={onClose}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, color: '#9B8AAE', lineHeight: 1, padding: '0 4px' }}>
-            ×
-          </button>
+            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, color: '#9B8AAE', lineHeight: 1, padding: '0 4px' }}>×</button>
         </div>
 
-        {/* Details grid */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 24px', marginBottom: 20 }}>
           <div>
             <p style={{ fontSize: 10, fontWeight: 700, color: '#9B8AAE', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 3px' }}>Phone</p>
@@ -211,7 +206,6 @@ function CommDetailModal({ comm, onClose }: { comm: Communication; onClose: () =
           )}
         </div>
 
-        {/* Recording */}
         {comm.recording_url && (
           <div style={{ marginBottom: 18 }}>
             <p style={{ fontSize: 10, fontWeight: 700, color: '#9B8AAE', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px' }}>Recording</p>
@@ -219,7 +213,6 @@ function CommDetailModal({ comm, onClose }: { comm: Communication; onClose: () =
           </div>
         )}
 
-        {/* Summary (calls only) */}
         {isCall && (
           <div style={{ marginBottom: 18 }}>
             <p style={{ fontSize: 10, fontWeight: 700, color: '#9B8AAE', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px' }}>Summary</p>
@@ -229,7 +222,6 @@ function CommDetailModal({ comm, onClose }: { comm: Communication; onClose: () =
           </div>
         )}
 
-        {/* Transcript */}
         {comm.transcript && (
           <div style={{ marginBottom: 18 }}>
             <p style={{ fontSize: 10, fontWeight: 700, color: '#9B8AAE', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px' }}>Transcript</p>
@@ -237,13 +229,10 @@ function CommDetailModal({ comm, onClose }: { comm: Communication; onClose: () =
               fontSize: 12, color: '#6B5B8A', margin: 0, whiteSpace: 'pre-wrap', fontFamily: 'inherit',
               lineHeight: 1.6, background: '#F8F6FB', borderRadius: 8, padding: '10px 14px',
               maxHeight: 280, overflowY: 'auto',
-            }}>
-              {comm.transcript}
-            </pre>
+            }}>{comm.transcript}</pre>
           </div>
         )}
 
-        {/* SMS message body */}
         {!isCall && comm.message_body && (
           <div>
             <p style={{ fontSize: 10, fontWeight: 700, color: '#9B8AAE', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px' }}>Message</p>
@@ -276,8 +265,7 @@ function MessageEntry({ c, onSelect }: { c: Communication; onSelect: (c: Communi
           background: isOutbound ? '#5C2977' : '#F0EBF8',
           color: isOutbound ? '#fff' : '#1A0A2E',
           borderRadius: isOutbound ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
-          padding: '10px 14px',
-          fontSize: 14,
+          padding: '10px 14px', fontSize: 14,
         }}>
           <p style={{ margin: 0, lineHeight: 1.4 }}>{c.message_body || '—'}</p>
           <p style={{ margin: '4px 0 0', fontSize: 10, opacity: 0.6, textAlign: isOutbound ? 'right' : 'left' }}>
@@ -288,22 +276,15 @@ function MessageEntry({ c, onSelect }: { c: Communication; onSelect: (c: Communi
     )
   }
 
-  // Call entry
   const icon = isOutbound ? '↗' : '↙'
   const label = isOutbound ? 'Outbound call' : 'Inbound call'
   const bg = isOutbound ? '#E3F2FD' : '#F3E5F5'
   const col = isOutbound ? '#1565C0' : '#6A1B9A'
 
   return (
-    <div
-      className="flex justify-center mb-3"
-      style={{ cursor: 'pointer' }}
-      onClick={() => onSelect(c)}
-      title="Click to view call details"
-    >
+    <div className="flex justify-center mb-3" style={{ cursor: 'pointer' }} onClick={() => onSelect(c)} title="Click to view call details">
       <div style={{
-        background: bg, border: `1px solid ${col}22`, borderRadius: 12, padding: '10px 16px',
-        maxWidth: '85%', width: '100%',
+        background: bg, border: `1px solid ${col}22`, borderRadius: 12, padding: '10px 16px', maxWidth: '85%', width: '100%',
         transition: 'box-shadow 0.1s',
       }}
         onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)' }}
@@ -315,9 +296,7 @@ function MessageEntry({ c, onSelect }: { c: Communication; onSelect: (c: Communi
           {c.disposition && <DispositionBadge disposition={c.disposition} />}
           <span style={{ color: '#9B8AAE', fontSize: 11, marginLeft: 'auto' }}>{fmtMsgTime(c.created_at)}</span>
         </div>
-        {c.recording_url && (
-          <span style={{ fontSize: 11, color: '#2E7D32', fontWeight: 600 }}>▶ Recording available</span>
-        )}
+        {c.recording_url && <span style={{ fontSize: 11, color: '#2E7D32', fontWeight: 600 }}>▶ Recording available</span>}
         {c.summary
           ? <p style={{ color: '#6B5B8A', fontSize: 12, margin: '4px 0 0', lineHeight: 1.4 }}>{c.summary}</p>
           : <p style={{ color: '#9B8AAE', fontSize: 11, margin: '4px 0 0', fontStyle: 'italic' }}>Call completed — no summary generated</p>
@@ -350,7 +329,7 @@ const TEMPLATES = (firstName: string, address: string, offerPrice: number | null
 type InboxFilter = 'all' | 'calls' | 'texts' | 'hot' | 'callback' | 'unread'
 
 export default function SellerInbox() {
-  const { setCurrentPage, setSelectedPropertyId } = useApp()
+  const { setCurrentPage, setSelectedPropertyId, unreadCount, setUnreadCount } = useApp()
   const [comms, setComms] = useState<Communication[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -364,6 +343,7 @@ export default function SellerInbox() {
   const [sendOk, setSendOk] = useState(false)
   const [calling, setCalling] = useState(false)
   const [callMsg, setCallMsg] = useState<string | null>(null)
+  const [markingAll, setMarkingAll] = useState(false)
   const threadEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { load() }, [])
@@ -382,6 +362,7 @@ export default function SellerInbox() {
   }
 
   const allThreads = buildThreads(comms)
+  const totalUnread = allThreads.filter(t => t.hasUnread).length
 
   const filteredThreads = allThreads.filter(t => {
     const q = search.toLowerCase()
@@ -390,20 +371,48 @@ export default function SellerInbox() {
     if (filter === 'texts') return t.comms.some(c => c.type.startsWith('sms'))
     if (filter === 'hot') return t.leadScore === 'hot'
     if (filter === 'callback') return t.disposition === 'CALLBACK_NEEDED'
-    if (filter === 'unread') return false
+    if (filter === 'unread') return t.hasUnread
     return true
   })
 
   const selected = selectedPhone ? allThreads.find(t => t.phone === selectedPhone) ?? null : null
   const threadComms = selected ? [...selected.comms].reverse() : []
 
-  const FILTERS: { id: InboxFilter; label: string }[] = [
+  function selectThread(phone: string) {
+    setSelectedPhone(phone)
+    setSendErr(null)
+    setSendOk(false)
+    // Auto-mark as read
+    const thread = allThreads.find(t => t.phone === phone)
+    if (thread?.hasUnread) {
+      markThreadRead([phone]).catch(() => {})
+      // Optimistic update: mark all comms from this phone as read
+      setComms(prev => prev.map(c =>
+        c.phone_number === phone ? { ...c, is_read: true } : c
+      ))
+      // Update global badge
+      setUnreadCount(Math.max(0, unreadCount - 1))
+    }
+  }
+
+  async function handleMarkAllRead() {
+    setMarkingAll(true)
+    try {
+      await markAllRead()
+      setComms(prev => prev.map(c => ({ ...c, is_read: true })))
+      setUnreadCount(0)
+    } catch {
+      // silent
+    } finally { setMarkingAll(false) }
+  }
+
+  const FILTERS: { id: InboxFilter; label: string; count?: number }[] = [
     { id: 'all', label: 'All' },
     { id: 'calls', label: 'Calls' },
     { id: 'texts', label: 'Texts' },
     { id: 'hot', label: '🔥 HOT' },
     { id: 'callback', label: '📅 Callback' },
-    { id: 'unread', label: 'Unread' },
+    { id: 'unread', label: 'Unread', count: totalUnread },
   ]
 
   async function handleSend() {
@@ -451,8 +460,25 @@ export default function SellerInbox() {
         {/* Header */}
         <div style={{ padding: '16px 16px 12px', borderBottom: '1px solid #EDE8F5' }}>
           <div className="flex items-center justify-between mb-3">
-            <h1 style={{ fontSize: 18, fontWeight: 700, color: '#1A0A2E' }}>Seller Inbox</h1>
-            <button onClick={load} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9B8AAE', fontSize: 13 }}>↻</button>
+            <div className="flex items-center gap-2">
+              <h1 style={{ fontSize: 18, fontWeight: 700, color: '#1A0A2E' }}>Seller Inbox</h1>
+              {totalUnread > 0 && (
+                <span style={{ background: '#DC2626', color: '#fff', borderRadius: 10, padding: '1px 7px', fontSize: 11, fontWeight: 700 }}>
+                  {totalUnread}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {totalUnread > 0 && (
+                <button
+                  onClick={handleMarkAllRead}
+                  disabled={markingAll}
+                  style={{ fontSize: 11, color: '#5C2977', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, padding: '2px 6px', borderRadius: 6, opacity: markingAll ? 0.5 : 1 }}>
+                  {markingAll ? '…' : 'Mark all read'}
+                </button>
+              )}
+              <button onClick={load} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9B8AAE', fontSize: 13 }}>↻</button>
+            </div>
           </div>
           <div style={{ position: 'relative' }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9B8AAE" strokeWidth="2"
@@ -478,8 +504,15 @@ export default function SellerInbox() {
                 background: filter === f.id ? '#5C2977' : 'transparent',
                 color: filter === f.id ? '#fff' : '#6B5B8A',
                 border: filter === f.id ? '1px solid #5C2977' : '1px solid transparent',
+                display: 'flex', alignItems: 'center', gap: 4,
               }}>
               {f.label}
+              {f.count != null && f.count > 0 && (
+                <span style={{
+                  background: filter === f.id ? 'rgba(255,255,255,0.3)' : '#DC2626',
+                  color: '#fff', borderRadius: 8, padding: '0 5px', fontSize: 9, fontWeight: 700,
+                }}>{f.count}</span>
+              )}
             </button>
           ))}
         </div>
@@ -501,44 +534,47 @@ export default function SellerInbox() {
 
             return (
               <div key={t.phone}
-                onClick={() => { setSelectedPhone(t.phone); setSendErr(null); setSendOk(false) }}
+                onClick={() => selectThread(t.phone)}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
+                  display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px',
                   cursor: 'pointer', borderBottom: '1px solid #F0EBF8',
-                  background: isSelected ? '#F0EBF8' : 'transparent',
+                  background: isSelected ? '#F0EBF8' : t.hasUnread ? '#FAF6FF' : 'transparent',
                   transition: 'background 0.1s',
                 }}
-                onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLDivElement).style.background = '#F8F5FC' }}
-                onMouseLeave={e => { if (!isSelected) (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
+                onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLDivElement).style.background = '#F3EEF8' }}
+                onMouseLeave={e => { if (!isSelected) (e.currentTarget as HTMLDivElement).style.background = t.hasUnread ? '#FAF6FF' : 'transparent' }}
               >
+                {/* Unread dot */}
+                <div style={{ width: 8, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {t.hasUnread && (
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#5C2977', display: 'block' }} />
+                  )}
+                </div>
+
+                {/* Avatar */}
                 <div style={{
-                  width: 44, height: 44, borderRadius: '50%', background: avatarBg,
+                  width: 42, height: 42, borderRadius: '50%', background: avatarBg,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: '#fff', fontWeight: 700, fontSize: 15, flexShrink: 0,
+                  color: '#fff', fontWeight: 700, fontSize: 14, flexShrink: 0,
                 }}>
                   {initials}
                 </div>
+
+                {/* Content */}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="flex items-center justify-between">
-                    <span style={{ fontWeight: 700, fontSize: 14, color: '#1A0A2E', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 120 }}>
+                    <span style={{ fontWeight: t.hasUnread ? 800 : 600, fontSize: 14, color: '#1A0A2E', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 110 }}>
                       {t.name}
                     </span>
-                    <span style={{ fontSize: 11, color: '#9B8AAE', flexShrink: 0, marginLeft: 4 }}>
+                    <span style={{ fontSize: 11, color: t.hasUnread ? '#5C2977' : '#9B8AAE', flexShrink: 0, marginLeft: 4, fontWeight: t.hasUnread ? 700 : 400 }}>
                       {fmtInboxDate(t.lastComm.created_at)}
                     </span>
                   </div>
                   <div className="flex items-center gap-1 mt-1">
                     {t.disposition && <DispositionBadge disposition={t.disposition} />}
-                    {!t.disposition && (
-                      <p style={{ fontSize: 12, color: '#9B8AAE', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {preview}
-                      </p>
-                    )}
-                    {t.disposition && (
-                      <p style={{ fontSize: 11, color: '#9B8AAE', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                        {preview}
-                      </p>
-                    )}
+                    <p style={{ fontSize: 12, color: t.hasUnread ? '#5C2977' : '#9B8AAE', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, fontWeight: t.hasUnread ? 600 : 400 }}>
+                      {preview}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -556,6 +592,11 @@ export default function SellerInbox() {
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
               </svg>
               <p style={{ fontSize: 14 }}>Select a conversation</p>
+              {totalUnread > 0 && (
+                <p style={{ fontSize: 12, color: '#5C2977', marginTop: 8 }}>
+                  {totalUnread} unread {totalUnread === 1 ? 'conversation' : 'conversations'}
+                </p>
+              )}
             </div>
           </div>
         ) : (
@@ -570,11 +611,9 @@ export default function SellerInbox() {
                 <p style={{ fontSize: 12, color: '#9B8AAE', margin: 0 }}>{fmtPhone(selected.phone)}</p>
               </div>
               {callMsg && (
-                <span style={{
-                  fontSize: 12, fontWeight: 600,
-                  color: callMsg.startsWith('✓') ? '#2D7A4F' : '#B71C1C',
-                  maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis',
-                }}>{callMsg}</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: callMsg.startsWith('✓') ? '#2D7A4F' : '#B71C1C', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {callMsg}
+                </span>
               )}
               <button
                 onClick={() => handleCall(selected)}

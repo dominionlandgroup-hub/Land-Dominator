@@ -2114,4 +2114,5 @@ COMM_MIGRATION_SQL = """
 ALTER TABLE crm_communications ADD COLUMN IF NOT EXISTS disposition TEXT;
 ALTER TABLE crm_communications ADD COLUMN IF NOT EXISTS callback_requested_at TEXT;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS tags JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE crm_communications ADD COLUMN IF NOT EXISTS is_read BOOLEAN DEFAULT FALSE;
 """.strip()

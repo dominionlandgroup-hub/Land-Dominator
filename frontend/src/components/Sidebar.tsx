@@ -148,7 +148,7 @@ function NavBtn({
 // ── Sidebar ──────────────────────────────────────────────────────────────────
 
 export default function Sidebar() {
-  const { currentPage, setCurrentPage, compsStats, targetStats, matchResult } = useApp()
+  const { currentPage, setCurrentPage, compsStats, targetStats, matchResult, unreadCount } = useApp()
   const [boardsOpen, setBoardsOpen] = useState(
     ['boards-seller', 'boards-buyer', 'boards-inventory'].includes(currentPage)
   )
@@ -175,7 +175,14 @@ export default function Sidebar() {
       <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
 
         <NavBtn id="crm-dashboard" label="Dashboard"    icon={<IconDashboard />} active={currentPage === 'crm-dashboard'} onClick={() => nav('crm-dashboard')} />
-        <NavBtn id="seller-inbox"  label="Seller Inbox" icon={<IconInbox />}     active={currentPage === 'seller-inbox'}  onClick={() => nav('seller-inbox')} />
+        <NavBtn id="seller-inbox"  label="Seller Inbox" icon={<IconInbox />}     active={currentPage === 'seller-inbox'}  onClick={() => nav('seller-inbox')}
+          rightEl={unreadCount > 0 ? (
+            <span style={{
+              background: '#DC2626', color: '#fff', borderRadius: 10,
+              padding: '1px 6px', fontSize: 10, fontWeight: 700, lineHeight: '1.4', minWidth: 18, textAlign: 'center',
+            }}>{unreadCount > 99 ? '99+' : unreadCount}</span>
+          ) : undefined}
+        />
         <NavBtn id="buyer-inbox"   label="Buyer Inbox"   icon={<IconInbox />}     active={currentPage === 'buyer-inbox'}   onClick={() => nav('buyer-inbox')} />
 
         {/* Boards accordion */}

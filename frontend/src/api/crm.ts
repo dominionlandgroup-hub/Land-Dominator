@@ -387,6 +387,19 @@ export async function getCommStats(): Promise<CommStats> {
   return data
 }
 
+export async function getUnreadCount(): Promise<number> {
+  const { data } = await api.get<{ count: number }>('/crm/communications/unread-count')
+  return data.count
+}
+
+export async function markThreadRead(phoneNumbers: string[]): Promise<void> {
+  await api.post('/crm/communications/mark-read', { phone_numbers: phoneNumbers })
+}
+
+export async function markAllRead(): Promise<void> {
+  await api.post('/crm/communications/mark-read', { mark_all: true })
+}
+
 export async function sendSms(to_phone: string, message: string, property_id?: string | null): Promise<{ sent: boolean; communication_id?: string }> {
   const { data } = await api.post('/crm/sms/send', {
     to_phone,

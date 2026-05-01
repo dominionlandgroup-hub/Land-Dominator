@@ -509,6 +509,7 @@ async def _log_comm(
             "call_id": call_id,
             "duration_seconds": duration_seconds,
             "created_at": _now(),
+            "is_read": direction != "inbound",  # inbound = unread by default
         }
         if recording_url is not None:
             row["recording_url"] = recording_url
@@ -1374,6 +1375,44 @@ async def communication_stats() -> dict:
             "hot_leads_this_week": hot_week,
             "talk_time_seconds": talk_secs,
         }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/crm/communications/unread-count")
+async def get_unread_count() -> dict:
+    """Return count of unread inbound conversation threads (grouped by phone number)."""
+    sb = get_supabase()
+    try:
+        r = (
+            sb.table("crm_communications")
+            .select("phone_number")
+            .eq("is_read", False)
+            .eq("direction", "inbound")
+            .execute()
+        )
+        phones = {c["phone_number"] for c in r.data if c.get("phone_number")}
+        return {"count": len(phones)}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+class MarkReadRequest(BaseModel):
+    phone_numbers: Optional[list[str]] = None
+    mark_all: bool = False
+
+
+@router.post("/crm/communications/mark-read")
+async def mark_communications_read(body: MarkReadRequest) -> dict:
+    """Mark communications as read — by phone number list or all at once."""
+    sb = get_supabase()
+    try:
+        if body.mark_all:
+            sb.table("crm_communications").update({"is_read": True}).eq("is_read", False).execute()
+        elif body.phone_numbers:
+            for phone in body.phone_numbers:
+                sb.table("crm_communications").update({"is_read": True}).eq("phone_number", phone).execute()
+        return {"ok": True}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 

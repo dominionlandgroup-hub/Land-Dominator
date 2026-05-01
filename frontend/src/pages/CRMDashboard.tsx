@@ -91,8 +91,15 @@ const IconROI = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 
+const IconInbox = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/>
+    <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>
+  </svg>
+)
+
 export default function CRMDashboard() {
-  const { setCurrentPage } = useApp()
+  const { setCurrentPage, unreadCount } = useApp()
   const [properties, setProperties] = useState<CRMProperty[]>([])
   const [deals, setDeals] = useState<CRMDeal[]>([])
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
@@ -146,6 +153,40 @@ export default function CRMDashboard() {
           {STAT_CARDS.map((card) => (
             <StatCard key={card.label} {...card} />
           ))}
+        </div>
+
+        {/* Unread Messages card — full width, clickable */}
+        <div
+          onClick={() => setCurrentPage('seller-inbox')}
+          style={{
+            cursor: 'pointer', borderRadius: 12, padding: '14px 20px', background: '#fff',
+            border: `2px solid ${unreadCount > 0 ? '#DC2626' : '#EDE8F5'}`,
+            boxShadow: unreadCount > 0 ? '0 2px 8px rgba(220,38,38,0.12)' : '0 1px 4px rgba(61,26,94,0.06)',
+            display: 'flex', alignItems: 'center', gap: 16, transition: 'box-shadow 0.15s',
+          }}
+          onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 16px rgba(92,41,119,0.15)' }}
+          onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = unreadCount > 0 ? '0 2px 8px rgba(220,38,38,0.12)' : '0 1px 4px rgba(61,26,94,0.06)' }}
+        >
+          <div style={{ width: 40, height: 40, borderRadius: 10, background: unreadCount > 0 ? '#FEF2F2' : '#F3EEF8', display: 'flex', alignItems: 'center', justifyContent: 'center', color: unreadCount > 0 ? '#DC2626' : '#5C2977', flexShrink: 0 }}>
+            <IconInbox />
+          </div>
+          <div style={{ flex: 1 }}>
+            <p style={{ fontSize: 11, fontWeight: 600, color: '#6B5B8A', textTransform: 'uppercase', letterSpacing: '0.07em', margin: 0 }}>Unread Messages</p>
+            <div className="flex items-baseline gap-2">
+              <p style={{ fontSize: 28, fontWeight: 800, color: unreadCount > 0 ? '#DC2626' : '#1A0A2E', margin: 0, lineHeight: 1.2 }}>
+                {unreadCount}
+              </p>
+              {unreadCount > 0 && (
+                <span style={{ fontSize: 13, color: '#DC2626', fontWeight: 600 }}>
+                  unread {unreadCount === 1 ? 'conversation' : 'conversations'}
+                </span>
+              )}
+              {unreadCount === 0 && (
+                <span style={{ fontSize: 13, color: '#9B8AAE' }}>all caught up</span>
+              )}
+            </div>
+          </div>
+          <span style={{ fontSize: 13, color: '#5C2977', fontWeight: 600 }}>Open Inbox →</span>
         </div>
 
         {/* Campaign Report */}

@@ -232,6 +232,7 @@ export interface Communication {
   caller_offer_code?: string
   disposition?: string
   callback_requested_at?: string
+  is_read?: boolean
   property?: {
     id?: string
     owner_full_name?: string
@@ -254,6 +255,7 @@ export interface CommStats {
   texts_outbound: number
   hot_leads_this_week: number
   talk_time_seconds: number
+  unread_count?: number
 }
 
 export interface BuyBox {
