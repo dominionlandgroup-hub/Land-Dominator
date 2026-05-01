@@ -432,6 +432,11 @@ export default function MatchTargets() {
           >
             {matchLoading ? (
               <><LoadingSpinner size="sm" />Running…</>
+            ) : matchResult ? (
+              <>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                Re-run with new filters
+              </>
             ) : (
               <>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
@@ -459,9 +464,11 @@ export default function MatchTargets() {
               <div className="mb-5 px-4 py-3 rounded-xl flex items-center justify-between" style={{ background: 'rgba(45,122,79,0.06)', border: '1px solid rgba(45,122,79,0.25)' }}>
                 <div>
                   <p className="text-sm font-medium" style={{ color: '#2D7A4F' }}>
-                    Recommended minimum offer: <strong>${Math.round(matchResult.smart_floor_recommendation).toLocaleString()}</strong>
+                    Recommended minimum: <strong>${Math.round(matchResult.smart_floor_recommendation).toLocaleString()}</strong> based on comp data
                   </p>
-                  <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>10th percentile of all matched offers — based on this market's comp data</p>
+                  <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>
+                    Hard floor is currently <strong>${Number(minOfferFloor || 10000).toLocaleString()}</strong> — click "Use this floor" to apply the recommendation
+                  </p>
                 </div>
                 <button
                   className="btn-secondary text-xs"
@@ -492,9 +499,9 @@ export default function MatchTargets() {
                           setSaveCrmSuccess(null)
                           setSaveCrmError(null)
                           try {
-                            const res = await saveMatchPricing(matchId, 'all')
+                            const res = await saveMatchPricing(matchId, 'all', matchResult?.results)
                             if (res.updated > 0) {
-                              setSaveCrmSuccess(`Updated ${res.updated.toLocaleString()} existing CRM properties with comp & pricing data. (${res.not_found} not found in CRM)`)
+                              setSaveCrmSuccess(`Pricing saved to ${res.updated.toLocaleString()} existing CRM properties. (${res.not_found} not found in CRM)`)
                             } else {
                               setSaveCrmSuccess(`No matching CRM records found by APN (${res.not_found} parcels not in CRM yet — use "Add to Mailing List" to import them first).`)
                             }
@@ -673,7 +680,7 @@ export default function MatchTargets() {
                 className="input-base text-sm"
                 value={selectedCampaignId}
                 onChange={e => setSelectedCampaignId(e.target.value)}
-                onClick={async () => {
+                onFocus={async () => {
                   if (mailingCampaigns.length === 0) {
                     const list = await listCrmCampaigns().catch(() => [])
                     setMailingCampaigns(list.map(c => ({ id: c.id, name: c.name })))
@@ -686,6 +693,11 @@ export default function MatchTargets() {
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
+              {selectedCampaignId === '__new__' && (
+                <p className="text-[10px] mt-1" style={{ color: '#9B8AAE' }}>
+                  Will be named based on your comp data counties: {(dashboardData?.top_counties ?? []).slice(0, 3).join(', ') || 'Auto-detect'}
+                </p>
+              )}
             </div>
 
             {mailingError && <p className="text-xs mb-3" style={{ color: '#B71C1C' }}>{mailingError}</p>}
@@ -704,15 +716,21 @@ export default function MatchTargets() {
                     let campaignId = selectedCampaignId
                     let campaignName = mailingCampaigns.find(c => c.id === campaignId)?.name ?? 'Campaign'
                     if (selectedCampaignId === '__new__') {
-                      const topCounty = dashboardData?.top_counties?.[0] ?? ''
+                      const allCounties = dashboardData?.top_counties ?? []
                       const topState = dashboardData?.top_states?.[0] ?? ''
-                      const created = await autoCreateCampaign({ county: topCounty, state: topState })
+                      const created = await autoCreateCampaign({ counties: allCounties, state: topState })
                       campaignId = created.campaign_id
                       campaignName = created.name
+                      setMailingCampaigns(prev => [...prev, { id: created.campaign_id, name: created.name }])
                     }
-                    const result = await addMatchResultsToCampaign(campaignId, matchResult.match_id, mailingExportType)
+                    const result = await addMatchResultsToCampaign(
+                      campaignId,
+                      matchResult.match_id,
+                      mailingExportType,
+                      matchResult.results,
+                    )
                     setMailingSuccess(`${result.imported.toLocaleString()} records added to "${campaignName}". Go to Campaigns to view.`)
-                    setSelectedCampaignId('')
+                    setSelectedCampaignId(campaignId)
                   } catch (e: unknown) {
                     const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
                     setMailingError(detail ?? 'Failed to add records.')

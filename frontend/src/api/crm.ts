@@ -124,6 +124,7 @@ export async function deleteCrmCampaign(id: string): Promise<void> {
 
 export async function autoCreateCampaign(opts?: {
   county?: string
+  counties?: string[]
   state?: string
   month?: string
   year?: number
@@ -145,11 +146,13 @@ export async function sendCampaignMailDrop(
 export async function addMatchResultsToCampaign(
   campaignId: string,
   matchId: string,
-  exportType: 'mailable' | 'matched' = 'mailable'
+  exportType: 'mailable' | 'matched' = 'mailable',
+  records?: unknown[]
 ): Promise<{ imported: number; total: number; campaign_id: string }> {
   const { data } = await api.post(`/crm/campaigns/${campaignId}/add-match-results`, {
     match_id: matchId,
     export_type: exportType,
+    ...(records ? { records } : {}),
   })
   return data
 }
@@ -174,11 +177,13 @@ export async function getCallbackNumber(): Promise<{ phone: string; formatted: s
 
 export async function saveMatchPricing(
   matchId: string,
-  exportType: 'mailable' | 'matched' | 'all' = 'all'
+  exportType: 'mailable' | 'matched' | 'all' = 'all',
+  records?: unknown[]
 ): Promise<{ updated: number; total: number; not_found: number; errors: string[] }> {
   const { data } = await api.post('/crm/save-match-pricing', {
     match_id: matchId,
     export_type: exportType,
+    ...(records ? { records } : {}),
   })
   return data
 }

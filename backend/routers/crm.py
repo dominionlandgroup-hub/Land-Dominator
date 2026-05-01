@@ -790,23 +790,40 @@ async def delete_crm_campaign(campaign_id: str) -> None:
 @router.post("/campaigns/auto-create", status_code=201)
 async def auto_create_campaign(body: dict = Body(...)) -> dict:
     """
-    Create a campaign named '[County] County [Month] [Year]' from buy-box context.
-    Accepts: {county?, state?, month?, year?}. Falls back to current month/year.
+    Create a campaign with a smart name based on counties covered.
+    Accepts: {counties?: list[str], county?: str, state?: str, month?, year?}
+    1 county  → "[County] County [Month] [Year]"
+    2-3 counties → "[County1] / [County2] [Month] [Year]"
+    4+ counties  → "[State] Multi-County [Month] [Year]"
     """
     try:
         sb = get_supabase()
-        county = (body.get("county") or "").strip()
         state = (body.get("state") or "").strip()
         from datetime import datetime
         now = datetime.now()
         month = body.get("month") or now.strftime("%B")
         year = body.get("year") or now.year
-        if county:
-            name = f"{county} County {month} {year}"
+
+        # Collect counties — accept both 'counties' list and legacy 'county' string
+        counties_raw: list = body.get("counties") or []
+        single = (body.get("county") or "").strip()
+        counties = [c.strip() for c in counties_raw if (c or "").strip()]
+        if not counties and single:
+            counties = [single]
+
+        if len(counties) == 1:
+            name = f"{counties[0]} County {month} {year}"
+        elif len(counties) == 2:
+            name = f"{counties[0]} / {counties[1]} {month} {year}"
+        elif len(counties) == 3:
+            name = f"{counties[0]} / {counties[1]} / {counties[2]} {month} {year}"
+        elif len(counties) >= 4:
+            name = f"{state} Multi-County {month} {year}" if state else f"Multi-County {month} {year}"
         elif state:
             name = f"{state} {month} {year}"
         else:
             name = f"Mail Drop {month} {year}"
+
         r = sb.table("crm_campaigns").insert({
             "name": name,
             "created_at": _now(),
@@ -951,17 +968,23 @@ async def send_campaign_mail_drop(campaign_id: str, body: dict = Body(default={}
 async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)) -> dict:
     """
     Bulk-insert mailable matched parcels into a CRM campaign as 'lead' properties.
-    Body: {match_id: str, export_type?: 'mailable'|'matched'}
+    Body: {match_id: str, export_type?: 'mailable'|'matched', records?: list}
+    If records is provided it is used directly (avoids volatile in-memory session store).
     """
     try:
-        from storage.session_store import get_match
         match_id = body.get("match_id", "")
         export_type = body.get("export_type", "mailable")
-        match_data = get_match(match_id)
-        if match_data is None:
-            raise HTTPException(status_code=404, detail="Match result not found. Re-run matching engine.")
 
-        raw_results = match_data.get("results", [])
+        # Prefer inline records sent from the frontend (resilient to server restarts)
+        inline_records = body.get("records")
+        if inline_records is not None:
+            raw_results = inline_records
+        else:
+            from storage.session_store import get_match
+            match_data = get_match(match_id)
+            if match_data is None:
+                raise HTTPException(status_code=404, detail="Match result not found. Re-run matching engine.")
+            raw_results = match_data.get("results", [])
 
         # Filter by export type
         if export_type == "mailable":
@@ -972,7 +995,7 @@ async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)
             results = raw_results
 
         if not results:
-            raise HTTPException(status_code=400, detail="No matching records found with the selected filter.")
+            raise HTTPException(status_code=400, detail=f"No records with pricing_flag MATCHED or LP_FALLBACK found in the {export_type} export. Check that the matching engine ran successfully.")
 
         sb = get_supabase()
         # Verify campaign exists
@@ -2012,18 +2035,23 @@ async def save_match_pricing(body: dict = Body(...)) -> dict:
     """
     Update existing CRM properties with comp and pricing data from a match run.
     Matches by APN. Only updates records that already exist in crm_properties.
-    Body: {match_id: str, export_type?: 'mailable'|'matched'|'all'}
+    Body: {match_id: str, export_type?: 'mailable'|'matched'|'all', records?: list}
+    If records is provided it is used directly (avoids volatile in-memory session store).
     """
     try:
-        from storage.session_store import get_match
         match_id = body.get("match_id", "")
         export_type = body.get("export_type", "all")
 
-        match_data = get_match(match_id)
-        if match_data is None:
-            raise HTTPException(status_code=404, detail="Match result not found. Re-run matching engine.")
-
-        raw_results = match_data.get("results", [])
+        # Prefer inline records sent from the frontend (resilient to server restarts)
+        inline_records = body.get("records")
+        if inline_records is not None:
+            raw_results = inline_records
+        else:
+            from storage.session_store import get_match
+            match_data = get_match(match_id)
+            if match_data is None:
+                raise HTTPException(status_code=404, detail="Match result not found. Re-run matching engine.")
+            raw_results = match_data.get("results", [])
 
         if export_type == "mailable":
             results = [r for r in raw_results if r.get("pricing_flag") in ("MATCHED", "LP_FALLBACK")]
