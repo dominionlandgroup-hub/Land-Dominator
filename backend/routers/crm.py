@@ -986,6 +986,11 @@ async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)
                 raise HTTPException(status_code=404, detail="Match result not found. Re-run matching engine.")
             raw_results = match_data.get("results", [])
 
+        print(f"[add-match-results] campaign_id={campaign_id} export_type={export_type} total_raw={len(raw_results)}", flush=True)
+        if raw_results:
+            print(f"[add-match-results] Sample record keys: {list(raw_results[0].keys())[:15]}", flush=True)
+            print(f"[add-match-results] Sample pricing_flag: {raw_results[0].get('pricing_flag')}", flush=True)
+
         # Filter by export type
         if export_type == "mailable":
             results = [r for r in raw_results if r.get("pricing_flag") in ("MATCHED", "LP_FALLBACK")]
@@ -994,93 +999,125 @@ async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)
         else:
             results = raw_results
 
+        print(f"[add-match-results] After filter: {len(results)} records to insert", flush=True)
+
         if not results:
-            raise HTTPException(status_code=400, detail=f"No records with pricing_flag MATCHED or LP_FALLBACK found in the {export_type} export. Check that the matching engine ran successfully.")
+            flag_counts: dict[str, int] = {}
+            for r in raw_results:
+                f = str(r.get("pricing_flag", "None"))
+                flag_counts[f] = flag_counts.get(f, 0) + 1
+            raise HTTPException(
+                status_code=400,
+                detail=f"No mailable records found (export_type='{export_type}'). Flag breakdown: {flag_counts}. Re-run the matching engine or switch to 'matched' export type."
+            )
 
         sb = get_supabase()
         # Verify campaign exists
-        c_r = sb.table("crm_campaigns").select("id,name").eq("id", campaign_id).execute()
+        c_r = sb.table("crm_campaigns").select("id,name,campaign_code").eq("id", campaign_id).execute()
         if not c_r.data:
             raise HTTPException(status_code=404, detail="Campaign not found")
+        campaign_code_prefix = (c_r.data[0].get("campaign_code") or "")[:6] or campaign_id[:6]
 
         rows = []
-        for r in results:
-            owner = r.get("owner_name", "") or ""
-            parts = owner.strip().split(" ", 1) if owner.strip() else ["", ""]
+        for seq, r in enumerate(results, start=1):
+            owner_full = r.get("owner_name") or r.get("owner_full_name") or ""
+            owner_first = r.get("owner_first_name") or ""
+            owner_last = r.get("owner_last_name") or ""
+            if not owner_first and not owner_last and owner_full.strip():
+                parts = owner_full.strip().split(" ", 1)
+                owner_first = parts[0]
+                owner_last = parts[1] if len(parts) > 1 else ""
             rows.append({
+                # Basic
                 "campaign_id": campaign_id,
                 "status": "lead",
-                "owner_full_name": owner,
-                "owner_first_name": parts[0],
-                "owner_last_name": parts[1] if len(parts) > 1 else "",
-                "owner_mailing_address": r.get("mail_address", ""),
-                "owner_mailing_city": r.get("mail_city", ""),
-                "owner_mailing_state": r.get("mail_state", ""),
-                "owner_mailing_zip": r.get("mail_zip", ""),
-                "apn": r.get("apn", ""),
-                "property_address": r.get("parcel_address", ""),
-                "property_city": r.get("parcel_city", ""),
-                "property_zip": r.get("parcel_zip", ""),
-                "state": r.get("parcel_state", ""),
-                "county": r.get("parcel_county", ""),
+                "campaign_code": f"{campaign_code_prefix}-{seq:04d}",
+                # Owner
+                "owner_full_name": owner_full,
+                "owner_first_name": owner_first,
+                "owner_last_name": owner_last,
+                "owner_phone": r.get("owner_phone") or None,
+                # Mailing address
+                "owner_mailing_address": r.get("mail_address") or None,
+                "owner_mailing_city": r.get("mail_city") or None,
+                "owner_mailing_state": r.get("mail_state") or None,
+                "owner_mailing_zip": r.get("mail_zip") or None,
+                # Parcel location
+                "apn": r.get("apn") or None,
+                "property_address": r.get("parcel_address") or None,
+                "property_city": r.get("parcel_city") or None,
+                "property_zip": r.get("parcel_zip") or None,
+                "state": r.get("parcel_state") or None,
+                "county": r.get("parcel_county") or None,
                 "acreage": r.get("lot_acres"),
+                # LP IDs
+                "property_id": r.get("lp_property_id") or r.get("property_id") or None,
+                "fips": r.get("fips") or None,
+                # Pricing
                 "offer_price": r.get("suggested_offer_mid"),
                 "lp_estimate": r.get("retail_estimate"),
                 "recommended_offer": r.get("suggested_offer_mid"),
-                "confidence_level": r.get("confidence"),
+                "confidence_level": r.get("confidence") or None,
+                "pricing_method_used": r.get("pricing_method") or None,
+                # Geo
                 "latitude": r.get("latitude"),
                 "longitude": r.get("longitude"),
-                # Comp 1 data from matching engine
+                # Comp 1
                 "comp1_price": r.get("comp_1_price"),
                 "comp1_acreage": r.get("comp_1_acres"),
                 "comp_1_address": r.get("comp_1_address") or None,
                 "comp_1_date": r.get("comp_1_date") or None,
                 "comp_1_distance": r.get("comp_1_distance"),
                 "comp_1_ppa": r.get("comp_1_ppa"),
-                # Comp 2 data
+                # Comp 2
                 "comp2_price": r.get("comp_2_price"),
                 "comp2_acreage": r.get("comp_2_acres"),
                 "comp_2_address": r.get("comp_2_address") or None,
                 "comp_2_date": r.get("comp_2_date") or None,
                 "comp_2_distance": r.get("comp_2_distance"),
                 "comp_2_ppa": r.get("comp_2_ppa"),
-                # Comp 3 data
+                # Comp 3
                 "comp3_price": r.get("comp_3_price"),
                 "comp3_acreage": r.get("comp_3_acres"),
                 "comp_3_address": r.get("comp_3_address") or None,
                 "comp_3_date": r.get("comp_3_date") or None,
                 "comp_3_distance": r.get("comp_3_distance"),
                 "comp_3_ppa": r.get("comp_3_ppa"),
-                # Pricing metadata
+                # Comp metadata
                 "comp_quality_flags": r.get("comp_quality_flags") or None,
-                "pricing_method_used": r.get("pricing_method") or None,
+                # Land analysis (present when LP CSV columns were in target file)
+                "buildability": r.get("buildability_pct"),
+                "land_locked": r.get("land_locked") or None,
+                "dd_flood_zone": r.get("flood_zone") or None,
+                "fema_coverage": r.get("fema_coverage"),
+                "wetlands_coverage": r.get("wetlands_coverage"),
+                "slope_avg": r.get("slope_avg"),
+                "elevation_avg": r.get("elevation_avg"),
+                "road_frontage": r.get("road_frontage"),
+                "land_use": r.get("land_use") or None,
+                "assessed_value": r.get("assessed_value") or None,
+                "school_district": r.get("school_district") or None,
+                "dd_zoning": r.get("zoning") or r.get("dd_zoning") or None,
                 "created_at": _now(),
                 "updated_at": _now(),
             })
 
-        # Batch insert in chunks of 200
-        imported = 0
-        errors: list[str] = []
-        CHUNK = 200
-        for i in range(0, len(rows), CHUNK):
-            chunk = rows[i:i + CHUNK]
-            try:
-                sb.table("crm_properties").insert(chunk).execute()
-                imported += len(chunk)
-            except Exception as exc:
-                errors.append(str(exc)[:120])
+        print(f"[add-match-results] Inserting {len(rows)} rows via _safe_batch_insert", flush=True)
+        imported, warnings = _safe_batch_insert(sb, rows)
+        print(f"[add-match-results] Insert complete: imported={imported} warnings={warnings[:3]}", flush=True)
 
         return {
             "imported": imported,
             "total": len(results),
             "campaign_id": campaign_id,
-            "errors": errors[:5],
+            "warnings": warnings[:5],
         }
     except HTTPException:
         raise
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     except Exception as exc:
+        print(f"[add-match-results] ERROR: {exc}", flush=True)
         raise HTTPException(status_code=500, detail=str(exc))
 
 
@@ -2027,6 +2064,9 @@ ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS comp_2_ppa NUMERIC;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS comp_3_ppa NUMERIC;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS comp_quality_flags TEXT;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS pricing_method_used TEXT;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS recommended_offer NUMERIC;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS confidence_level TEXT;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS dd_zoning TEXT;
 """.strip()
 
 
