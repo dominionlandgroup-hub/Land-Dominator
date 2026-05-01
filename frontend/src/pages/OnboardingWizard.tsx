@@ -465,21 +465,36 @@ function Step4Comps({
 
       <div className="rounded-xl p-5 mb-6" style={{ background: '#F8F6FB', border: '1px solid #EDE8F5' }}>
         <p className="text-sm font-bold mb-3" style={{ color: '#1A0A2E' }}>How to export from Land Portal:</p>
-        <ol className="space-y-2">
-          {[
-            'Go to landportal.com and click Solds in the top menu',
-            `Set State: ${state}`,
-            `Set Property Type: ${propType}`,
-            `Set Acreage: ${acreageRange}`,
-            'Set Date Range: Last 12 months',
-            'Click Export CSV and upload the file below',
-          ].map((step, i) => (
+        <ol className="space-y-2.5">
+          {([
+            { text: 'Go to landportal.com and click Solds in the top menu' },
+            { text: `Set State: ${state}` },
+            ...(county ? [{ text: `Set County: ${county.county} County` }] : []),
+            { text: `Set Property Type: ${propType}` },
+            { text: `Set Acreage: ${acreageRange}` },
+            {
+              text: 'Set Buyer Type: Include LLC and Corporate buyers',
+              note: 'Builders and developers typically buy as LLCs. Including them gives you more comp data showing what builders actually paid — which is your real exit price.',
+            },
+            { text: 'Set Date Range: Last 12 months' },
+            { text: 'Click Export CSV and upload the file below' },
+          ] as { text: string; note?: string }[]).map((step, i) => (
             <li key={i} className="flex gap-2 text-xs" style={{ color: '#3D2B5E' }}>
-              <span className="font-bold" style={{ color: '#5C2977' }}>{i + 1}.</span>
-              <span>{step}</span>
+              <span className="font-bold flex-shrink-0" style={{ color: '#5C2977' }}>{i + 1}.</span>
+              <span className="flex flex-col gap-1">
+                <span>{step.text}</span>
+                {step.note && (
+                  <span className="text-[11px] px-2 py-1 rounded-lg" style={{ background: '#EDE8F5', color: '#6B5B8A' }}>
+                    💡 {step.note}
+                  </span>
+                )}
+              </span>
             </li>
           ))}
         </ol>
+        <p className="mt-4 text-[11px] rounded-lg px-3 py-2" style={{ background: '#FFF8E7', border: '1px solid #F0D070', color: '#7A5800' }}>
+          <strong>Include both Individual AND LLC buyer sales</strong> — builders buy as LLCs so you need their sales to know your real exit price.
+        </p>
       </div>
 
       {!stats ? (
