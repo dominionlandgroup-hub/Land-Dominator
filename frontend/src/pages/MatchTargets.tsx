@@ -41,6 +41,7 @@ export default function MatchTargets() {
   const [zipInputText, setZipInputText] = useState<string>(((init?.zip_filter as string[]) ?? []).join(', '))
   const [minAcreage, setMinAcreage] = useState<string>(init?.min_acreage != null ? String(init.min_acreage) : '')
   const [maxAcreage, setMaxAcreage] = useState<string>(init?.max_acreage != null ? String(init.max_acreage) : '')
+  const acreagePrefilled = React.useRef(false)
   const [floodZoneFilter, setFloodZoneFilter] = useState<'all' | 'exclude' | 'only'>((init?.flood_zone_filter as 'all' | 'exclude' | 'only') ?? 'exclude')
   const [minOfferFloor, setMinOfferFloor] = useState<string>('10000')
   const [minLpEstimate, setMinLpEstimate] = useState<string>('20000')
@@ -55,16 +56,18 @@ export default function MatchTargets() {
   const [mailingError, setMailingError] = useState<string | null>(null)
   const [mailingExportType, setMailingExportType] = useState<'mailable' | 'matched'>('mailable')
 
-  // Pre-fill acreage from sweet spot when no saved filters
+  // Pre-fill acreage from sweet spot — runs once when dashboardData first loads, never overrides user edits
   useEffect(() => {
-    if (lastFilters || !dashboardData?.sweet_spot) return
-    const b = dashboardData.sweet_spot.bucket
+    if (acreagePrefilled.current || lastFilters || !dashboardData) return
+    acreagePrefilled.current = true
+    const b = dashboardData.sweet_spot?.bucket
     if (b === '0-0.5') { setMinAcreage('0.1'); setMaxAcreage('0.5') }
     else if (b === '0.5-1') { setMinAcreage('0.5'); setMaxAcreage('1') }
     else if (b === '1-2') { setMinAcreage('1'); setMaxAcreage('2') }
     else if (b === '2-5') { setMinAcreage('2'); setMaxAcreage('5') }
     else if (b === '5-10') { setMinAcreage('5'); setMaxAcreage('10') }
     else if (b === '10+') { setMinAcreage('10'); setMaxAcreage('40') }
+    else { setMinAcreage('0.1'); setMaxAcreage('5') }
   }, [dashboardData])
 
   // Top 10 ZIPs from dashboard for "Use Buy Box ZIPs" — exclude outliers (ppa > 3x market median)
@@ -311,30 +314,30 @@ export default function MatchTargets() {
               <div className="flex items-start gap-3">
                 <div className="flex-1">
                   <input
-                    type="number" step="0.1" min="0" placeholder="Min acres"
+                    type="number" step="0.1" placeholder="Min acres"
                     className="input-base text-xs py-2 w-full"
                     value={minAcreage}
                     onChange={e => setMinAcreage(e.target.value)}
                   />
-                  {minAcreage && Number(minAcreage) > 0 && (
-                    <p className="text-[10px] mt-1" style={{ color: '#9B8AAE' }}>
-                      {Math.round(Number(minAcreage) * SQFT_PER_ACRE).toLocaleString()} sq ft
-                    </p>
-                  )}
+                  <p className="text-[10px] mt-1" style={{ color: '#9B8AAE' }}>
+                    {minAcreage && Number(minAcreage) > 0
+                      ? `${Number(minAcreage).toLocaleString(undefined, { maximumFractionDigits: 2 })} acres (${Math.round(Number(minAcreage) * SQFT_PER_ACRE).toLocaleString()} sq ft)`
+                      : 'no min'}
+                  </p>
                 </div>
                 <span className="text-sm mt-2" style={{ color: '#6B5B8A' }}>to</span>
                 <div className="flex-1">
                   <input
-                    type="number" step="0.1" min="0" placeholder="Max acres"
+                    type="number" step="0.1" placeholder="Max acres"
                     className="input-base text-xs py-2 w-full"
                     value={maxAcreage}
                     onChange={e => setMaxAcreage(e.target.value)}
                   />
-                  {maxAcreage && Number(maxAcreage) > 0 && (
-                    <p className="text-[10px] mt-1" style={{ color: '#9B8AAE' }}>
-                      {Math.round(Number(maxAcreage) * SQFT_PER_ACRE).toLocaleString()} sq ft
-                    </p>
-                  )}
+                  <p className="text-[10px] mt-1" style={{ color: '#9B8AAE' }}>
+                    {maxAcreage && Number(maxAcreage) > 0
+                      ? `${Number(maxAcreage).toLocaleString(undefined, { maximumFractionDigits: 2 })} acres (${Math.round(Number(maxAcreage) * SQFT_PER_ACRE).toLocaleString()} sq ft)`
+                      : 'no max'}
+                  </p>
                 </div>
               </div>
             </div>
