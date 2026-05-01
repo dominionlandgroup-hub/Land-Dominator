@@ -74,6 +74,26 @@ OUTPUT_HEADERS = [
     "Comp 1 Distance (mi)",
     "Comp 1 $/Acre",
     "Comp 1 Same Street",
+    # Comp 2 transparency
+    "Comp 2 Address",
+    "Comp 2 Sale Price",
+    "Comp 2 Sale Date",
+    "Comp 2 Acreage",
+    "Comp 2 Distance (mi)",
+    "Comp 2 $/Acre",
+    # Comp 3 transparency
+    "Comp 3 Address",
+    "Comp 3 Sale Price",
+    "Comp 3 Sale Date",
+    "Comp 3 Acreage",
+    "Comp 3 Distance (mi)",
+    "Comp 3 $/Acre",
+    # Pricing metadata
+    "Num Comps Used",
+    "Pricing Method",
+    "Comp Quality Flags",
+    # Override (blank — user fills before mail house)
+    "Override Offer",
     # Pricing sanity
     "Pricing Sanity Flag",
 ]
@@ -342,6 +362,23 @@ def _deduplicate(
                 comp_1_distance=row.get("comp_1_distance"),
                 comp_1_ppa=row.get("comp_1_ppa"),
                 comp_1_same_street=row.get("comp_1_same_street", False),
+                comp_2_apn=row.get("comp_2_apn"),
+                comp_2_address=row.get("comp_2_address"),
+                comp_2_price=row.get("comp_2_price"),
+                comp_2_acres=row.get("comp_2_acres"),
+                comp_2_date=row.get("comp_2_date"),
+                comp_2_distance=row.get("comp_2_distance"),
+                comp_2_ppa=row.get("comp_2_ppa"),
+                comp_3_apn=row.get("comp_3_apn"),
+                comp_3_address=row.get("comp_3_address"),
+                comp_3_price=row.get("comp_3_price"),
+                comp_3_acres=row.get("comp_3_acres"),
+                comp_3_date=row.get("comp_3_date"),
+                comp_3_distance=row.get("comp_3_distance"),
+                comp_3_ppa=row.get("comp_3_ppa"),
+                num_comps_used=row.get("num_comps_used", 0),
+                pricing_method=row.get("pricing_method"),
+                comp_quality_flags=row.get("comp_quality_flags"),
                 pricing_sanity_flag=row.get("pricing_sanity_flag"),
             )
         )
@@ -413,6 +450,26 @@ def _build_csv(parcels: list[MatchedParcel]) -> bytes:
                 f"{p.comp_1_distance:.2f}" if p.comp_1_distance is not None else "",
                 _fmt_currency(p.comp_1_ppa),
                 "Yes" if p.comp_1_same_street else "No",
+                # Comp 2 transparency
+                p.comp_2_address or "",
+                _fmt_currency(p.comp_2_price),
+                p.comp_2_date or "",
+                f"{p.comp_2_acres:.2f}" if p.comp_2_acres is not None else "",
+                f"{p.comp_2_distance:.2f}" if p.comp_2_distance is not None else "",
+                _fmt_currency(p.comp_2_ppa),
+                # Comp 3 transparency
+                p.comp_3_address or "",
+                _fmt_currency(p.comp_3_price),
+                p.comp_3_date or "",
+                f"{p.comp_3_acres:.2f}" if p.comp_3_acres is not None else "",
+                f"{p.comp_3_distance:.2f}" if p.comp_3_distance is not None else "",
+                _fmt_currency(p.comp_3_ppa),
+                # Pricing metadata
+                p.num_comps_used if p.num_comps_used else "",
+                p.pricing_method or "",
+                p.comp_quality_flags or "",
+                # Override Offer (blank — user fills before sending to mail house)
+                "",
                 # Pricing sanity
                 p.pricing_sanity_flag or "",
             ]

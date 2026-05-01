@@ -1596,29 +1596,74 @@ def run_matching(
             elif city_val:
                 parcel_street_address = f"{city_val}, NC {zip_val}"
 
-        # ── Extract comp 1 transparency fields (closest comp used) ──
-        comp_1_apn = ""
-        comp_1_address = ""
-        comp_1_price = None
-        comp_1_acres = None
-        comp_1_date = ""
-        comp_1_distance = None
-        comp_1_ppa = None
+        # ── Extract comp transparency fields (sorted by distance, up to 3 comps) ──
+        comp_1_apn = comp_1_address = comp_1_date = ""
+        comp_2_apn = comp_2_address = comp_2_date = ""
+        comp_3_apn = comp_3_address = comp_3_date = ""
+        comp_1_price = comp_1_acres = comp_1_distance = comp_1_ppa = None
+        comp_2_price = comp_2_acres = comp_2_distance = comp_2_ppa = None
+        comp_3_price = comp_3_acres = comp_3_distance = comp_3_ppa = None
         comp_1_same_street = False
+        comp_quality_flags: list = []
+        num_comps_used = 0
+        pricing_method = "NO_COMPS"
+
         if n_matched > 0 and len(matched_comps_df) > 0:
             if 'distance_miles' in matched_comps_df.columns:
-                closest_idx = matched_comps_df['distance_miles'].idxmin()
+                sorted_comps = matched_comps_df.sort_values('distance_miles').reset_index(drop=True)
             else:
-                closest_idx = matched_comps_df.index[0]
-            best_comp = matched_comps_df.loc[closest_idx]
-            comp_1_apn = _s(best_comp.get("APN", ""))
-            comp_1_address = _s(best_comp.get("Parcel Full Address", ""))
-            comp_1_price = _f(best_comp.get("Current Sale Price"))
-            comp_1_acres = _f(best_comp.get("Lot Acres"))
-            comp_1_date = _s(best_comp.get("Current Sale Recording Date", ""))
-            comp_1_distance = _f(best_comp.get("distance_miles")) if 'distance_miles' in matched_comps_df.columns else None
-            comp_1_ppa = round(comp_1_price / comp_1_acres, 2) if comp_1_price and comp_1_acres and comp_1_acres > 0 else None
-            comp_1_same_street = same_street_used
+                sorted_comps = matched_comps_df.reset_index(drop=True)
+
+            num_comps_used = len(sorted_comps)
+            pricing_method = "SINGLE" if num_comps_used == 1 else "MEDIAN"
+
+            _cutoff_18mo = pd.Timestamp.now() - pd.DateOffset(months=18)
+            _target_ac = float(target_acres) if has_acres and target_acres > 0 else None
+
+            def _extract_comp_row(comp_row):
+                _apn = _s(comp_row.get("APN", ""))
+                _addr = _s(comp_row.get("Parcel Full Address", ""))
+                _price = _f(comp_row.get("Current Sale Price"))
+                _acres = _f(comp_row.get("Lot Acres"))
+                _date = _s(comp_row.get("Current Sale Recording Date", ""))
+                _dist = _f(comp_row.get("distance_miles")) if 'distance_miles' in comp_row.index else None
+                _ppa = round(_price / _acres, 2) if _price and _acres and _acres > 0 else None
+                _qflags = []
+                if _acres and _target_ac:
+                    _ratio = max(_acres, _target_ac) / min(_acres, _target_ac)
+                    if _ratio > 3.0:
+                        _qflags.append("POOR_COMP")
+                if _date:
+                    try:
+                        _dt = pd.to_datetime(_date, errors='coerce')
+                        if pd.notna(_dt) and _dt < _cutoff_18mo:
+                            _qflags.append("STALE_COMP")
+                    except Exception:
+                        pass
+                return _apn, _addr, _price, _acres, _date, _dist, _ppa, _qflags
+
+            if len(sorted_comps) >= 1:
+                comp_1_apn, comp_1_address, comp_1_price, comp_1_acres, comp_1_date, comp_1_distance, comp_1_ppa, _qflags1 = _extract_comp_row(sorted_comps.iloc[0])
+                comp_1_same_street = same_street_used
+                comp_quality_flags.extend(_qflags1)
+
+            if len(sorted_comps) >= 2:
+                comp_2_apn, comp_2_address, comp_2_price, comp_2_acres, comp_2_date, comp_2_distance, comp_2_ppa, _qflags2 = _extract_comp_row(sorted_comps.iloc[1])
+                comp_quality_flags.extend(_qflags2)
+
+            if len(sorted_comps) >= 3:
+                comp_3_apn, comp_3_address, comp_3_price, comp_3_acres, comp_3_date, comp_3_distance, comp_3_ppa, _qflags3 = _extract_comp_row(sorted_comps.iloc[2])
+                comp_quality_flags.extend(_qflags3)
+
+            # If ALL comps have quality issues, flag as REVIEW_NEEDED
+            unique_flags = list(set(comp_quality_flags))
+            if num_comps_used > 0 and comp_quality_flags and all(f in ("POOR_COMP", "STALE_COMP") for f in comp_quality_flags):
+                unique_flags.append("REVIEW_NEEDED")
+            comp_quality_flags = unique_flags
+
+        # Update pricing_method for LP_FALLBACK case
+        if pricing.get('pricing_flag') == 'LP_FALLBACK':
+            pricing_method = 'LP_FALLBACK'
 
         # ── Pricing sanity flag (TLP comparison) ──
         pricing_sanity_flag = "NO_TLP"
@@ -1697,6 +1742,26 @@ def run_matching(
             "comp_1_distance": comp_1_distance,
             "comp_1_ppa": comp_1_ppa,
             "comp_1_same_street": comp_1_same_street,
+            # Comp 2 transparency fields
+            "comp_2_apn": comp_2_apn,
+            "comp_2_address": comp_2_address,
+            "comp_2_price": comp_2_price,
+            "comp_2_acres": comp_2_acres,
+            "comp_2_date": comp_2_date,
+            "comp_2_distance": comp_2_distance,
+            "comp_2_ppa": comp_2_ppa,
+            # Comp 3 transparency fields
+            "comp_3_apn": comp_3_apn,
+            "comp_3_address": comp_3_address,
+            "comp_3_price": comp_3_price,
+            "comp_3_acres": comp_3_acres,
+            "comp_3_date": comp_3_date,
+            "comp_3_distance": comp_3_distance,
+            "comp_3_ppa": comp_3_ppa,
+            # Pricing metadata
+            "num_comps_used": num_comps_used,
+            "pricing_method": pricing_method,
+            "comp_quality_flags": ",".join(comp_quality_flags) if comp_quality_flags else "",
             # Pricing sanity flag
             "pricing_sanity_flag": pricing_sanity_flag,
         })

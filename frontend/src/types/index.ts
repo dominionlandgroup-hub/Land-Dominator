@@ -163,6 +163,34 @@ export interface MatchedParcel {
   closest_comp_distance: number | null // Distance to closest comp in miles
   road_frontage: number | null         // Road frontage in feet
   possible_issue: string | null        // "YES" if <50ft frontage, "NO" otherwise
+  // Comp transparency fields
+  comp_1_apn: string | null
+  comp_1_address: string | null
+  comp_1_price: number | null
+  comp_1_acres: number | null
+  comp_1_date: string | null
+  comp_1_distance: number | null
+  comp_1_ppa: number | null
+  comp_1_same_street: boolean
+  comp_2_apn: string | null
+  comp_2_address: string | null
+  comp_2_price: number | null
+  comp_2_acres: number | null
+  comp_2_date: string | null
+  comp_2_distance: number | null
+  comp_2_ppa: number | null
+  comp_3_apn: string | null
+  comp_3_address: string | null
+  comp_3_price: number | null
+  comp_3_acres: number | null
+  comp_3_date: string | null
+  comp_3_distance: number | null
+  comp_3_ppa: number | null
+  // Pricing metadata
+  num_comps_used: number
+  pricing_method: string | null
+  comp_quality_flags: string | null
+  pricing_sanity_flag: string | null
 }
 
 export interface MatchResult {

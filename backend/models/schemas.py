@@ -178,6 +178,26 @@ class MatchedParcel(BaseModel):
     comp_1_distance: Optional[float] = None
     comp_1_ppa: Optional[float] = None
     comp_1_same_street: bool = False
+    # Comp 2 transparency fields
+    comp_2_apn: Optional[str] = None
+    comp_2_address: Optional[str] = None
+    comp_2_price: Optional[float] = None
+    comp_2_acres: Optional[float] = None
+    comp_2_date: Optional[str] = None
+    comp_2_distance: Optional[float] = None
+    comp_2_ppa: Optional[float] = None
+    # Comp 3 transparency fields
+    comp_3_apn: Optional[str] = None
+    comp_3_address: Optional[str] = None
+    comp_3_price: Optional[float] = None
+    comp_3_acres: Optional[float] = None
+    comp_3_date: Optional[str] = None
+    comp_3_distance: Optional[float] = None
+    comp_3_ppa: Optional[float] = None
+    # Pricing metadata
+    num_comps_used: int = 0
+    pricing_method: Optional[str] = None
+    comp_quality_flags: Optional[str] = None
     # Pricing sanity flag (TLP comparison)
     pricing_sanity_flag: Optional[str] = None
 
