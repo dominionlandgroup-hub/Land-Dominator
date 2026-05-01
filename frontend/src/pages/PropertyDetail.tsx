@@ -235,17 +235,9 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
                   ))}
                 </select>
               </div>
-            </div>
-          </section>
-
-          {/* Property Address */}
-          <section className="card-static">
-            <h2 className="section-heading mb-4">Property Address</h2>
-            <div className="grid grid-cols-3 gap-4">
-              <Field label="Property Address" field="property_address" placeholder="123 Land Rd" span={2} />
-              <Field label="State" field="state" placeholder="TX" />
-              <Field label="City" field="property_city" placeholder="Austin" />
-              <Field label="Zip Code" field="property_zip" placeholder="78701" />
+              <Field label="Property Address" field="property_address" span={2} />
+              <Field label="Property City" field="property_city" />
+              <Field label="Property Zip" field="property_zip" />
             </div>
           </section>
 
@@ -256,9 +248,9 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
               <Field label="Full Name" field="owner_full_name" />
               <Field label="First Name" field="owner_first_name" />
               <Field label="Last Name" field="owner_last_name" />
-              <Field label="Primary Phone" field="owner_phone" placeholder="(555) 000-0000" />
-              <Field label="Phone 2" field="phone_2" placeholder="(555) 000-0000" />
-              <Field label="Phone 3" field="phone_3" placeholder="(555) 000-0000" />
+              <Field label="Primary Phone" field="owner_phone" />
+              <Field label="Phone 2" field="phone_2" />
+              <Field label="Phone 3" field="phone_3" />
               <Field label="Email" field="owner_email" placeholder="owner@email.com" />
               <div />
               <div />
@@ -323,6 +315,7 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
               <Field label="Power" field="dd_power" />
               <Field label="Zoning" field="dd_zoning" />
               <Field label="Back Taxes" field="dd_back_taxes" />
+              <Field label="Assessed Value" field="assessed_value" />
             </div>
           </section>
 
@@ -364,7 +357,6 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
               <Field label="GHL Offer Code" field="ghl_offer_code" />
               <Field label="LP Estimate" field="lp_estimate" type="number" placeholder="0" />
               <Field label="Offer Range High" field="offer_range_high" type="number" placeholder="0" />
-              <Field label="Pricing Offer Price" field="pricing_offer_price" type="number" placeholder="0" />
               <Field label="Pebble Code" field="pebble_code" />
               <Field label="Claude AI Comp" field="claude_ai_comp" type="number" placeholder="0" />
             </div>

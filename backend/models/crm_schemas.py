@@ -81,6 +81,9 @@ class PropertyBase(BaseModel):
     property_city: Optional[str] = None
     property_zip: Optional[str] = None
 
+    # Assessed value (from "Total Assessed Value" in LP export)
+    assessed_value: Optional[str] = None
+
     # Geo coordinates
     latitude: Optional[float] = None
     longitude: Optional[float] = None

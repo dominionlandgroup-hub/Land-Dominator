@@ -180,7 +180,8 @@ PEBBLE_MAP: dict[str, str] = {
     "tlp estimate": "lp_estimate",
 
     # Land Portal due diligence
-    "total assessed value": "dd_back_taxes",
+    "total assessed value": "assessed_value",
+    "assessed value": "assessed_value",
     "land locked": "dd_access",
 
     # Land Portal comp link
@@ -361,6 +362,7 @@ ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS longitude NUMERIC;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS property_address TEXT;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS property_city TEXT;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS property_zip TEXT;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS assessed_value TEXT;
 """.strip()
 
 
@@ -806,8 +808,8 @@ def _run_lp_pull_job(job_id: str, campaign_id: str) -> None:
                 comps = data.get("list_of_rows_data", [])
                 for i, comp in enumerate(comps[:3], 1):
                     link = _safe_str(comp.get("link") or comp.get("url") or comp.get("listing_url"))
-                    price = _safe_float(comp.get("price") or comp.get("sale_price") or comp.get("sold_price"))
-                    acreage = _safe_float(comp.get("acreage") or comp.get("size") or comp.get("lot_size"))
+                    price = _safe_float(comp.get("mls_price") or comp.get("price") or comp.get("sale_price") or comp.get("sold_price"))
+                    acreage = _safe_float(comp.get("area_acres") or comp.get("acreage") or comp.get("size") or comp.get("lot_size"))
                     if link:
                         updates[f"comp{i}_link"] = link
                     if price is not None:

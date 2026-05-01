@@ -73,6 +73,7 @@ export interface CRMProperty {
   property_zip?: string
   latitude?: number
   longitude?: number
+  assessed_value?: string
 
   ghl_offer_code?: string
   lp_estimate?: number
