@@ -191,6 +191,7 @@ export interface MatchedParcel {
   pricing_method: string | null
   comp_quality_flags: string | null
   pricing_sanity_flag: string | null
+  no_match_reason: string | null
 }
 
 export interface MatchResult {

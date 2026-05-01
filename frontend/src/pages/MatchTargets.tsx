@@ -232,6 +232,15 @@ export default function MatchTargets() {
     { key: 'lot_acres', header: 'Acres', sortable: true, align: 'right', render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span>{(v as number).toFixed(2)}</span> },
     { key: 'acreage_band', header: 'Band', sortable: true, align: 'center', render: (v) => <span className="text-xs" style={{ color: '#6B5B8A' }}>{String(v || '—')}</span> },
     { key: 'matched_comp_count', header: 'Comps', sortable: true, align: 'center', render: (v) => <span className="text-xs">{String(v ?? '—')}</span> },
+    {
+      key: 'no_match_reason', header: 'No Match Reason', defaultHidden: false,
+      render: (v, row) => {
+        if (!v) return <span style={{ color: '#9B8AAE' }}>—</span>
+        const flag = row.pricing_flag
+        const color = flag === 'LP_FALLBACK' ? '#8B4DB8' : '#9CA3AF'
+        return <span className="text-xs" style={{ color }}>{String(v)}</span>
+      },
+    },
     { key: 'comp_count', header: 'Comp Count', sortable: true, align: 'center', defaultHidden: true, render: (v) => <span className="text-xs">{String(v ?? '—')}</span> },
     { key: 'closest_comp_distance', header: 'Distance to Closest Comp', sortable: true, align: 'right', defaultHidden: true, render: (v) => (v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">{(v as number).toFixed(2)}</span>) },
     { key: 'retail_estimate', header: 'Retail Est.', sortable: true, align: 'right', defaultHidden: true, render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs" style={{ color: '#1A0A2E' }}>${Math.round(v as number).toLocaleString()}</span> },
@@ -626,11 +635,10 @@ export default function MatchTargets() {
             {/* Assignment fee calculator */}
             {(() => {
               const fee = parseFloat(assignmentFee) || 0
-              const closingCosts = 2000
               const supporting = matchResult.results.filter(r => {
                 const retail = r.retail_estimate
                 const offer = r.suggested_offer_mid
-                return retail != null && offer != null && retail >= offer + fee + closingCosts
+                return retail != null && offer != null && retail >= offer + fee
               }).length
               return (
                 <div className="card mb-6">
@@ -652,7 +660,7 @@ export default function MatchTargets() {
                         {supporting.toLocaleString()} record{supporting !== 1 ? 's' : ''} support a ${Number(assignmentFee || 0).toLocaleString()} assignment fee
                       </p>
                       <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>
-                        Formula: retail ≥ offer + ${Number(assignmentFee || 0).toLocaleString()} fee + $2,000 closing
+                        Formula: retail estimate ≥ offer + ${Number(assignmentFee || 0).toLocaleString()} assignment fee
                       </p>
                     </div>
                   </div>

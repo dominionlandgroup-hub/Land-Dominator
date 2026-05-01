@@ -507,6 +507,7 @@ async def db_migrate() -> dict:
         "documents_table_sql": DOCUMENTS_MIGRATION_SQL,
         "notes_table_sql": NOTES_MIGRATION_SQL,
         "comp_columns_sql": COMP_MIGRATION_SQL,
+        "comm_columns_sql": COMM_MIGRATION_SQL,
         "errors_tried": errors_tried,
     }
 
@@ -2107,3 +2108,10 @@ async def save_match_pricing(body: dict = Body(...)) -> dict:
         raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+COMM_MIGRATION_SQL = """
+ALTER TABLE crm_communications ADD COLUMN IF NOT EXISTS disposition TEXT;
+ALTER TABLE crm_communications ADD COLUMN IF NOT EXISTS callback_requested_at TEXT;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS tags JSONB DEFAULT '[]'::jsonb;
+""".strip()

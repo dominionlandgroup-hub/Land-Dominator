@@ -71,6 +71,7 @@ interface Thread {
   offerPrice: number | null
   email: string | null
   leadScore: string | null
+  disposition: string | null
 }
 
 function buildThreads(comms: Communication[]): Thread[] {
@@ -87,6 +88,10 @@ function buildThreads(comms: Communication[]): Thread[] {
     const prop = sorted.find(c => c.property)?.property
     const scores = sorted.map(c => c.lead_score).filter(Boolean)
     const topScore = scores.includes('hot') ? 'hot' : scores.includes('warm') ? 'warm' : (scores[0] || null)
+    // Pick most actionable disposition from call history
+    const dispositions = sorted.map(c => c.disposition).filter(Boolean)
+    const dispPriority = ['INTERESTED', 'CALLBACK_NEEDED', 'MAYBE', 'NOT_INTERESTED', 'WRONG_NUMBER', 'NO_ANSWER']
+    const topDisp = dispPriority.find(d => dispositions.includes(d)) || null
     threads.push({
       phone,
       name,
@@ -98,6 +103,7 @@ function buildThreads(comms: Communication[]): Thread[] {
       offerPrice: prop?.offer_price || null,
       email: null,
       leadScore: topScore,
+      disposition: topDisp,
     })
   }
   return threads.sort((a, b) => new Date(b.lastComm.created_at).getTime() - new Date(a.lastComm.created_at).getTime())
@@ -109,6 +115,29 @@ function ScoreDot({ score }: { score: string | null }) {
   if (!score) return null
   const color = score === 'hot' ? '#E65100' : score === 'warm' ? '#F59E0B' : '#78909C'
   return <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, display: 'inline-block', flexShrink: 0 }} />
+}
+
+// ── Disposition badge ─────────────────────────────────────────────────────────
+
+const DISP_CONFIG: Record<string, { label: string; bg: string; color: string; border?: string }> = {
+  INTERESTED:       { label: 'Interested', bg: '#ECFDF5', color: '#065F46' },
+  CALLBACK_NEEDED:  { label: 'Callback', bg: '#EFF6FF', color: '#1D4ED8' },
+  MAYBE:            { label: 'Maybe', bg: '#F3F4F6', color: '#6B7280' },
+  NOT_INTERESTED:   { label: 'Not Interested', bg: '#FEF2F2', color: '#991B1B' },
+  WRONG_NUMBER:     { label: 'Wrong #', bg: '#FFF7ED', color: '#9A3412' },
+  NO_ANSWER:        { label: 'No Answer', bg: '#F9FAFB', color: '#9CA3AF', border: '1px solid #E5E7EB' },
+}
+
+function DispositionBadge({ disposition }: { disposition: string | null }) {
+  if (!disposition) return null
+  const cfg = DISP_CONFIG[disposition]
+  if (!cfg) return null
+  return (
+    <span style={{
+      display: 'inline-block', padding: '1px 7px', borderRadius: 10, fontSize: 10, fontWeight: 700,
+      background: cfg.bg, color: cfg.color, border: cfg.border,
+    }}>{cfg.label}</span>
+  )
 }
 
 // ── Recording player ──────────────────────────────────────────────────────────
@@ -162,9 +191,10 @@ function MessageEntry({ c }: { c: Communication }) {
   return (
     <div className="flex justify-center mb-3">
       <div style={{ background: bg, border: `1px solid ${col}22`, borderRadius: 12, padding: '10px 16px', maxWidth: '85%', width: '100%' }}>
-        <div className="flex items-center gap-2 mb-1">
+        <div className="flex items-center gap-2 mb-1 flex-wrap">
           <span style={{ color: col, fontWeight: 700, fontSize: 13 }}>{icon} {label}</span>
           {c.duration_seconds != null && <span style={{ color: '#6B5B8A', fontSize: 11 }}>{fmtTalk(c.duration_seconds)}</span>}
+          {c.disposition && <DispositionBadge disposition={c.disposition} />}
           <span style={{ color: '#9B8AAE', fontSize: 11, marginLeft: 'auto' }}>{fmtMsgTime(c.created_at)}</span>
         </div>
         {c.recording_url && <RecordingPlayer url={c.recording_url} />}
@@ -198,7 +228,7 @@ const TEMPLATES = (firstName: string, address: string, offerPrice: number | null
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-type InboxFilter = 'all' | 'calls' | 'texts' | 'hot' | 'unread'
+type InboxFilter = 'all' | 'calls' | 'texts' | 'hot' | 'callback' | 'unread'
 
 export default function SellerInbox() {
   const { setCurrentPage, setSelectedPropertyId } = useApp()
@@ -240,6 +270,7 @@ export default function SellerInbox() {
     if (filter === 'calls') return t.comms.some(c => c.type.startsWith('call'))
     if (filter === 'texts') return t.comms.some(c => c.type.startsWith('sms'))
     if (filter === 'hot') return t.leadScore === 'hot'
+    if (filter === 'callback') return t.disposition === 'CALLBACK_NEEDED'
     if (filter === 'unread') return false // placeholder — no unread tracking yet
     return true
   })
@@ -252,6 +283,7 @@ export default function SellerInbox() {
     { id: 'calls', label: 'Calls' },
     { id: 'texts', label: 'Texts' },
     { id: 'hot', label: '🔥 HOT' },
+    { id: 'callback', label: '📅 Callback' },
     { id: 'unread', label: 'Unread' },
   ]
 
@@ -373,16 +405,26 @@ export default function SellerInbox() {
                 {/* Content */}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="flex items-center justify-between">
-                    <span style={{ fontWeight: 700, fontSize: 14, color: '#1A0A2E', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 140 }}>
+                    <span style={{ fontWeight: 700, fontSize: 14, color: '#1A0A2E', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 120 }}>
                       {t.name}
                     </span>
-                    <span style={{ fontSize: 11, color: '#9B8AAE', flexShrink: 0, marginLeft: 8 }}>
+                    <span style={{ fontSize: 11, color: '#9B8AAE', flexShrink: 0, marginLeft: 4 }}>
                       {fmtInboxDate(t.lastComm.created_at)}
                     </span>
                   </div>
-                  <p style={{ fontSize: 12, color: '#9B8AAE', margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {preview}
-                  </p>
+                  <div className="flex items-center gap-1 mt-1">
+                    {t.disposition && <DispositionBadge disposition={t.disposition} />}
+                    {!t.disposition && (
+                      <p style={{ fontSize: 12, color: '#9B8AAE', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {preview}
+                      </p>
+                    )}
+                    {t.disposition && (
+                      <p style={{ fontSize: 11, color: '#9B8AAE', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                        {preview}
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
             )
@@ -493,13 +535,16 @@ export default function SellerInbox() {
               {getInitials(selected.name)}
             </div>
             <p style={{ fontWeight: 700, fontSize: 15, color: '#1A0A2E', margin: 0 }}>{selected.name}</p>
-            {selected.leadScore && (
-              <span style={{
-                display: 'inline-block', marginTop: 4, padding: '2px 10px', borderRadius: 12, fontSize: 11, fontWeight: 700,
-                background: selected.leadScore === 'hot' ? '#FFF3E0' : selected.leadScore === 'warm' ? '#FFF9E6' : '#F5F5F5',
-                color: selected.leadScore === 'hot' ? '#E65100' : selected.leadScore === 'warm' ? '#F59E0B' : '#78909C',
-              }}>{selected.leadScore.toUpperCase()}</span>
-            )}
+            <div className="flex gap-1 flex-wrap justify-center mt-1">
+              {selected.leadScore && (
+                <span style={{
+                  display: 'inline-block', padding: '2px 10px', borderRadius: 12, fontSize: 11, fontWeight: 700,
+                  background: selected.leadScore === 'hot' ? '#FFF3E0' : selected.leadScore === 'warm' ? '#FFF9E6' : '#F5F5F5',
+                  color: selected.leadScore === 'hot' ? '#E65100' : selected.leadScore === 'warm' ? '#F59E0B' : '#78909C',
+                }}>{selected.leadScore.toUpperCase()}</span>
+              )}
+              {selected.disposition && <DispositionBadge disposition={selected.disposition} />}
+            </div>
           </div>
 
           <hr style={{ border: 'none', borderTop: '1px solid #EDE8F5', margin: '0 0 16px' }} />

@@ -162,9 +162,17 @@ COMP_SEARCH_STEPS = [
     (0.25, '0.25mi'),
     (0.50, '0.50mi'),
     (1.00, '1mi'),
-    (2.00, '2mi'),
-    (3.00, '3mi'),
 ]
+
+# Adjacent acreage bands to try within 1mi when exact band has no comps
+_ADJACENT_BANDS: dict[str, list[str]] = {
+    'nano':   ['micro'],
+    'micro':  ['nano', 'small'],
+    'small':  ['micro', 'medium'],
+    'medium': ['small', 'large'],
+    'large':  ['medium', 'tract'],
+    'tract':  ['large'],
+}
 
 
 def get_comp_weight(distance_miles: float) -> float:
@@ -1336,7 +1344,7 @@ def run_matching(
                             flush=True,
                         )
 
-            # STEP 1-3: If no same-street comps, search by radius
+            # STEP 1-3: If no same-street comps, search by radius (max 1mi)
             if not same_street_used:
                 for radius, label in COMP_SEARCH_STEPS:
                     trial_mask = band_mask & (row_distances <= radius)
@@ -1350,6 +1358,25 @@ def run_matching(
                         radius_label = label
                         if debug:
                             print(f"[DEBUG {target_apn}] SELECTED: {trial_mask.sum()} comps at {label}", flush=True)
+                        break
+
+            # STEP 4: If still no comps, try adjacent acreage bands within 1mi
+            if not same_street_used and matched_mask.sum() == 0 and has_acres:
+                adj_bands = _ADJACENT_BANDS.get(band_label, [])
+                for adj_label in adj_bands:
+                    adj_mask = band_masks_dict.get(adj_label, np.zeros(len(vc), dtype=bool))
+                    trial_mask = adj_mask & (row_distances <= 1.0)
+                    # Apply premium ZIP restriction if active
+                    if is_premium:
+                        trial_mask = trial_mask & np.array([str(z).split('.')[0].strip() == t_zip_str for z in comp_zips])
+                    if trial_mask.sum() >= 1:
+                        matched_mask = trial_mask
+                        radius_label = '1mi'
+                        if debug:
+                            print(
+                                f"[DEBUG {target_apn}] ADJACENT BAND fallback: {trial_mask.sum()} comps in '{adj_label}' band within 1mi",
+                                flush=True,
+                            )
                         break
 
             # County-awareness guard: if nearby comps are all from different counties,
@@ -1522,10 +1549,14 @@ def run_matching(
                 'offer_mid': round(lp_retail * MID_PCT),
                 'offer_high': round(lp_retail * HIGH_PCT),
                 'confidence': 'EST',
-                'no_match_reason': None,
+                'no_match_reason': 'No comps within 1 mile',
                 'radius_label': 'LP_FALLBACK',
             })
             # score stays 0 — no comp evidence, LP estimate only
+
+        # Set human-readable no_match_reason for records that remain unpriced
+        if pricing.get('pricing_flag') == 'NO_COMPS' and not pricing.get('no_match_reason'):
+            pricing['no_match_reason'] = 'No comps within 1 mile and no LP estimate'
 
         if debug:
             print(f"[DEBUG {target_apn}] PRICING RESULT:", flush=True)

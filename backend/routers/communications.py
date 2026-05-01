@@ -64,11 +64,31 @@ _PHRASES: dict[str, str] = {
     "code_not_found_2": (
         "Can you try the code one more time, saying each digit individually?"
     ),
-    "code_not_found_3": "No problem at all. Can I get your first and last name?",
+    "code_not_found_3": (
+        "No problem at all. I can look you up another way. "
+        "Can I get the first and last name the letter was addressed to?"
+    ),
+    "ask_county": "And what county is the property located in?",
+    "found_by_name": (
+        "Perfect, I found your file. "
+        "Just to confirm, is that the right property?"
+    ),
+    "multiple_matches": (
+        "I found a few records. Let me pull up the first one. "
+        "Just to confirm, is that you?"
+    ),
+    "name_not_found": (
+        "I wasn't able to find a match in our system. "
+        "Can I get the best phone number to reach you?"
+    ),
     "ask_name": "Wonderful. Can I get your first and last name please?",
     "ask_callback": "And is this the best number to reach you back at?",
     "close": "Thank you for calling. Have a great day!",
     "close_cold": "I understand. Thank you for calling. Have a great day!",
+    "close_not_interested": (
+        "I completely understand. I'll make a note of that and we won't bother you again. "
+        "Have a wonderful day!"
+    ),
     "mmmhm": "Mmm-hmm.",
     "voicemail": (
         "Hi, this is Damien with Dominion Land Group calling about your property. "
@@ -510,6 +530,8 @@ async def _log_comm(
     duration_seconds: Optional[int] = None,
     recording_url: Optional[str] = None,
     caller_offer_code: Optional[str] = None,
+    disposition: Optional[str] = None,
+    callback_requested_at: Optional[str] = None,
 ) -> dict:
     try:
         sb = get_supabase()
@@ -530,6 +552,10 @@ async def _log_comm(
             row["recording_url"] = recording_url
         if caller_offer_code is not None:
             row["caller_offer_code"] = caller_offer_code
+        if disposition is not None:
+            row["disposition"] = disposition
+        if callback_requested_at is not None:
+            row["callback_requested_at"] = callback_requested_at
         r = sb.table("crm_communications").insert(row).execute()
         return r.data[0] if r.data else {}
     except Exception as exc:
@@ -577,47 +603,94 @@ def _score_interest(speech: str) -> str:
     return "warm"
 
 
-async def _score_with_claude(transcript_parts: list[dict]) -> tuple[str, str]:
-    """Return (score, summary_with_next_action) using Claude to analyze the full call."""
+async def _score_with_claude(transcript_parts: list[dict]) -> tuple[str, str, str, Optional[str]]:
+    """Return (score, summary_with_next_action, disposition, callback_time) using Claude."""
     try:
         import anthropic
         api_key = os.getenv("ANTHROPIC_API_KEY", "")
         if not api_key:
-            return "warm", "Call completed."
+            return "warm", "Call completed.", "MAYBE", None
         transcript_text = "\n".join(
             f"[{t['step'].upper()}] Agent: {t.get('agent', '')}\nCaller: {t.get('speech', '[no response]')}"
             for t in transcript_parts
         )
         client = anthropic.Anthropic(api_key=api_key)
         rsp = client.messages.create(
-            model="claude-sonnet-4-5",
-            max_tokens=500,
+            model="claude-sonnet-4-6",
+            max_tokens=600,
             messages=[{
                 "role": "user",
                 "content": (
-                    "Analyze this land seller call. Score the lead, write a brief summary, and recommend a next action.\n\n"
-                    "HOT: seller is ready to sell at or near the offered price\n"
-                    "WARM: seller is interested but has questions or wants to negotiate\n"
-                    "COLD: seller is not interested or property is not available\n\n"
+                    "Analyze this land seller call transcript.\n\n"
+                    "LEAD SCORE:\n"
+                    "hot: seller is ready to sell at or near the offered price\n"
+                    "warm: seller is interested but has questions or wants to negotiate\n"
+                    "cold: seller is not interested or property is not available\n\n"
+                    "DISPOSITION (pick one):\n"
+                    "INTERESTED: seller expressed interest in selling\n"
+                    "MAYBE: seller was neutral, non-committal, or call was too short to tell\n"
+                    "NOT_INTERESTED: seller explicitly said no or remove from list\n"
+                    "NO_ANSWER: nobody answered or call dropped immediately\n"
+                    "WRONG_NUMBER: caller said wrong number or doesn't own the property\n"
+                    "CALLBACK_NEEDED: seller asked to be called back at a specific time\n\n"
+                    "CALLBACK TIME: If seller requested a callback, extract the time/date they mentioned (e.g. 'tomorrow at 2pm', 'Monday morning'). Otherwise null.\n\n"
                     "Next action examples:\n"
-                    "- HOT: 'Call back within 24 hours to discuss closing timeline'\n"
-                    "- WARM: 'Send follow-up text with offer details within 48 hours'\n"
-                    "- COLD: 'Remove from active list, do not contact'\n\n"
+                    "- INTERESTED: 'Call back within 24 hours to discuss closing timeline'\n"
+                    "- MAYBE: 'Send follow-up text with offer details within 48 hours'\n"
+                    "- NOT_INTERESTED: 'Remove from active list, do not contact'\n"
+                    "- CALLBACK_NEEDED: 'Call back at requested time'\n\n"
                     f"Transcript:\n{transcript_text}\n\n"
-                    'Respond ONLY with JSON: {"score": "hot|warm|cold", "summary": "2-3 sentence summary", "next_action": "one sentence recommended action"}'
+                    'Respond ONLY with JSON: {"score": "hot|warm|cold", "disposition": "INTERESTED|MAYBE|NOT_INTERESTED|NO_ANSWER|WRONG_NUMBER|CALLBACK_NEEDED", "callback_time": null, "summary": "2-3 sentence summary", "next_action": "one sentence recommended action"}'
                 ),
             }],
         )
         result = json.loads(rsp.content[0].text.strip())
         score = result.get("score", "warm").lower()
+        disposition = result.get("disposition", "MAYBE")
+        callback_time = result.get("callback_time")
         summary = result.get("summary", "Call completed.")
         next_action = result.get("next_action", "")
         if next_action:
             summary = f"{summary} Next action: {next_action}"
-        return score, summary
+        return score, summary, disposition, callback_time
     except Exception as exc:
         print(f"[comms] Claude scoring error: {exc}")
-        return "warm", "Call completed."
+        return "warm", "Call completed.", "MAYBE", None
+
+
+async def _lookup_by_name_county(name: str, county: str) -> list[dict]:
+    """Fuzzy search crm_properties by owner name and county."""
+    try:
+        sb = get_supabase()
+        name_clean = name.strip()
+        county_clean = county.strip().lower().replace(" county", "").strip()
+        # Try exact first
+        r = (
+            sb.table("crm_properties")
+            .select("id,owner_full_name,owner_first_name,owner_last_name,apn,county,state,campaign_code,offer_price,campaign_id")
+            .ilike("owner_full_name", f"%{name_clean}%")
+            .ilike("county", f"%{county_clean}%")
+            .limit(5)
+            .execute()
+        )
+        if r.data:
+            return r.data
+        # Try first name only + county
+        name_parts = name_clean.split()
+        if len(name_parts) >= 1:
+            r = (
+                sb.table("crm_properties")
+                .select("id,owner_full_name,owner_first_name,owner_last_name,apn,county,state,campaign_code,offer_price,campaign_id")
+                .ilike("owner_first_name", f"%{name_parts[0]}%")
+                .ilike("county", f"%{county_clean}%")
+                .limit(5)
+                .execute()
+            )
+            if r.data:
+                return r.data
+    except Exception as exc:
+        print(f"[comms] _lookup_by_name_county error: {exc}")
+    return []
 
 
 # ── Inbound call ──────────────────────────────────────────────────────────────────
@@ -710,7 +783,7 @@ async def call_gather(step: str, request: Request, background_tasks: BackgroundT
                 else:
                     text = _PHRASES["code_not_found_3"]
                     audio_url = await _tts_url("code_not_found_3")
-                    return _texml_gather("unmatched", text, call_sid, audio_url)
+                    return _texml_gather("fallback_name", text, call_sid, audio_url)
         else:
             # Timed out or no speech — replay greeting once, then fall to name fallback
             attempts = state.get("code_attempts", 0)
@@ -723,7 +796,7 @@ async def call_gather(step: str, request: Request, background_tasks: BackgroundT
                 return _texml_gather("greeting", text, call_sid, audio_url)
             text = _PHRASES["code_not_found_3"]
             audio_url = await _tts_url("code_not_found_3")
-            return _texml_gather("unmatched", text, call_sid, audio_url)
+            return _texml_gather("fallback_name", text, call_sid, audio_url)
 
     # ── Step: confirm (verify county/state with seller) ──────────────────
     elif step == "confirm":
@@ -777,19 +850,64 @@ async def call_gather(step: str, request: Request, background_tasks: BackgroundT
             close_text = f"Perfect{name_part}. Someone from our team will call you back within 24 hours. Have a great day!"
             close_key = f"close_hot_{hashlib.md5((caller_name or 'anon').encode()).hexdigest()[:8]}"
         elif score == "cold":
-            close_text = _PHRASES["close_cold"]
-            close_key = "close_cold"
+            close_text = _PHRASES["close_not_interested"]
+            close_key = "close_not_interested"
         else:
             close_text = f"Thank you{name_part}. Someone will be in touch with you soon. Have a great day!"
             close_key = f"close_warm_{hashlib.md5((caller_name or 'anon').encode()).hexdigest()[:8]}"
         audio_url = await _tts_url(close_key, close_text)
         return _texml_hangup(close_text, audio_url)
 
-    # ── Step: unmatched (code not found — get name + address) ────────────
-    elif step == "unmatched":
+    # ── Step: fallback_name (code failed — ask for name) ─────────────────
+    elif step == "fallback_name":
         if speech and not timed_out:
             if call_sid in _call_states:
-                _call_states[call_sid]["unmatched_info"] = speech.strip()
+                _call_states[call_sid]["fallback_name"] = speech.strip()
+        text = _PHRASES["ask_county"]
+        audio_url = await _tts_url("ask_county")
+        return _texml_gather("fallback_county", text, call_sid, audio_url)
+
+    # ── Step: fallback_county (ask for county, then do name+county lookup) ─
+    elif step == "fallback_county":
+        fb_name = _call_states.get(call_sid, {}).get("fallback_name", "")
+        fb_county = speech.strip() if (speech and not timed_out) else ""
+        if call_sid in _call_states:
+            _call_states[call_sid]["fallback_county"] = fb_county
+
+        if fb_name and fb_county:
+            matches = await _lookup_by_name_county(fb_name, fb_county)
+            if matches:
+                prop = matches[0]
+                if call_sid in _call_states:
+                    _call_states[call_sid]["property_id"] = prop.get("id")
+                    _call_states[call_sid]["offer_price"] = prop.get("offer_price")
+                    _call_states[call_sid]["owner_name"] = prop.get("owner_full_name") or ""
+                state["property_id"] = prop.get("id")
+                state["offer_price"] = prop.get("offer_price")
+                # Build confirmation phrase with county/state
+                if len(matches) > 1:
+                    confirm_text, audio_url = await _tts_confirm(prop)
+                else:
+                    confirm_text, audio_url = await _tts_confirm(prop)
+                return _texml_gather("confirm", confirm_text, call_sid, audio_url)
+
+        # Phone fallback — try lookup by caller phone
+        caller = state.get("caller") or _call_states.get(call_sid, {}).get("caller", "")
+        if caller:
+            prop_by_phone = await _lookup_phone(caller)
+            if prop_by_phone:
+                if call_sid in _call_states:
+                    _call_states[call_sid]["property_id"] = prop_by_phone.get("id")
+                    _call_states[call_sid]["offer_price"] = prop_by_phone.get("offer_price")
+                    _call_states[call_sid]["owner_name"] = prop_by_phone.get("owner_full_name") or ""
+                state["property_id"] = prop_by_phone.get("id")
+                state["offer_price"] = prop_by_phone.get("offer_price")
+                confirm_text, audio_url = await _tts_confirm(prop_by_phone)
+                return _texml_gather("confirm", confirm_text, call_sid, audio_url)
+
+        # Last resort — create unmatched lead
+        if call_sid in _call_states:
+            _call_states[call_sid]["unmatched_info"] = f"{fb_name} / {fb_county}"
         background_tasks.add_task(_finalize_unmatched_call, call_sid)
         close_text = _PHRASES["close"]
         audio_url = await _tts_url("close")
@@ -903,13 +1021,18 @@ async def _finalize_call(call_sid: str) -> None:
     )
 
     # Use Claude for final scoring (falls back to rule-based if unavailable)
-    score, summary = await _score_with_claude(transcript)
+    score, summary, disposition, callback_time = await _score_with_claude(transcript)
     if score == "warm" and interest_score != "warm":
         score = interest_score  # trust rule-based if Claude was neutral
 
     # Add caller name to summary
     if caller_name:
         summary = f"Caller name: {caller_name}. " + summary
+
+    # Build callback_requested_at ISO string if callback time was extracted
+    callback_requested_at: Optional[str] = None
+    if callback_time and disposition == "CALLBACK_NEEDED":
+        callback_requested_at = f"{_now()[:10]} (caller said: {callback_time})"
 
     await _log_comm(
         property_id=property_id,
@@ -922,22 +1045,61 @@ async def _finalize_call(call_sid: str) -> None:
         call_id=call_sid,
         duration_seconds=duration_seconds,
         caller_offer_code=caller_offer_code,
+        disposition=disposition,
+        callback_requested_at=callback_requested_at,
     )
 
     if property_id:
         try:
             sb = get_supabase()
             updates: dict = {"updated_at": _now()}
+
+            # Caller name
             if caller_name:
-                existing = sb.table("crm_properties").select("owner_first_name,notes").eq("id", property_id).execute()
+                existing = sb.table("crm_properties").select("owner_first_name,notes,tags").eq("id", property_id).execute()
                 row = existing.data[0] if existing.data else {}
                 if not row.get("owner_first_name") and caller_name:
                     parts = caller_name.strip().split(" ", 1)
                     updates["owner_first_name"] = parts[0]
                     if len(parts) > 1:
                         updates["owner_last_name"] = parts[1]
-            if score in ("hot", "warm"):
+            else:
+                existing = sb.table("crm_properties").select("tags").eq("id", property_id).execute()
+                row = existing.data[0] if existing.data else {}
+
+            # Status based on disposition
+            if disposition == "INTERESTED":
                 updates["status"] = "prospect"
+            elif disposition == "NOT_INTERESTED":
+                updates["status"] = "due_diligence"
+            elif score in ("hot", "warm") and disposition not in ("NOT_INTERESTED", "WRONG_NUMBER"):
+                updates["status"] = "prospect"
+
+            # Auto-tags
+            existing_tags: list = row.get("tags") or []
+            if isinstance(existing_tags, str):
+                try:
+                    existing_tags = json.loads(existing_tags)
+                except Exception:
+                    existing_tags = []
+            new_tags = list(existing_tags)
+            _tag_map = {
+                "INTERESTED": "hot_lead",
+                "NOT_INTERESTED": "not_interested",
+                "WRONG_NUMBER": "wrong_number",
+                "CALLBACK_NEEDED": "callback_requested",
+            }
+            if disposition in _tag_map:
+                tag = _tag_map[disposition]
+                if tag not in new_tags:
+                    new_tags.append(tag)
+            if score == "hot" and "hot_lead" not in new_tags:
+                new_tags.append("hot_lead")
+            if "attempted" not in new_tags:
+                new_tags.append("attempted")
+            if new_tags != existing_tags:
+                updates["tags"] = new_tags
+
             sb.table("crm_properties").update(updates).eq("id", property_id).execute()
         except Exception as exc:
             print(f"[comms] property update error: {exc}")
@@ -977,6 +1139,7 @@ async def _finalize_unmatched_call(call_sid: str) -> None:
         return
     caller = state.get("caller", "")
     info = state.get("unmatched_info", "")
+    fallback_name = state.get("fallback_name", "")
     attempted_codes = state.get("attempted_codes", [])
     caller_offer_code = (
         " | ".join(attempted_codes) if attempted_codes
@@ -998,19 +1161,32 @@ async def _finalize_unmatched_call(call_sid: str) -> None:
         except Exception:
             pass
 
-    prop = await _create_unmatched_lead(caller, property_address=info)
+    caller_name = fallback_name or ""
+    prop = await _create_unmatched_lead(caller, caller_name=caller_name, property_address=info)
     property_id = prop.get("id")
+
+    # Tag unmatched lead
+    if property_id:
+        try:
+            get_supabase().table("crm_properties").update(
+                {"tags": ["attempted"], "updated_at": _now()}
+            ).eq("id", property_id).execute()
+        except Exception:
+            pass
+
+    detail = info or fallback_name or "N/A"
     await _log_comm(
         property_id=property_id,
         comm_type="call_inbound",
         phone=caller,
         direction="inbound",
         transcript=transcript_text,
-        summary=f"Unmatched code. Seller provided: {info or 'N/A'}. Next action: Remove from active list.",
+        summary=f"Could not match to property. Caller provided: {detail}. Next action: Review manually.",
         lead_score="cold",
         call_id=call_sid,
         duration_seconds=duration_seconds,
         caller_offer_code=caller_offer_code,
+        disposition="MAYBE",
     )
 
 

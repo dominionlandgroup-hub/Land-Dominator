@@ -230,6 +230,8 @@ export interface Communication {
   message_body?: string
   call_id?: string
   caller_offer_code?: string
+  disposition?: string
+  callback_requested_at?: string
   property?: {
     id?: string
     owner_full_name?: string
