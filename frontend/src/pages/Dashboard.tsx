@@ -381,6 +381,7 @@ function BuyBoxRecipe({
   const [built, setBuilt] = useState(false)
 
   const topZips = [...zipStats].sort((a, b) => b.sales_count - a.sales_count).slice(0, 10).map(z => z.zip_code)
+  const sortedCounties = [...topCounties].sort((a, b) => a.localeCompare(b))
 
   // Land quality — data-driven from sold comps, with fallbacks
   const buildabilityMin = landQuality?.buildability_count
@@ -438,12 +439,19 @@ function BuyBoxRecipe({
     '',
     '1. LOCATION',
     topStates.length ? `   State: ${topStates.join(', ')}` : '',
-    topCounties.length ? `   Counties: ${topCounties.join(', ')}` : '',
+    sortedCounties.length ? `   Counties: ${sortedCounties.join(', ')}` : '',
     `   ZIP Codes: ${topZips.join(', ')}`,
     '',
     '2. PROPERTY TYPE',
-    '   ✓ Vacant Land only',
-    '   ✗ Exclude active MLS listings',
+    '   Land Portal → Property Type → Land Use — check ONLY:',
+    '   ✓ Vacant Land (General)',
+    '   ✓ Residential Vacant Land',
+    '   Uncheck all others:',
+    '   ✗ Commercial',
+    '   ✗ Agricultural',
+    '   ✗ Industrial',
+    '   ✗ Mobile Home',
+    '   ✗ Improved/Built lots',
     '',
     '3. LOT SIZE',
     `   Min: ${minSqft.toLocaleString()} sq ft (${minAcre} acres)`,
@@ -507,10 +515,17 @@ function BuyBoxRecipe({
 <p style="color:#6B5B8A;font-size:12px;margin-bottom:28px">Generated ${new Date().toLocaleDateString()} · Based on ${comps.length.toLocaleString()} sold comps</p>
 ${sec('1. Location',
   (topStates.length ? row('State', topStates.join(', ')) : '') +
-  (topCounties.length ? row('Counties', '') + `<div style="margin:4px 0 8px">${topCounties.map(pill).join('')}</div>` : '') +
+  (sortedCounties.length ? row('Counties', '') + `<div style="margin:4px 0 8px">${sortedCounties.map(pill).join('')}</div>` : '') +
   row('ZIP Codes', '') + `<div style="margin:4px 0">${topZips.map(pill).join('')}</div>`
 )}
-${sec('2. Property Type', check('Vacant Land only') + check('Exclude active MLS listings'))}
+${sec('2. Property Type',
+  `<p style="font-size:12px;color:#6B5B8A;margin-bottom:8px">Land Portal → Property Type → Land Use — check <strong>only</strong>:</p>` +
+  check('Vacant Land (General)') +
+  check('Residential Vacant Land') +
+  `<p style="font-size:12px;color:#6B5B8A;margin:8px 0 4px">Uncheck all others:</p>` +
+  check('Commercial', false) + check('Agricultural', false) + check('Industrial', false) +
+  check('Mobile Home', false) + check('Improved/Built lots', false)
+)}
 ${sec('3. Lot Size',
   row('Min lot size', `${minSqft.toLocaleString()} sq ft (${minAcre} acres)`) +
   row('Max lot size', `${maxSqft.toLocaleString()} sq ft (${maxAcre} acres)`) +
@@ -575,11 +590,11 @@ ${sec('6. Owner',
                 </div>
               </div>
             )}
-            {topCounties.length > 0 && (
+            {sortedCounties.length > 0 && (
               <div>
                 <p className="mb-1" style={{ color: '#6B5B8A' }}>Counties — Land Portal → Location → County</p>
                 <div className="flex flex-wrap gap-1.5">
-                  {topCounties.map(c => (
+                  {sortedCounties.map(c => (
                     <span key={c} className="text-[11px] px-2 py-0.5 rounded" style={{ background: 'rgba(92,41,119,0.08)', color: '#5C2977', border: '1px solid rgba(92,41,119,0.15)' }}>{c}</span>
                   ))}
                 </div>
@@ -600,10 +615,15 @@ ${sec('6. Owner',
         <div className="rounded-xl p-4" style={cardStyle}>
           {hdr('2 · Property Type')}
           <div className="space-y-2 text-xs">
-            <div className="flex gap-2"><span style={{ color: '#2D7A4F', fontWeight: 700 }}>✓</span><span style={{ color: '#1A0A2E' }}>Vacant Land only</span></div>
-            <div className="flex gap-2"><span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>Residential / Commercial (uncheck)</span></div>
-            <div className="flex gap-2"><span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>Exclude active MLS listings</span></div>
-            <div className="flex gap-2"><span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>Exclude recently listed (off-market only)</span></div>
+            <p className="text-[10px] mb-1" style={{ color: '#6B5B8A' }}>Land Portal → Property Type → Land Use — check <strong>only</strong>:</p>
+            <div className="flex gap-2"><span style={{ color: '#2D7A4F', fontWeight: 700 }}>✓</span><span style={{ color: '#1A0A2E' }}>Vacant Land (General)</span></div>
+            <div className="flex gap-2"><span style={{ color: '#2D7A4F', fontWeight: 700 }}>✓</span><span style={{ color: '#1A0A2E' }}>Residential Vacant Land</span></div>
+            <p className="text-[10px] mt-1 mb-0.5" style={{ color: '#6B5B8A' }}>Uncheck all others:</p>
+            <div className="flex gap-2"><span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>Commercial</span></div>
+            <div className="flex gap-2"><span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>Agricultural</span></div>
+            <div className="flex gap-2"><span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>Industrial</span></div>
+            <div className="flex gap-2"><span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>Mobile Home</span></div>
+            <div className="flex gap-2"><span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>Improved/Built lots</span></div>
           </div>
         </div>
 
