@@ -39,6 +39,58 @@ function fmtFileSize(bytes: number | null | undefined): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+// ── Accordion section component ───────────────────────────────────────────────
+function AccordionSection({
+  title,
+  sectionKey,
+  openSections,
+  toggleSection,
+  children,
+}: {
+  title: string
+  sectionKey: string
+  openSections: Set<string>
+  toggleSection: (key: string) => void
+  children: React.ReactNode
+}) {
+  const isOpen = openSections.has(sectionKey)
+  return (
+    <div style={{ border: '1px solid #E0E0E0', borderRadius: '10px', overflow: 'hidden', background: '#fff' }}>
+      <button
+        type="button"
+        onClick={() => toggleSection(sectionKey)}
+        className="w-full flex items-center justify-between"
+        style={{
+          padding: '12px 16px',
+          background: isOpen ? '#EEEEEE' : '#F5F5F5',
+          borderBottom: isOpen ? '1px solid #E0E0E0' : 'none',
+          cursor: 'pointer',
+          textAlign: 'left',
+          transition: 'background 0.15s',
+        }}
+        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#EBEBEB' }}
+        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = isOpen ? '#EEEEEE' : '#F5F5F5' }}
+      >
+        <span style={{ fontSize: '14px', fontWeight: 600, color: '#1A0A2E', fontFamily: "'Montserrat', sans-serif" }}>
+          {title}
+        </span>
+        <svg
+          width="16" height="16" viewBox="0 0 24 24" fill="none"
+          stroke="#6B5B8A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+          style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease', flexShrink: 0 }}
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+      {isOpen && (
+        <div style={{ padding: '20px 16px' }}>
+          {children}
+        </div>
+      )}
+    </div>
+  )
+}
+
 interface Props {
   property: CRMProperty | null
   onBack: () => void
@@ -80,6 +132,19 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
   const [docError, setDocError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const isNew = !property
+
+  // Accordion open/closed state — first 3 open by default
+  const [openSections, setOpenSections] = useState<Set<string>>(
+    new Set(['basic', 'owner', 'campaign'])
+  )
+  function toggleSection(key: string) {
+    setOpenSections(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
 
   useEffect(() => {
     if (!property?.id) return
@@ -153,7 +218,6 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
       await sendSms(property.id, form.owner_phone, smsMessage)
       setSmsSuccess('SMS sent successfully.')
       setShowSmsModal(false)
-      // Refresh comms
       listPropertyCommunications(property.id).then(setComms).catch(() => {})
     } catch (e: unknown) {
       const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
@@ -288,6 +352,8 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
     </div>
   )
 
+  const accordionProps = { openSections, toggleSection }
+
   return (
     <div className="page-content">
       <div className="page-header">
@@ -358,10 +424,10 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
           </div>
         )}
 
-        <div className="space-y-5">
-          {/* Basic Info */}
-          <section className="card-static">
-            <h2 className="section-heading mb-4">Basic Information</h2>
+        <div className="space-y-2">
+
+          {/* Basic Information */}
+          <AccordionSection title="Basic Information" sectionKey="basic" {...accordionProps}>
             <div className="grid grid-cols-3 gap-4">
               <Field label="APN" field="apn" placeholder="123-456-789" />
               <Field label="County" field="county" />
@@ -385,11 +451,10 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
               <Field label="Property City" field="property_city" />
               <Field label="Property Zip" field="property_zip" />
             </div>
-          </section>
+          </AccordionSection>
 
-          {/* Owner */}
-          <section className="card-static">
-            <h2 className="section-heading mb-4">Owner Information</h2>
+          {/* Owner Information */}
+          <AccordionSection title="Owner Information" sectionKey="owner" {...accordionProps}>
             <div className="grid grid-cols-3 gap-4">
               <Field label="Full Name" field="owner_full_name" />
               <Field label="First Name" field="owner_first_name" />
@@ -405,7 +470,6 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
               <Field label="Mailing State" field="owner_mailing_state" placeholder="TX" />
               <Field label="Zip" field="owner_mailing_zip" placeholder="78701" />
             </div>
-
             <div className="mt-4">
               <label className="label-caps">Additional Phone Numbers</label>
               <div className="flex gap-2 mt-1">
@@ -431,33 +495,18 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
                 </div>
               )}
             </div>
-          </section>
+          </AccordionSection>
 
           {/* Campaign & Sale */}
-          <section className="card-static">
-            <h2 className="section-heading mb-4">Campaign & Sale</h2>
+          <AccordionSection title="Campaign & Sale" sectionKey="campaign" {...accordionProps}>
             <div className="grid grid-cols-2 gap-4">
               <Field label="Campaign Code" field="campaign_code" />
               <Field label="Offer Price" field="offer_price" type="number" placeholder="0" />
             </div>
-          </section>
-
-          {/* Deal Details — only visible when status is Closed Won */}
-          {form.status === 'closed_won' && (
-            <section className="card-static">
-              <h2 className="section-heading mb-4">Deal Details</h2>
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="Sale Date" field="sale_date" type="date" />
-                <Field label="Sale Price" field="sale_price" type="number" placeholder="0" />
-                <Field label="Purchase Date" field="purchase_date" type="date" />
-                <Field label="Purchase Price" field="purchase_price" type="number" placeholder="0" />
-              </div>
-            </section>
-          )}
+          </AccordionSection>
 
           {/* Due Diligence */}
-          <section className="card-static">
-            <h2 className="section-heading mb-4">Due Diligence</h2>
+          <AccordionSection title="Due Diligence" sectionKey="dd" {...accordionProps}>
             <div className="grid grid-cols-3 gap-4">
               <Field label="Access" field="dd_access" />
               <Field label="Topography" field="dd_topography" />
@@ -469,13 +518,11 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
               <Field label="Zoning" field="dd_zoning" />
               <Field label="Back Taxes (Delinquent Year)" field="dd_back_taxes" />
             </div>
-          </section>
+          </AccordionSection>
 
           {/* Land Analysis */}
-          <section className="card-static">
-            <h2 className="section-heading mb-4">Land Analysis</h2>
-
-            {/* Read-only summary row for key LP fields */}
+          <AccordionSection title="Land Analysis" sectionKey="land" {...accordionProps}>
+            {/* Read-only summary row */}
             <div className="grid grid-cols-4 gap-3 mb-4 p-3 rounded-xl" style={{ background: '#F8F5FC', border: '1px solid #EDE8F5' }}>
               <div>
                 <p className="label-caps mb-1">Buildability</p>
@@ -529,7 +576,6 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
                 </p>
               </div>
             </div>
-
             {/* Editable fields */}
             <div className="grid grid-cols-3 gap-4">
               <Field label="Land Use" field="land_use" />
@@ -544,11 +590,10 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
               <Field label="Elevation AVG (ft)" field="elevation_avg" type="number" placeholder="0" />
               <Field label="Assessed Value" field="assessed_value" />
             </div>
-          </section>
+          </AccordionSection>
 
           {/* Comparables */}
-          <section className="card-static">
-            <h2 className="section-heading mb-4">Comparables</h2>
+          <AccordionSection title="Comparables" sectionKey="comps" {...accordionProps}>
             <div className="grid grid-cols-3 gap-4">
               {([1, 2, 3] as const).map(n => {
                 const price = form[`comp${n}_price` as keyof CRMProperty] as number | undefined
@@ -578,11 +623,10 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
                 )
               })}
             </div>
-          </section>
+          </AccordionSection>
 
-          {/* Pricing */}
-          <section className="card-static">
-            <h2 className="section-heading mb-4">Pricing Fields</h2>
+          {/* Pricing Fields */}
+          <AccordionSection title="Pricing Fields" sectionKey="pricing" {...accordionProps}>
             <div className="grid grid-cols-3 gap-4">
               <Field label="GHL Offer Code" field="ghl_offer_code" />
               <Field label="LP Estimate" field="lp_estimate" type="number" placeholder="0" />
@@ -591,11 +635,10 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
               <Field label="Pebble Code" field="pebble_code" />
               <Field label="Claude AI Comp" field="claude_ai_comp" type="number" placeholder="0" />
             </div>
-          </section>
+          </AccordionSection>
 
           {/* Tags & Notes */}
-          <section className="card-static">
-            <h2 className="section-heading mb-4">Tags & Notes</h2>
+          <AccordionSection title="Tags & Notes" sectionKey="tags" {...accordionProps}>
             <div className="mb-4">
               <label className="label-caps">Tags</label>
               <div className="flex gap-2 mt-1">
@@ -641,13 +684,13 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
                 }}
               />
             </div>
-          </section>
+          </AccordionSection>
 
           {/* Documents */}
           {!isNew && (
-            <section className="card-static">
+            <AccordionSection title="Documents" sectionKey="docs" {...accordionProps}>
               <div className="flex items-center justify-between mb-4">
-                <h2 className="section-heading">Documents</h2>
+                <div />
                 <div>
                   <input
                     ref={fileInputRef}
@@ -711,13 +754,24 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
                   ))}
                 </div>
               )}
-            </section>
+            </AccordionSection>
+          )}
+
+          {/* Deal Details — only when Closed Won */}
+          {form.status === 'closed_won' && (
+            <AccordionSection title="Deal Details" sectionKey="deal" {...accordionProps}>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Sale Date" field="sale_date" type="date" />
+                <Field label="Sale Price" field="sale_price" type="number" placeholder="0" />
+                <Field label="Purchase Date" field="purchase_date" type="date" />
+                <Field label="Purchase Price" field="purchase_price" type="number" placeholder="0" />
+              </div>
+            </AccordionSection>
           )}
 
           {/* Communications History */}
           {!isNew && (
-            <section className="card-static">
-              <h2 className="section-heading mb-4">Communications</h2>
+            <AccordionSection title="Communications History" sectionKey="comms" {...accordionProps}>
               {commsLoading ? (
                 <p className="text-xs" style={{ color: '#9B8AAE' }}>Loading…</p>
               ) : comms.length === 0 ? (
@@ -760,8 +814,9 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
                   })}
                 </div>
               )}
-            </section>
+            </AccordionSection>
           )}
+
         </div>
       </div>
 
