@@ -2,13 +2,15 @@
 Upload endpoints for comps and target CSVs.
 """
 import uuid
+import threading
+from datetime import datetime, timezone
 import pandas as pd
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
 
 from models.schemas import UploadResponse
 from services.csv_parser import parse_csv
-from storage.session_store import store_comps, store_targets
+from storage.session_store import store_comps, store_targets, get_comps
 
 router = APIRouter(prefix="/upload", tags=["upload"])
 
@@ -79,6 +81,14 @@ async def upload_comps(file: UploadFile = File(...)) -> UploadResponse:
 
     session_id = str(uuid.uuid4())
     store_comps(session_id, df)
+    uploaded_at = datetime.now(timezone.utc).isoformat()
+
+    # Persist to Supabase Storage in background (best-effort, never blocks the response)
+    def _persist():
+        from services.comps_persistence import persist_comps
+        persist_comps(session_id, df, {**stats, "uploaded_at": uploaded_at})
+
+    threading.Thread(target=_persist, daemon=True).start()
 
     return UploadResponse(
         session_id=session_id,
@@ -87,6 +97,7 @@ async def upload_comps(file: UploadFile = File(...)) -> UploadResponse:
         columns_found=stats["columns_found"],
         missing_columns=stats["missing_columns"],
         preview=stats["preview"],
+        uploaded_at=uploaded_at,
     )
 
 
@@ -119,6 +130,40 @@ async def upload_targets(file: UploadFile = File(...)) -> UploadResponse:
         columns_found=stats["columns_found"],
         missing_columns=stats["missing_columns"],
         preview=stats["preview"],
+    )
+
+
+@router.get("/comps/latest-session", response_model=UploadResponse)
+async def get_latest_comps_session() -> UploadResponse:
+    """
+    Return the latest comps session.
+    If the session is still in backend memory, return its stats immediately.
+    Otherwise, restore from Supabase Storage (re-hydrates in-memory session).
+    Returns 404 if no comps have been uploaded yet.
+    """
+    from services.comps_persistence import restore_comps
+
+    result = restore_comps()
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No comps found. Please upload a comps CSV first.",
+        )
+
+    session_id, df, stats = result
+
+    # Only store in memory if not already there (avoids overwriting a fresh upload)
+    if get_comps(session_id) is None:
+        store_comps(session_id, df)
+
+    return UploadResponse(
+        session_id=session_id,
+        total_rows=stats["total_rows"],
+        valid_rows=stats["valid_rows"],
+        columns_found=stats.get("columns_found", []),
+        missing_columns=[],
+        preview=[],
+        uploaded_at=stats.get("uploaded_at"),
     )
 
 

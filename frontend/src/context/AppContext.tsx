@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react'
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import type {
   UploadStats,
@@ -8,11 +8,15 @@ import type {
   MailingPreview,
   AppPage,
 } from '../types'
+import { restoreLatestCompsSession, fetchDashboard } from '../api/client'
+
+const LS_COMPS_KEY = 'ld_comps_stats'
 
 interface AppState {
   // Comps
   compsStats: UploadStats | null
   setCompsStats: (s: UploadStats | null) => void
+  compsRestoring: boolean
 
   // Dashboard
   dashboardData: DashboardData | null
@@ -50,7 +54,16 @@ interface AppState {
 const AppContext = createContext<AppState | null>(null)
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [compsStats, setCompsStats] = useState<UploadStats | null>(null)
+  // Seed from localStorage immediately so UI doesn't flash "upload comps"
+  const [compsStats, _setCompsStats] = useState<UploadStats | null>(() => {
+    try {
+      const cached = localStorage.getItem(LS_COMPS_KEY)
+      return cached ? JSON.parse(cached) : null
+    } catch {
+      return null
+    }
+  })
+  const [compsRestoring, setCompsRestoring] = useState(true)
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
   const [targetStats, setTargetStats] = useState<UploadStats | null>(null)
   const [matchResult, setMatchResult] = useState<MatchResult | null>(null)
@@ -60,9 +73,44 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [propertyCampaignId, setPropertyCampaignId] = useState<string | null>(null)
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null)
 
+  const setCompsStats = useCallback((s: UploadStats | null) => {
+    _setCompsStats(s)
+    if (s) {
+      try { localStorage.setItem(LS_COMPS_KEY, JSON.stringify(s)) } catch {}
+    } else {
+      try { localStorage.removeItem(LS_COMPS_KEY) } catch {}
+    }
+  }, [])
+
+  // Auto-restore comps session from Supabase Storage on app load
+  const restoreRan = useRef(false)
+  useEffect(() => {
+    if (restoreRan.current) return
+    restoreRan.current = true
+
+    restoreLatestCompsSession()
+      .then(stats => {
+        _setCompsStats(stats)
+        try { localStorage.setItem(LS_COMPS_KEY, JSON.stringify(stats)) } catch {}
+        return fetchDashboard(stats.session_id)
+      })
+      .then(dashboard => {
+        setDashboardData(dashboard)
+      })
+      .catch(() => {
+        // No persisted comps — clear stale cache
+        try { localStorage.removeItem(LS_COMPS_KEY) } catch {}
+        _setCompsStats(null)
+      })
+      .finally(() => {
+        setCompsRestoring(false)
+      })
+  }, [])
+
   const value: AppState = {
     compsStats,
-    setCompsStats: useCallback((s) => setCompsStats(s), []),
+    setCompsStats,
+    compsRestoring,
     dashboardData,
     setDashboardData: useCallback((d) => setDashboardData(d), []),
     targetStats,

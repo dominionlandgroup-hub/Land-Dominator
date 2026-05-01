@@ -12,6 +12,7 @@ class UploadResponse(BaseModel):
     columns_found: List[str]
     missing_columns: List[str]
     preview: List[Dict[str, Any]]
+    uploaded_at: Optional[str] = None
 
 
 class ZipStats(BaseModel):

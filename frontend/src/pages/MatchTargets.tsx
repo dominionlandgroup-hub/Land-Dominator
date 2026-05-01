@@ -16,6 +16,7 @@ const SQFT_PER_ACRE = 43560
 export default function MatchTargets() {
   const {
     compsStats,
+    compsRestoring,
     targetStats, setTargetStats,
     matchResult, setMatchResult,
     setCurrentPage, setLastFilters,
@@ -180,6 +181,14 @@ export default function MatchTargets() {
     : 'No filters active — matching all targets'
 
   if (!compsStats) {
+    if (compsRestoring) {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-screen gap-4">
+          <LoadingSpinner size="lg" />
+          <p className="text-sm" style={{ color: '#6B5B8A' }}>Loading comps from database…</p>
+        </div>
+      )
+    }
     return <WelcomeScreen contextualMessage="Upload your comps first to enable matching." />
   }
 
@@ -245,50 +254,45 @@ export default function MatchTargets() {
 
       <div className="p-8 max-w-[1400px] mx-auto w-full">
 
-        {/* ── Upload + Radius info ────────────────────────────── */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          <div className="card">
-            <h2 className="font-semibold mb-4" style={{ color: '#1A0A2E' }}>Target Parcels CSV</h2>
-            {targetStats ? (
-              <div className="rounded-lg px-4 py-3 flex items-center justify-between" style={{ background: 'rgba(45,122,79,0.06)', border: '1px solid rgba(45,122,79,0.15)' }}>
-                <div>
-                  <p className="font-medium text-sm" style={{ color: '#2D7A4F' }}>
-                    ✓ {targetStats.total_rows.toLocaleString()} rows loaded
-                  </p>
-                  <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>
-                    {targetStats.columns_found.length} columns · {fileName}
-                  </p>
-                </div>
-                <button className="text-xs" style={{ color: '#6B5B8A' }} onClick={() => { setTargetStats(null); setFileName(null) }}>
-                  Replace
-                </button>
-              </div>
-            ) : (
-              <FileUpload label="Drop Target Parcels CSV" hint="Land Portal export — same format as comps" onFile={handleFile} loading={uploadLoading} />
-            )}
-            {uploadError && <p className="text-red-400 text-sm mt-2">{uploadError}</p>}
-          </div>
-
-          <div className="card">
-            <h2 className="font-semibold mb-3" style={{ color: '#1A0A2E' }}>Matching Settings</h2>
-            <div className="space-y-3">
-              <div className="rounded-lg px-3 py-2" style={{ backgroundColor: '#F3EEFA', border: '1px solid #E0D4F0' }}>
-                <div className="flex justify-between text-sm">
-                  <span style={{ color: '#6B5B8A' }}>Comp Radius</span>
-                  <span className="font-medium" style={{ color: '#5C2977' }}>Max 1 mi radius</span>
-                </div>
-                <p className="text-xs mt-0.5" style={{ color: '#9B8AAE' }}>Fixed. Comps within 1 mile are used. No fallback beyond 1 mile.</p>
-              </div>
-              <div className="rounded-lg px-3 py-2" style={{ backgroundColor: '#F3EEFA', border: '1px solid #E0D4F0' }}>
-                <p className="text-xs" style={{ color: '#5C2977' }}>
-                  Acreage bands: Micro (0–0.5 ac) · Small (0.5–2 ac) · Medium (2–10 ac) · Large (10–50 ac) · XL (50+ ac)
-                </p>
-              </div>
-              <div title="Only include parcels with a match score at or above this threshold">
-                <SliderRow label="Min Match Score" value={minScore} onChange={setMinScore} min={0} max={5} step={1} display={`${minScore} / 5`} />
-              </div>
+        {/* ── Comps info banner ────────────────────────────────── */}
+        <div className="rounded-xl px-4 py-3 mb-5 flex items-center justify-between" style={{ background: 'rgba(45,122,79,0.06)', border: '1px solid rgba(45,122,79,0.2)' }}>
+          <div className="flex items-center gap-3">
+            <span style={{ color: '#2D7A4F', fontWeight: 700, fontSize: 16 }}>✓</span>
+            <div>
+              <p className="text-sm font-medium" style={{ color: '#2D7A4F' }}>
+                Using {compsStats.valid_rows.toLocaleString()} sold comps
+                {compsStats.uploaded_at && (
+                  <span className="font-normal ml-2" style={{ color: '#6B5B8A' }}>
+                    · uploaded {new Date(compsStats.uploaded_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </span>
+                )}
+              </p>
+              <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>Upload new comps on the Dashboard page to refresh</p>
             </div>
           </div>
+        </div>
+
+        {/* ── Target upload ─────────────────────────────────────── */}
+        <div className="card mb-6">
+          <h2 className="font-semibold mb-4" style={{ color: '#1A0A2E' }}>Target Parcels CSV</h2>
+          {targetStats ? (
+            <div className="rounded-lg px-4 py-3 flex items-center justify-between" style={{ background: 'rgba(45,122,79,0.06)', border: '1px solid rgba(45,122,79,0.15)' }}>
+              <div>
+                <p className="font-medium text-sm" style={{ color: '#2D7A4F' }}>
+                  ✓ {targetStats.total_rows.toLocaleString()} rows loaded
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>
+                  {targetStats.columns_found.length} columns · {fileName}
+                </p>
+              </div>
+              <button className="text-xs" style={{ color: '#6B5B8A' }} onClick={() => { setTargetStats(null); setFileName(null) }}>
+                Replace
+              </button>
+            </div>
+          ) : (
+            <FileUpload label="Drop Target Parcels CSV" hint="Land Portal export — same format as comps" onFile={handleFile} loading={uploadLoading} />
+          )}
+          {uploadError && <p className="text-red-400 text-sm mt-2">{uploadError}</p>}
         </div>
 
         {/* ── ZIP Filter ──────────────────────────────────────── */}
