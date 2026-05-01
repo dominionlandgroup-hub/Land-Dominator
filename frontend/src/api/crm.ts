@@ -156,9 +156,19 @@ export async function addMatchResultsToCampaign(
 
 export async function initiateOutboundCall(
   toNumber: string,
-  propertyId?: string
-): Promise<{ call_id: string; to: string; from: string; communication_id?: string }> {
-  const { data } = await api.post('/crm/calls/outbound', { to_number: toNumber, property_id: propertyId })
+  propertyId?: string,
+  sellerName?: string
+): Promise<{ call_id: string; bridge_id?: string; to: string; from: string; communication_id?: string }> {
+  const { data } = await api.post('/crm/calls/outbound', {
+    to_number: toNumber,
+    property_id: propertyId,
+    ...(sellerName ? { seller_name: sellerName } : {}),
+  })
+  return data
+}
+
+export async function getCallbackNumber(): Promise<{ phone: string; formatted: string }> {
+  const { data } = await api.get<{ phone: string; formatted: string }>('/crm/calls/callback-number')
   return data
 }
 

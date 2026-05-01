@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import re
+import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
@@ -27,6 +28,9 @@ def _sendgrid_key() -> str:  return os.getenv("SENDGRID_API_KEY", "")
 
 def _base_url() -> str:
     return os.getenv("BACKEND_URL", "https://land-dominator-production.up.railway.app")
+
+def _callback_phone() -> str:
+    return os.getenv("TELNYX_CALLBACK_NUMBER", "")
 
 
 # ── In-memory call state ────────────────────────────────────────────────────────
@@ -1443,14 +1447,38 @@ async def test_offer_code(spoken: str = Query(..., description="Spoken code stri
 class OutboundCallRequest(BaseModel):
     property_id: Optional[str] = None
     to_number: str
+    seller_name: Optional[str] = None
+
+
+def _e164(number: str) -> str:
+    digits = re.sub(r"\D", "", number)
+    if len(digits) == 10:
+        return f"+1{digits}"
+    if len(digits) == 11 and digits.startswith("1"):
+        return f"+{digits}"
+    return number if number.startswith("+") else f"+{digits}"
+
+
+@router.get("/crm/calls/callback-number")
+async def get_callback_number() -> dict:
+    """Return configured callback number (agent bridge phone) for UI display."""
+    phone = _callback_phone()
+    if not phone:
+        return {"phone": "", "formatted": ""}
+    digits = re.sub(r"\D", "", phone)
+    if len(digits) == 11 and digits.startswith("1"):
+        digits = digits[1:]
+    formatted = f"({digits[:3]}) {digits[3:6]}-{digits[6:]}" if len(digits) == 10 else phone
+    return {"phone": phone, "formatted": formatted}
 
 
 @router.post("/crm/calls/outbound")
 async def initiate_outbound_call(body: OutboundCallRequest) -> dict:
-    """Initiate an outbound call via Telnyx TeXML — routes through the same inbound Myra flow."""
+    """Two-leg bridge call: calls agent first, then bridges to seller when agent answers."""
     api_key = _telnyx_key()
     from_phone = _telnyx_phone()
     connection_id = os.getenv("TELNYX_CONNECTION_ID", "")
+    callback_number = _callback_phone()
 
     if not api_key:
         raise HTTPException(status_code=503, detail="TELNYX_API_KEY not configured")
@@ -1465,24 +1493,34 @@ async def initiate_outbound_call(body: OutboundCallRequest) -> dict:
                 "copy the Connection ID → add it to Railway as TELNYX_CONNECTION_ID."
             ),
         )
+    if not callback_number:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "TELNYX_CALLBACK_NUMBER not configured. "
+                "Add your personal phone number to Railway as TELNYX_CALLBACK_NUMBER."
+            ),
+        )
 
-    # Normalize to E.164
-    digits = re.sub(r"\D", "", body.to_number)
-    if len(digits) == 10:
-        to_e164 = f"+1{digits}"
-    elif len(digits) == 11 and digits.startswith("1"):
-        to_e164 = f"+{digits}"
-    else:
-        to_e164 = body.to_number if body.to_number.startswith("+") else f"+{digits}"
+    seller_e164 = _e164(body.to_number)
+    callback_e164 = _e164(callback_number)
 
-    inbound_webhook = f"{_base_url()}/api/calls/inbound"
+    bridge_id = f"bridge_{uuid.uuid4().hex[:12]}"
+    _call_states[bridge_id] = {
+        "seller_phone": seller_e164,
+        "seller_name": body.seller_name or "",
+        "property_id": body.property_id,
+        "started_at": _now(),
+    }
+
+    bridge_webhook = f"{_base_url()}/api/calls/bridge-announce/{bridge_id}"
 
     try:
         payload: dict = {
             "connection_id": connection_id,
             "from": from_phone,
-            "to": to_e164,
-            "webhook_url": inbound_webhook,
+            "to": callback_e164,
+            "webhook_url": bridge_webhook,
             "webhook_url_method": "POST",
         }
         async with httpx.AsyncClient(timeout=20) as client:
@@ -1503,12 +1541,51 @@ async def initiate_outbound_call(body: OutboundCallRequest) -> dict:
     comm = await _log_comm(
         property_id=body.property_id,
         comm_type="call_outbound",
-        phone=to_e164,
+        phone=seller_e164,
         direction="outbound",
         call_id=call_id,
-        summary="Outbound call initiated from CRM",
+        summary=f"Outbound bridge call to {body.seller_name or seller_e164} initiated",
     )
-    return {"call_id": call_id, "to": to_e164, "from": from_phone, "communication_id": comm.get("id")}
+    return {
+        "call_id": call_id,
+        "bridge_id": bridge_id,
+        "to": seller_e164,
+        "from": callback_e164,
+        "communication_id": comm.get("id"),
+    }
+
+
+@router.post("/api/calls/bridge-announce/{bridge_id}")
+async def bridge_announce(bridge_id: str, request: Request) -> Response:
+    """TeXML for leg A (agent's phone). Announces then dials seller to bridge both parties."""
+    state = _call_states.get(bridge_id, {})
+    seller_phone = state.get("seller_phone", "")
+    seller_name = state.get("seller_name", "")
+
+    if not seller_phone:
+        xml = (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            "<Response>\n"
+            "  <Say>Sorry, that call session has expired.</Say>\n"
+            "  <Hangup/>\n"
+            "</Response>"
+        )
+        return Response(xml, media_type="text/xml")
+
+    announcement = f"Connecting you to {seller_name} now." if seller_name else "Connecting you to the seller now."
+    safe_ann = announcement.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    status_cb = f"{_base_url()}/api/calls/recording-status"
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        "<Response>\n"
+        f'  <Say voice="Polly.Joanna-Neural"><prosody rate="medium">{safe_ann}</prosody></Say>\n'
+        f'  <Dial record="record-from-ringing"\n'
+        f'        recordingStatusCallback="{status_cb}"\n'
+        f'        recordingStatusCallbackMethod="POST">{seller_phone}</Dial>\n'
+        "</Response>"
+    )
+    return Response(xml, media_type="text/xml")
 
 
 @router.post("/api/calls/outbound-amd")

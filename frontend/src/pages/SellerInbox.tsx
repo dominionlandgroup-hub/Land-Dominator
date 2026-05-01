@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { listCommunications, sendSms, initiateOutboundCall, markThreadRead, markAllRead } from '../api/crm'
+import { listCommunications, sendSms, initiateOutboundCall, markThreadRead, markAllRead, getCallbackNumber } from '../api/crm'
 import type { Communication } from '../types/crm'
 import { useApp } from '../context/AppContext'
 
@@ -246,6 +246,72 @@ function CommDetailModal({ comm, onClose }: { comm: Communication; onClose: () =
   )
 }
 
+// ── Call confirm modal ────────────────────────────────────────────────────────
+
+function CallConfirmModal({
+  thread,
+  callbackNumber,
+  onConfirm,
+  onClose,
+  calling,
+}: {
+  thread: Thread
+  callbackNumber: string
+  onConfirm: () => void
+  onClose: () => void
+  calling: boolean
+}) {
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+      onClick={onClose}
+    >
+      <div
+        style={{ background: '#fff', borderRadius: 16, padding: 28, width: '100%', maxWidth: 420 }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+          <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#5C2977', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff">
+              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.63 3.38 2 2 0 0 1 3.6 1.21h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.9a16 16 0 0 0 6 6l1.06-1.06a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
+            </svg>
+          </div>
+          <div>
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: '#1A0A2E', margin: 0 }}>Call {thread.name}</h2>
+            <p style={{ fontSize: 12, color: '#9B8AAE', margin: 0 }}>{fmtPhone(thread.phone)}</p>
+          </div>
+        </div>
+
+        <p style={{ fontSize: 13, color: '#4A3560', margin: '0 0 12px', lineHeight: 1.7 }}>
+          We will call you at{' '}
+          <strong style={{ color: '#1A0A2E' }}>{callbackNumber || 'your configured number'}</strong>{' '}
+          first, then connect you to{' '}
+          <strong style={{ color: '#1A0A2E' }}>{thread.name}</strong>.
+        </p>
+
+        <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: '10px 14px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 16 }}>⚠️</span>
+          <p style={{ fontSize: 12, color: '#92400E', margin: 0, fontWeight: 600 }}>Make sure to answer within 30 seconds</p>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button
+            onClick={onClose}
+            style={{ padding: '9px 18px', borderRadius: 10, border: '1px solid #EDE8F5', background: '#fff', color: '#6B5B8A', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={calling}
+            style={{ padding: '9px 22px', borderRadius: 10, border: 'none', background: calling ? '#9B8AAE' : '#5C2977', color: '#fff', fontWeight: 700, fontSize: 14, cursor: calling ? 'default' : 'pointer' }}>
+            {calling ? 'Calling…' : 'Call Now'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Message bubble ────────────────────────────────────────────────────────────
 
 function MessageEntry({ c, onSelect }: { c: Communication; onSelect: (c: Communication) => void }) {
@@ -344,9 +410,14 @@ export default function SellerInbox() {
   const [calling, setCalling] = useState(false)
   const [callMsg, setCallMsg] = useState<string | null>(null)
   const [markingAll, setMarkingAll] = useState(false)
+  const [callConfirmThread, setCallConfirmThread] = useState<Thread | null>(null)
+  const [callbackNumber, setCallbackNumber] = useState('')
   const threadEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { load() }, [])
+  useEffect(() => {
+    getCallbackNumber().then(r => setCallbackNumber(r.formatted)).catch(() => {})
+  }, [])
 
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -430,16 +501,17 @@ export default function SellerInbox() {
   }
 
   async function handleCall(thread: Thread) {
+    setCallConfirmThread(null)
     setCalling(true); setCallMsg(null)
     try {
-      await initiateOutboundCall(thread.phone, thread.propertyId ?? undefined)
-      setCallMsg('✓ Call initiated')
-      setTimeout(() => setCallMsg(null), 4000)
+      await initiateOutboundCall(thread.phone, thread.propertyId ?? undefined, thread.name)
+      setCallMsg('✓ Calling you now — answer your phone to connect to ' + thread.name)
+      setTimeout(() => setCallMsg(null), 6000)
       await load()
     } catch (e: unknown) {
       const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       setCallMsg(detail ? `✗ ${detail}` : '✗ Call failed')
-      setTimeout(() => setCallMsg(null), 6000)
+      setTimeout(() => setCallMsg(null), 8000)
     } finally { setCalling(false) }
   }
 
@@ -616,7 +688,7 @@ export default function SellerInbox() {
                 </span>
               )}
               <button
-                onClick={() => handleCall(selected)}
+                onClick={() => setCallConfirmThread(selected)}
                 disabled={calling}
                 style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 10, border: '1px solid #EDE8F5', background: calling ? '#EDE8F5' : '#fff', color: '#5C2977', fontWeight: 600, fontSize: 13, cursor: calling ? 'default' : 'pointer' }}
               >
@@ -713,7 +785,7 @@ export default function SellerInbox() {
             <p style={{ fontSize: 10, fontWeight: 700, color: '#9B8AAE', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>Phone</p>
             <div className="flex items-center gap-2">
               <span style={{ fontSize: 14, color: '#1A0A2E' }}>{fmtPhone(selected.phone)}</span>
-              <button onClick={() => handleCall(selected)} title="Call"
+              <button onClick={() => setCallConfirmThread(selected)} title="Call"
                 style={{ padding: '4px 8px', borderRadius: 8, border: '1px solid #EDE8F5', background: '#F8F5FC', color: '#5C2977', cursor: 'pointer', fontSize: 12 }}>
                 📞
               </button>
@@ -759,6 +831,17 @@ export default function SellerInbox() {
       {/* ── Communication detail modal ── */}
       {selectedComm && (
         <CommDetailModal comm={selectedComm} onClose={() => setSelectedComm(null)} />
+      )}
+
+      {/* ── Call confirm modal ── */}
+      {callConfirmThread && (
+        <CallConfirmModal
+          thread={callConfirmThread}
+          callbackNumber={callbackNumber}
+          onConfirm={() => handleCall(callConfirmThread)}
+          onClose={() => setCallConfirmThread(null)}
+          calling={calling}
+        />
       )}
     </div>
   )
