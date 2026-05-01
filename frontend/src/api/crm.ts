@@ -340,3 +340,54 @@ export async function sendSms(property_id: string, to_phone: string, message: st
   const { data } = await api.post('/crm/sms/send', { property_id, to_phone, message })
   return data
 }
+
+// ── Market Research ──────────────────────────────────────────────────────────
+
+export interface CountyRecommendation {
+  county: string
+  state: string
+  rank: number
+  why_good: string
+  price_range_low: number
+  price_range_high: number
+  builder_demand: 'High' | 'Medium' | 'Low'
+  recommended_acreage_min: number
+  recommended_acreage_max: number
+  population_trend: string
+  dom_estimate: number
+  key_cities?: string[]
+}
+
+export interface StateResearchResult {
+  state: string
+  strategy: string
+  market_summary: string
+  counties: CountyRecommendation[]
+  cached?: boolean
+  last_updated?: string
+  error?: string
+}
+
+export async function researchState(
+  state: string,
+  strategy: string = 'infill_lots',
+  acreageMin: number = 0.1,
+  acreageMax: number = 2.0
+): Promise<StateResearchResult> {
+  const { data } = await api.post<StateResearchResult>('/market-research/state', {
+    state,
+    strategy,
+    acreage_min: acreageMin,
+    acreage_max: acreageMax,
+  })
+  return data
+}
+
+export async function researchCounty(
+  county: string,
+  state: string,
+  strategy: string = 'infill_lots'
+): Promise<Record<string, unknown>> {
+  const { data } = await api.post('/market-research/county', { county, state, strategy })
+  return data
+}

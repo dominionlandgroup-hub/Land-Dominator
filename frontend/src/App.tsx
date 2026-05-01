@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { AppProvider, useApp } from './context/AppContext'
 import Sidebar from './components/Sidebar'
 import AIAssistant from './components/AIAssistant'
@@ -18,6 +18,8 @@ import BuyerInbox from './pages/BuyerInbox'
 import Boards from './pages/Boards'
 import SettingsPage from './pages/SettingsPage'
 import MailCalendar from './pages/MailCalendar'
+import OnboardingWizard from './pages/OnboardingWizard'
+import { getSetting, listCrmCampaigns } from './api/crm'
 
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -79,19 +81,51 @@ function PageContent() {
   }
 }
 
+function AppShell() {
+  const [wizardVisible, setWizardVisible] = useState(false)
+  const [checked, setChecked] = useState(false)
+
+  useEffect(() => {
+    Promise.all([
+      getSetting('onboarding_complete').catch(() => null),
+      listCrmCampaigns().catch(() => []),
+    ]).then(([setting, campaigns]) => {
+      const done = (setting as { value?: unknown } | null)?.value === true
+      const hasCampaigns = (campaigns as unknown[]).length > 0
+      if (!done && !hasCampaigns) {
+        setWizardVisible(true)
+      }
+      setChecked(true)
+    })
+  }, [])
+
+  if (!checked) {
+    return (
+      <div className="flex min-h-screen items-center justify-center" style={{ background: '#F8F6FB' }}>
+        <div className="w-8 h-8 border-2 border-purple-300 border-t-purple-700 rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex min-h-screen" style={{ background: '#F8F6FB' }}>
+      <Sidebar />
+      <main className="flex-1 overflow-auto" style={{ background: '#F8F6FB' }}>
+        <ErrorBoundary>
+          <PageContent />
+        </ErrorBoundary>
+      </main>
+      <AIAssistant />
+      {wizardVisible && <OnboardingWizard onComplete={() => setWizardVisible(false)} />}
+    </div>
+  )
+}
+
 export default function App() {
   return (
     <ErrorBoundary>
       <AppProvider>
-        <div className="flex min-h-screen" style={{ background: '#F8F6FB' }}>
-          <Sidebar />
-          <main className="flex-1 overflow-auto" style={{ background: '#F8F6FB' }}>
-            <ErrorBoundary>
-              <PageContent />
-            </ErrorBoundary>
-          </main>
-          <AIAssistant />
-        </div>
+        <AppShell />
       </AppProvider>
     </ErrorBoundary>
   )

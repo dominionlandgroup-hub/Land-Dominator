@@ -19,13 +19,16 @@ router = APIRouter(prefix="/ai", tags=["ai"])
 SYSTEM_PROMPT = (
     "You are a land investing assistant inside Land Dominator, a CRM for vacant land flippers. "
     "You help users find markets, analyze comps, price properties, build campaigns, and manage "
-    "their pipeline. You have access to the user's property data, campaign history, and deal "
-    "pipeline. Be direct, specific, and action-oriented. Never be vague. Always tell the user "
+    "their pipeline. Be direct, specific, and action-oriented. Never be vague. Always tell the user "
     "exactly what to do next. You know land flipping inside and out — APN, LP estimates, due "
     "diligence, blind offers, mail houses, title companies, double closes, assignments. "
     "Keep responses concise and scannable. Use short paragraphs or bullet points. "
     "When the user asks about specific numbers (leads, counties, deals), pull from the live CRM "
     "data provided in this system prompt and give exact numbers.\n\n"
+    "MARKET RESEARCH: When users ask market questions (where to mail, which counties are hot, "
+    "state overviews, county comparisons), use the get_market_research tool to fetch real AI-powered "
+    "analysis. Always give specific county names, current price ranges, and explain WHY. "
+    "Tell them exactly what Land Portal filters to use. Offer to build a campaign in any county.\n\n"
     "WORKFLOW ENGINE: Land Dominator has a full automated workflow:\n"
     "• Buy Box Builder (Settings page) — define target state/county, acreage range, price ceiling, "
     "offer %, mail house email, weekly budget, cost per piece ($0.55 default).\n"
@@ -110,6 +113,62 @@ class ChatRequest(BaseModel):
     messages: List[ChatMessage]
 
 
+_MARKET_TOOLS = [
+    {
+        "name": "get_market_research",
+        "description": (
+            "Look up AI-powered market research for a US state or specific county. "
+            "Use this when the user asks about where to invest, which counties are good, "
+            "market conditions, or wants county recommendations."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "enum": ["state", "county"],
+                    "description": "Whether to research a full state or a specific county"
+                },
+                "state": {"type": "string", "description": "Full state name, e.g. Tennessee"},
+                "county": {"type": "string", "description": "County name (required if type=county)"},
+                "strategy": {
+                    "type": "string",
+                    "enum": ["infill_lots", "rural_acreage", "subdivide_and_sell"],
+                    "description": "Investing strategy to tailor the research"
+                }
+            },
+            "required": ["type", "state"]
+        }
+    }
+]
+
+
+async def _call_market_research_tool(tool_input: dict) -> str:
+    """Execute the market research tool by calling the market_research router directly."""
+    try:
+        from routers.market_research import research_state, research_county
+        from routers.market_research import StateResearchRequest, CountyResearchRequest
+
+        if tool_input.get("type") == "county":
+            req = CountyResearchRequest(
+                county=tool_input.get("county", ""),
+                state=tool_input.get("state", ""),
+                strategy=tool_input.get("strategy", "infill_lots"),
+            )
+            result = await research_county(req)
+        else:
+            req = StateResearchRequest(
+                state=tool_input.get("state", ""),
+                strategy=tool_input.get("strategy", "infill_lots"),
+            )
+            result = await research_state(req)
+
+        import json
+        return json.dumps(result, default=str)
+    except Exception as exc:
+        return f"Market research unavailable: {exc}"
+
+
 @router.post("/chat")
 async def chat(request: ChatRequest) -> dict:
     if not _ANTHROPIC_AVAILABLE:
@@ -127,15 +186,43 @@ async def chat(request: ChatRequest) -> dict:
 
     context = _get_crm_context()
     system = SYSTEM_PROMPT + f"\n\nLIVE CRM DATA (as of this request):\n{context}"
+    messages = [{"role": m.role, "content": m.content} for m in request.messages]
 
     try:
         client = _anthropic.Anthropic(api_key=api_key)
-        response = client.messages.create(
-            model=MODEL,
-            max_tokens=1024,
-            system=system,
-            messages=[{"role": m.role, "content": m.content} for m in request.messages],
-        )
-        return {"response": response.content[0].text}
+
+        # Agentic loop to handle tool use
+        for _ in range(5):
+            response = client.messages.create(
+                model=MODEL,
+                max_tokens=1024,
+                system=system,
+                tools=_MARKET_TOOLS,
+                messages=messages,
+            )
+
+            if response.stop_reason == "end_turn":
+                text = next((b.text for b in response.content if hasattr(b, "text")), "")
+                return {"response": text}
+
+            if response.stop_reason == "tool_use":
+                messages.append({"role": "assistant", "content": response.content})
+                tool_results = []
+                for block in response.content:
+                    if block.type == "tool_use":
+                        result = await _call_market_research_tool(block.input)
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": block.id,
+                            "content": result,
+                        })
+                messages.append({"role": "user", "content": tool_results})
+            else:
+                break
+
+        # Fallback: return last text block
+        text = next((b.text for b in response.content if hasattr(b, "text")), "")
+        return {"response": text}
+
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))

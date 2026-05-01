@@ -12,6 +12,7 @@ from routers import upload, dashboard, matching, mailing, campaigns, crm, ai_cha
 from routers import settings as settings_router
 from routers import mail_calendar as mail_cal_router
 from routers import communications as comms_router
+from routers import market_research as market_research_router
 
 load_dotenv()
 
@@ -57,6 +58,7 @@ app.include_router(ai_chat.router)
 app.include_router(settings_router.router)
 app.include_router(mail_cal_router.router)
 app.include_router(comms_router.router)
+app.include_router(market_research_router.router)
 
 
 # ── Startup migration check ───────────────────────────────────────────
