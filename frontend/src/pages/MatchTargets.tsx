@@ -39,8 +39,8 @@ export default function MatchTargets() {
   const [minScore] = useState<number>(Number(init?.min_match_score ?? 0))
   const [zipFilter, setZipFilter] = useState<string[]>((init?.zip_filter as string[]) ?? [])
   const [zipInputText, setZipInputText] = useState<string>(((init?.zip_filter as string[]) ?? []).join(', '))
-  const [minAcreage, setMinAcreage] = useState<string>(init?.min_acreage != null ? String(init.min_acreage) : '')
-  const [maxAcreage, setMaxAcreage] = useState<string>(init?.max_acreage != null ? String(init.max_acreage) : '')
+  const [minAcreage, setMinAcreage] = useState<string>('')
+  const [maxAcreage, setMaxAcreage] = useState<string>('')
   const acreagePrefilled = React.useRef(false)
   const [floodZoneFilter, setFloodZoneFilter] = useState<'all' | 'exclude' | 'only'>((init?.flood_zone_filter as 'all' | 'exclude' | 'only') ?? 'exclude')
   const [minOfferFloor, setMinOfferFloor] = useState<string>('10000')
@@ -61,13 +61,13 @@ export default function MatchTargets() {
     if (acreagePrefilled.current || lastFilters || !dashboardData) return
     acreagePrefilled.current = true
     const b = dashboardData.sweet_spot?.bucket
-    if (b === '0-0.5') { setMinAcreage('0.1'); setMaxAcreage('0.5') }
-    else if (b === '0.5-1') { setMinAcreage('0.5'); setMaxAcreage('1') }
-    else if (b === '1-2') { setMinAcreage('1'); setMaxAcreage('2') }
-    else if (b === '2-5') { setMinAcreage('2'); setMaxAcreage('5') }
-    else if (b === '5-10') { setMinAcreage('5'); setMaxAcreage('10') }
-    else if (b === '10+') { setMinAcreage('10'); setMaxAcreage('40') }
-    else { setMinAcreage('0.1'); setMaxAcreage('5') }
+    if (b === '0-0.5') { setMinAcreage('0.1'); setMaxAcreage('2') }
+    else if (b === '0.5-1') { setMinAcreage('0.1'); setMaxAcreage('2') }
+    else if (b === '1-2') { setMinAcreage('0.5'); setMaxAcreage('3') }
+    else if (b === '2-5') { setMinAcreage('1'); setMaxAcreage('6') }
+    else if (b === '5-10') { setMinAcreage('3'); setMaxAcreage('12') }
+    else if (b === '10+') { setMinAcreage('8'); setMaxAcreage('50') }
+    else { setMinAcreage('0.1'); setMaxAcreage('2') }
   }, [dashboardData])
 
   // Top 10 ZIPs from dashboard for "Use Buy Box ZIPs" — exclude outliers (ppa > 3x market median)
