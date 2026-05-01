@@ -768,16 +768,30 @@ def _run_lp_pull_job(job_id: str, campaign_id: str) -> None:
     done = 0
     errors: list[str] = []
 
+    _LP_URL = "https://landportal.com/wp-json/lp-rest-api/v1/property-data"
+    _LP_HEADERS_BASE = {"Authorization": f"Bearer {token}"}
+
+    def _lp_post(client: httpx.Client, pid: str, fips_val: str) -> dict:
+        """POST to Land Portal, falling back to form-encoded if JSON returns 404."""
+        r = client.post(
+            _LP_URL,
+            json={"propertyid": pid, "fips": fips_val},
+            headers={**_LP_HEADERS_BASE, "Content-Type": "application/json"},
+        )
+        if r.status_code == 404:
+            # Some WP REST plugins reject JSON — retry with form-encoded body
+            r = client.post(
+                _LP_URL,
+                data={"propertyid": pid, "fips": fips_val},
+                headers=_LP_HEADERS_BASE,
+            )
+        r.raise_for_status()
+        return r.json()
+
     with httpx.Client(timeout=30.0) as client:
         for prop in eligible:
             try:
-                resp = client.post(
-                    "https://landportal.com/wp-json/lp-rest-api/v1/property-data",
-                    json={"propertyid": prop["property_id"], "fips": prop["fips"]},
-                    headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                )
-                resp.raise_for_status()
-                data = resp.json()
+                data = _lp_post(client, prop["property_id"], prop["fips"])
 
                 lp_prop = data.get("property", {})
                 price_acre_mean = _safe_float(lp_prop.get("price_acre_mean"))
@@ -1147,13 +1161,22 @@ async def pull_lp_data_for_property(property_id: str) -> dict:
             detail="Property is missing property_id or fips — import from Pebble CSV first"
         )
 
+    _lp_url = "https://landportal.com/wp-json/lp-rest-api/v1/property-data"
+    _lp_headers_base = {"Authorization": f"Bearer {token}"}
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             r = await client.post(
-                "https://landportal.com/wp-json/lp-rest-api/v1/property-data",
+                _lp_url,
                 json={"propertyid": lp_pid, "fips": fips},
-                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                headers={**_lp_headers_base, "Content-Type": "application/json"},
             )
+            if r.status_code == 404:
+                # Retry with form-encoded body — some WP REST plugins reject JSON
+                r = await client.post(
+                    _lp_url,
+                    data={"propertyid": lp_pid, "fips": fips},
+                    headers=_lp_headers_base,
+                )
             r.raise_for_status()
         data = r.json()
     except httpx.HTTPStatusError as exc:
