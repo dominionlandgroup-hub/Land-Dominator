@@ -55,6 +55,7 @@ export default function MatchTargets() {
   const [mailingSuccess, setMailingSuccess] = useState<string | null>(null)
   const [mailingError, setMailingError] = useState<string | null>(null)
   const [mailingExportType, setMailingExportType] = useState<'mailable' | 'matched'>('mailable')
+  const [mailingDone, setMailingDone] = useState(false)
 
   // Pre-fill acreage from sweet spot — runs once when dashboardData first loads, never overrides user edits
   useEffect(() => {
@@ -670,10 +671,11 @@ export default function MatchTargets() {
             )}
 
             <div className="flex gap-3">
-              <button className="btn-secondary flex-1" onClick={() => { setShowMailingModal(false); setMailingSuccess(null); setMailingError(null) }} disabled={mailingLoading}>Cancel</button>
+              <button className="btn-secondary flex-1" onClick={() => { setShowMailingModal(false); setMailingSuccess(null); setMailingError(null); setMailingDone(false) }} disabled={mailingLoading}>Cancel</button>
               <button
                 className="btn-primary flex-1"
-                disabled={mailingLoading || !selectedCampaignId}
+                disabled={mailingLoading || !selectedCampaignId || mailingDone}
+                style={mailingDone ? { background: '#2D7A4F', cursor: 'default' } : {}}
                 onClick={async () => {
                   setMailingLoading(true)
                   setMailingError(null)
@@ -700,13 +702,20 @@ export default function MatchTargets() {
                     )
                     setMailingSuccess(`${result.imported.toLocaleString()} records added to "${campaignName}" with pricing saved.`)
                     setSelectedCampaignId(campaignId)
+                    setMailingDone(true)
+                    setTimeout(() => {
+                      setShowMailingModal(false)
+                      setMailingDone(false)
+                      setMailingSuccess(null)
+                      setMailingError(null)
+                    }, 3000)
                   } catch (e: unknown) {
                     const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
                     setMailingError(detail ?? 'Failed to add records.')
                   } finally { setMailingLoading(false) }
                 }}
               >
-                {mailingLoading ? 'Adding…' : 'Add Records'}
+                {mailingLoading ? 'Adding…' : mailingDone ? '✓ Done' : 'Add Records'}
               </button>
             </div>
           </div>

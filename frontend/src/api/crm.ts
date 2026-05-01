@@ -427,6 +427,10 @@ export async function markAllRead(): Promise<void> {
   await api.post('/crm/communications/mark-read', { mark_all: true })
 }
 
+export async function patchThreadRead(phone: string, read: boolean): Promise<void> {
+  await api.patch(`/crm/communications/read-thread?phone=${encodeURIComponent(phone)}`, { read })
+}
+
 export async function sendSms(to_phone: string, message: string, property_id?: string | null): Promise<{ sent: boolean; communication_id?: string }> {
   const { data } = await api.post('/crm/sms/send', {
     to_phone,

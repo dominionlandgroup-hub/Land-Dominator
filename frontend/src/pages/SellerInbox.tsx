@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { listCommunications, sendSms, initiateOutboundCall, markThreadRead, markAllRead, getCallbackNumber } from '../api/crm'
+import { listCommunications, sendSms, initiateOutboundCall, markThreadRead, markAllRead, patchThreadRead, getCallbackNumber } from '../api/crm'
 import type { Communication } from '../types/crm'
 import { useApp } from '../context/AppContext'
 
@@ -87,7 +87,7 @@ function buildThreads(comms: Communication[]): Thread[] {
     const sorted = [...cs].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     const name = contactName(sorted)
     const prop = sorted.find(c => c.property)?.property
-    const scores = sorted.map(c => c.lead_score).filter(Boolean)
+    const scores = sorted.map(c => c.lead_score?.toLowerCase()).filter(Boolean)
     const topScore = scores.includes('hot') ? 'hot' : scores.includes('warm') ? 'warm' : (scores[0] || null)
     const dispositions = sorted.map(c => c.disposition).filter(Boolean)
     const dispPriority = ['INTERESTED', 'CALLBACK_NEEDED', 'MAYBE', 'NOT_INTERESTED', 'WRONG_NUMBER', 'NO_ANSWER']
@@ -477,6 +477,20 @@ export default function SellerInbox() {
     } finally { setMarkingAll(false) }
   }
 
+  async function handleToggleRead(phone: string, hasUnread: boolean, e: React.MouseEvent) {
+    e.stopPropagation()
+    const newRead = hasUnread  // unread → mark as read; read → mark as unread
+    try {
+      await patchThreadRead(phone, newRead)
+      setComms(prev => prev.map(c =>
+        c.phone_number === phone ? { ...c, is_read: newRead } : c
+      ))
+      setUnreadCount(newRead ? Math.max(0, unreadCount - 1) : unreadCount + 1)
+    } catch {
+      // silent
+    }
+  }
+
   const FILTERS: { id: InboxFilter; label: string; count?: number }[] = [
     { id: 'all', label: 'All' },
     { id: 'calls', label: 'Calls' },
@@ -616,10 +630,16 @@ export default function SellerInbox() {
                 onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLDivElement).style.background = '#F3EEF8' }}
                 onMouseLeave={e => { if (!isSelected) (e.currentTarget as HTMLDivElement).style.background = t.hasUnread ? '#FAF6FF' : 'transparent' }}
               >
-                {/* Unread dot */}
-                <div style={{ width: 8, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {t.hasUnread && (
+                {/* Unread dot — click to toggle read/unread */}
+                <div
+                  style={{ width: 16, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                  onClick={e => handleToggleRead(t.phone, t.hasUnread, e)}
+                  title={t.hasUnread ? 'Mark as read' : 'Mark as unread'}
+                >
+                  {t.hasUnread ? (
                     <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#5C2977', display: 'block' }} />
+                  ) : (
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', border: '1.5px solid #C4B5D8', display: 'block' }} />
                   )}
                 </div>
 

@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Body, HTTPException, Query, Request, Response
 from pydantic import BaseModel
 
 from services.supabase_client import get_supabase
@@ -1416,6 +1416,18 @@ async def mark_communications_read(body: MarkReadRequest) -> dict:
         elif body.phone_numbers:
             for phone in body.phone_numbers:
                 sb.table("crm_communications").update({"is_read": True}).eq("phone_number", phone).execute()
+        return {"ok": True}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.patch("/crm/communications/read-thread")
+async def patch_thread_read(phone: str = Query(...), body: dict = Body(...)) -> dict:
+    """Set all communications in a thread as read or unread."""
+    sb = get_supabase()
+    try:
+        read = bool(body.get("read", True))
+        sb.table("crm_communications").update({"is_read": read}).eq("phone_number", phone).execute()
         return {"ok": True}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
