@@ -1276,6 +1276,15 @@ async def send_sms(body: SmsSendRequest) -> dict:
         raise HTTPException(status_code=503, detail="TELNYX_API_KEY not configured")
     if not from_phone:
         raise HTTPException(status_code=503, detail="TELNYX_PHONE_NUMBER not configured")
+
+    # Ensure E.164 format (+1XXXXXXXXXX)
+    raw = re.sub(r"\D", "", from_phone)
+    if len(raw) == 10:
+        from_phone = f"+1{raw}"
+    elif len(raw) == 11 and raw.startswith("1"):
+        from_phone = f"+{raw}"
+    # else trust whatever was configured
+
     try:
         payload: dict = {"from": from_phone, "to": body.to_phone, "text": body.message}
         profile_id = os.getenv("TELNYX_MESSAGING_PROFILE_ID", "")
@@ -1288,7 +1297,23 @@ async def send_sms(body: SmsSendRequest) -> dict:
                 headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
             )
             if r.status_code >= 400:
-                raise HTTPException(status_code=r.status_code, detail=f"Telnyx: {r.text[:300]}")
+                err_text = r.text
+                print(f"[comms] SMS send error {r.status_code}: {err_text}")
+                # Parse Telnyx error code for a user-friendly message
+                try:
+                    err_json = r.json()
+                    telnyx_code = err_json.get("errors", [{}])[0].get("code", "")
+                except Exception:
+                    telnyx_code = ""
+                if telnyx_code == "40013" or "40013" in err_text:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "SMS failed: Your Telnyx number needs to be enabled for messaging. "
+                            "Go to Telnyx portal → Numbers → your number → enable SMS/MMS."
+                        ),
+                    )
+                raise HTTPException(status_code=r.status_code, detail=f"Telnyx: {err_text[:300]}")
     except HTTPException:
         raise
     except Exception as exc:
