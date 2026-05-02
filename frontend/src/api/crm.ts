@@ -24,6 +24,8 @@ export async function listProperties(params?: {
   campaign_id?: string
   search?: string
   tag?: string
+  sort_by?: string
+  sort_dir?: 'asc' | 'desc'
 }): Promise<PropertyListResponse> {
   const { data } = await api.get<PropertyListResponse>('/crm/properties', { params })
   return data

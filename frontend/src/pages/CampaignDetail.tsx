@@ -10,6 +10,19 @@ import PropertyDetail from './PropertyDetail'
 
 const PAGE_SIZE = 20
 
+type SortBy = 'offer_price' | 'acreage' | 'owner_full_name' | 'county' | 'campaign_code' | 'status' | 'confidence_level'
+type SortDir = 'asc' | 'desc'
+
+const QUICK_SORT_OPTIONS: { label: string; sort_by: SortBy; sort_dir: SortDir }[] = [
+  { label: 'Offer Price: High to Low', sort_by: 'offer_price', sort_dir: 'desc' },
+  { label: 'Offer Price: Low to High', sort_by: 'offer_price', sort_dir: 'asc' },
+  { label: 'Acreage: Large to Small', sort_by: 'acreage', sort_dir: 'desc' },
+  { label: 'Acreage: Small to Large', sort_by: 'acreage', sort_dir: 'asc' },
+  { label: 'Owner Name: A to Z', sort_by: 'owner_full_name', sort_dir: 'asc' },
+  { label: 'Confidence: High First', sort_by: 'confidence_level', sort_dir: 'asc' },
+  { label: 'Status', sort_by: 'status', sort_dir: 'asc' },
+]
+
 const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   lead:           { bg: '#FFF3E0', text: '#E65100', border: '#FFCC80' },
   prospect:       { bg: '#E3F2FD', text: '#1565C0', border: '#90CAF9' },
@@ -77,6 +90,10 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
   const [lpError, setLpError] = useState<string | null>(null)
   const lpPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  // Sort
+  const [sortBy, setSortBy] = useState<SortBy>('offer_price')
+  const [sortDir, setSortDir] = useState<SortDir>('desc')
+
   // Property detail drill-in
   const [viewingProperty, setViewingProperty] = useState<CRMProperty | null>(null)
 
@@ -90,7 +107,7 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
   const [importFailed, setImportFailed] = useState(0)
 
   useEffect(() => {
-    loadProperties(1, 'all', '')
+    loadProperties(1, 'all', '', '', '', 'offer_price', 'desc')
     refreshStats()
   }, [])
 
@@ -102,7 +119,11 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
     } catch {}
   }
 
-  async function loadProperties(p: number, sf: string, sq: string, tf = tagFilter, bf = boardFilter) {
+  async function loadProperties(
+    p: number, sf: string, sq: string,
+    tf = tagFilter, bf = boardFilter,
+    sbCol: SortBy = sortBy, sd: SortDir = sortDir,
+  ) {
     setLoading(true)
     try {
       const res = await listProperties({
@@ -111,6 +132,8 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
         status: bf || (sf === 'all' ? undefined : sf),
         search: sq.trim() || undefined,
         tag: tf || undefined,
+        sort_by: sbCol,
+        sort_dir: sd,
       })
       setProperties(res.data)
       setTotalCount(res.total)
@@ -146,7 +169,24 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
 
   function goToPage(p: number) {
     setSelectedIds(new Set())
-    loadProperties(p, statusFilter, search)
+    loadProperties(p, statusFilter, search, tagFilter, boardFilter, sortBy, sortDir)
+  }
+
+  function handleSortColumn(col: SortBy) {
+    const newDir: SortDir = col === sortBy && sortDir === 'desc' ? 'asc' : 'desc'
+    setSortBy(col)
+    setSortDir(newDir)
+    setSelectedIds(new Set())
+    loadProperties(1, statusFilter, search, tagFilter, boardFilter, col, newDir)
+  }
+
+  function handleQuickSort(val: string) {
+    const opt = QUICK_SORT_OPTIONS.find(o => `${o.sort_by}:${o.sort_dir}` === val)
+    if (!opt) return
+    setSortBy(opt.sort_by)
+    setSortDir(opt.sort_dir)
+    setSelectedIds(new Set())
+    loadProperties(1, statusFilter, search, tagFilter, boardFilter, opt.sort_by, opt.sort_dir)
   }
 
   // ── Select all on current page ──────────────────────────────────────
@@ -576,6 +616,18 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
           />
         </div>
 
+        {/* Quick sort */}
+        <select
+          className="input-base text-sm py-1.5"
+          style={{ maxWidth: '200px' }}
+          value={`${sortBy}:${sortDir}`}
+          onChange={e => handleQuickSort(e.target.value)}
+        >
+          {QUICK_SORT_OPTIONS.map(o => (
+            <option key={`${o.sort_by}:${o.sort_dir}`} value={`${o.sort_by}:${o.sort_dir}`}>{o.label}</option>
+          ))}
+        </select>
+
         {/* Bulk action buttons — visible when rows selected */}
         {selectedIds.size > 0 && (
           <div className="flex items-center gap-2 ml-auto">
@@ -650,8 +702,35 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
                       style={{ cursor: 'pointer' }}
                     />
                   </th>
-                  {['OWNER NAME', 'MAILING ADDRESS', 'APN', 'COUNTY', 'ACRES', 'CODE', 'OFFER PRICE', 'STATUS'].map(h => (
-                    <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', color: '#9B8AAE' }}>{h}</th>
+                  {([
+                    { label: 'OWNER NAME', col: 'owner_full_name' as SortBy },
+                    { label: 'MAILING ADDRESS', col: null },
+                    { label: 'APN', col: null },
+                    { label: 'COUNTY', col: 'county' as SortBy },
+                    { label: 'ACRES', col: 'acreage' as SortBy },
+                    { label: 'CODE', col: 'campaign_code' as SortBy },
+                    { label: 'OFFER PRICE', col: 'offer_price' as SortBy },
+                    { label: 'STATUS', col: 'status' as SortBy },
+                  ] as { label: string; col: SortBy | null }[]).map(({ label, col }) => (
+                    <th
+                      key={label}
+                      style={{
+                        padding: '10px 12px', textAlign: 'left', fontSize: '10px',
+                        fontWeight: 700, letterSpacing: '0.08em',
+                        color: col && sortBy === col ? '#5C2977' : '#9B8AAE',
+                        cursor: col ? 'pointer' : 'default',
+                        userSelect: 'none',
+                        whiteSpace: 'nowrap',
+                      }}
+                      onClick={() => col && handleSortColumn(col)}
+                    >
+                      {label}
+                      {col && sortBy === col && (
+                        <span style={{ marginLeft: '4px', fontSize: '11px' }}>
+                          {sortDir === 'desc' ? '↓' : '↑'}
+                        </span>
+                      )}
+                    </th>
                   ))}
                 </tr>
               </thead>

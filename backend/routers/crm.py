@@ -1658,6 +1658,18 @@ async def fix_property_names() -> dict:
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+_SORT_COLS = {
+    "offer_price": "offer_price",
+    "acreage": "acreage",
+    "owner_full_name": "owner_full_name",
+    "county": "county",
+    "campaign_code": "campaign_code",
+    "status": "status",
+    "confidence_level": "confidence_level",
+    "created_at": "created_at",
+}
+
+
 @router.get("/properties")
 async def list_properties(
     status: Optional[str] = Query(None),
@@ -1668,13 +1680,17 @@ async def list_properties(
     tag: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=500),
+    sort_by: Optional[str] = Query(None),
+    sort_dir: Optional[str] = Query(None),
 ) -> dict:
     try:
         sb = get_supabase()
         offset = (page - 1) * limit
+        sort_col = _SORT_COLS.get(sort_by or "", "offer_price")
+        sort_desc = (sort_dir or "desc") != "asc"
         q = (sb.table("crm_properties")
              .select("*", count="exact")
-             .order("created_at", desc=True)
+             .order(sort_col, desc=sort_desc, nullsfirst=False)
              .range(offset, offset + limit - 1))
         if status:
             q = q.eq("status", status)
