@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { clearAllProperties, fixPropertyNames, getBuyBox, saveBuyBox, getAgentFaq, saveAgentFaq } from '../api/crm'
+import { clearAllComps, getDbCompsCount } from '../api/client'
 import type { BuyBox } from '../types/crm'
 import type { FaqItem } from '../api/crm'
 
@@ -49,11 +50,17 @@ export default function SettingsPage() {
   const [boxSaved, setBoxSaved] = useState(false)
   const [boxError, setBoxError] = useState<string | null>(null)
 
-  // Danger zone
+  // Danger zone — properties
   const [showClearConfirm, setShowClearConfirm] = useState(false)
   const [clearing, setClearing] = useState(false)
   const [clearCount, setClearCount] = useState<number | null>(null)
   const [clearError, setClearError] = useState<string | null>(null)
+
+  // Danger zone — comps
+  const [dbCompsCount, setDbCompsCount] = useState<number | null>(null)
+  const [showClearCompsConfirm, setShowClearCompsConfirm] = useState(false)
+  const [clearingComps, setClearingComps] = useState(false)
+  const [clearCompsResult, setClearCompsResult] = useState<string | null>(null)
 
   // Fix names
   const [fixingNames, setFixingNames] = useState(false)
@@ -78,6 +85,7 @@ export default function SettingsPage() {
       .then(items => setFaqItems(items))
       .catch(() => {})
       .finally(() => setFaqLoading(false))
+    getDbCompsCount().then(setDbCompsCount).catch(() => {})
   }, [])
 
   function setField<K extends keyof BuyBox>(key: K, val: BuyBox[K]) {
@@ -106,6 +114,18 @@ export default function SettingsPage() {
       const err = e as { response?: { data?: { detail?: string } } }
       setClearError(err?.response?.data?.detail ?? 'Failed to clear properties.')
     } finally { setClearing(false) }
+  }
+
+  async function handleClearAllComps() {
+    setClearingComps(true); setClearCompsResult(null)
+    try {
+      const result = await clearAllComps()
+      setClearCompsResult(`✓ ${(result.deleted || 0).toLocaleString()} comps deleted.`)
+      setDbCompsCount(0)
+      setShowClearCompsConfirm(false)
+    } catch {
+      setClearCompsResult('Failed to clear comps.')
+    } finally { setClearingComps(false) }
   }
 
   async function handleFixNames() {
@@ -416,7 +436,60 @@ export default function SettingsPage() {
         {/* Danger Zone */}
         <section>
           <h2 className="text-sm font-bold mb-3 uppercase tracking-wider" style={{ color: '#DC2626' }}>Danger Zone</h2>
-          <div className="rounded-lg px-5 py-4" style={{ background: '#FFFFFF', border: '1px solid rgba(220,38,38,0.3)', boxShadow: '0 1px 3px rgba(92,41,119,0.08)' }}>
+          <div className="flex flex-col gap-3">
+
+            {/* Clear All Comps */}
+            <div className="rounded-lg px-5 py-4" style={{ background: '#FFFFFF', border: '1px solid rgba(220,38,38,0.3)', boxShadow: '0 1px 3px rgba(92,41,119,0.08)' }}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-semibold text-sm" style={{ color: '#1A0A2E' }}>Clear All Comps</p>
+                  <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>
+                    Delete all {dbCompsCount != null ? `${dbCompsCount.toLocaleString()} ` : ''}sold comps from the database. Use this before re-uploading clean Land Portal files.
+                  </p>
+                  {clearCompsResult && (
+                    <p className="text-xs mt-1 font-semibold" style={{ color: clearCompsResult.startsWith('✓') ? '#059669' : '#DC2626' }}>
+                      {clearCompsResult}
+                    </p>
+                  )}
+                </div>
+                {!showClearCompsConfirm ? (
+                  <button
+                    className="ml-4 px-4 py-2 rounded-lg text-sm font-semibold text-white flex-none"
+                    style={{ background: '#DC2626' }}
+                    onClick={() => { setClearCompsResult(null); setShowClearCompsConfirm(true) }}
+                  >
+                    Clear All Comps
+                  </button>
+                ) : (
+                  <div className="ml-4 flex flex-col gap-2 items-end flex-none">
+                    <p className="text-xs font-semibold" style={{ color: '#DC2626' }}>
+                      Delete all {dbCompsCount != null ? `${dbCompsCount.toLocaleString()} ` : ''}comps?
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        className="px-3 py-1.5 rounded text-sm font-semibold"
+                        style={{ background: '#F3F4F6', color: '#374151' }}
+                        onClick={() => setShowClearCompsConfirm(false)}
+                        disabled={clearingComps}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        className="px-3 py-1.5 rounded text-sm font-semibold text-white"
+                        style={{ background: '#DC2626' }}
+                        onClick={handleClearAllComps}
+                        disabled={clearingComps}
+                      >
+                        {clearingComps ? 'Deleting…' : 'Yes, Delete All'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Clear All Properties */}
+            <div className="rounded-lg px-5 py-4" style={{ background: '#FFFFFF', border: '1px solid rgba(220,38,38,0.3)', boxShadow: '0 1px 3px rgba(92,41,119,0.08)' }}>
             <div className="flex items-center justify-between">
               <div>
                 <p className="font-semibold text-sm" style={{ color: '#1A0A2E' }}>Clear All Properties</p>
@@ -438,7 +511,9 @@ export default function SettingsPage() {
                 Clear All Properties
               </button>
             </div>
-          </div>
+            </div>
+
+          </div>{/* end flex flex-col gap-3 */}
         </section>
       </div>
 

@@ -5,7 +5,7 @@ import LoadingSpinner from '../components/LoadingSpinner'
 import LoadingOverlay from '../components/LoadingOverlay'
 import { useApp } from '../context/AppContext'
 import { uploadTargets, runMatch, getMailingDownloadUrl, getMatchedLeadsDownloadUrl, getDbCompsCount } from '../api/client'
-import { listCrmCampaigns, autoCreateCampaign, addMatchResultsToCampaign } from '../api/crm'
+import { listCrmCampaigns, autoCreateCampaign, addMatchResultsToCampaign, getMatchFilters, saveMatchFilters } from '../api/crm'
 import type { Column } from '../components/DataTable'
 import type { MatchedParcel, MatchFilters } from '../types'
 import { getConfidence } from '../types'
@@ -42,6 +42,12 @@ export default function MatchTargets() {
 
   useEffect(() => {
     getDbCompsCount().then(setDbCompsCount).catch(() => {})
+    // Load persisted filter settings from DB
+    getMatchFilters().then(saved => {
+      if (saved.flood_zone_filter) setFloodZoneFilter(saved.flood_zone_filter as 'all' | 'exclude' | 'only')
+      if (saved.min_offer_floor != null) setMinOfferFloor(String(saved.min_offer_floor))
+      if (saved.min_lp_estimate != null) setMinLpEstimate(String(saved.min_lp_estimate))
+    }).catch(() => {})
   }, [])
 
   // ── Filter state ────────────────────────────────────────────────────────
@@ -161,6 +167,13 @@ export default function MatchTargets() {
       min_offer_floor: minOfferFloor ? parseFloat(minOfferFloor) : 10000,
       min_lp_estimate: minLpEstimate ? parseFloat(minLpEstimate) : 20000,
     }
+
+    // Persist filter settings
+    saveMatchFilters({
+      flood_zone_filter: floodZoneFilter,
+      min_offer_floor: minOfferFloor ? parseFloat(minOfferFloor) : 10000,
+      min_lp_estimate: minLpEstimate ? parseFloat(minLpEstimate) : 20000,
+    }).catch(() => {})
 
     try {
       const result = await runMatch(filters)
@@ -500,7 +513,8 @@ export default function MatchTargets() {
             {/* Download exports + match summary */}
             {(() => {
               const matchId = matchResult.match_id
-              const matchedCt = matchResult.matched_count
+              const distMatchedCt = matchResult.distance_matched_count ?? matchResult.matched_count
+              const zipMatchedCt = matchResult.zip_matched_count ?? 0
               const lpFallbackCt = matchResult.lp_fallback_count ?? 0
               const unpricedCt = matchResult.unpriced_count ?? 0
               const mrw = (matchResult as any).match_rate_warning as { level: string; match_rate_pct: number; message: string; top_unmatched_zips: string[] } | undefined
@@ -512,8 +526,8 @@ export default function MatchTargets() {
                   <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
                     <div>
                       <div className="flex items-baseline gap-2 mb-0.5">
-                        <span className="text-3xl font-bold" style={{ color: '#10B981' }}>{matchedCt.toLocaleString()}</span>
-                        <span className="text-sm font-semibold" style={{ color: '#10B981' }}>Comp-Matched Records ready to mail</span>
+                        <span className="text-3xl font-bold" style={{ color: '#10B981' }}>{distMatchedCt.toLocaleString()}</span>
+                        <span className="text-sm font-semibold" style={{ color: '#10B981' }}>Distance-matched records (strong comps within 3 miles)</span>
                       </div>
                       <p className="text-[11px]" style={{ color: '#6B7280' }}>{matchResult.total_targets.toLocaleString()} total targets</p>
                     </div>
@@ -522,7 +536,7 @@ export default function MatchTargets() {
                     </button>
                   </div>
 
-                  {/* Single unified match rate banner */}
+                  {/* Match rate banner (distance-matched only) */}
                   {mrw && (
                     <div className="rounded-xl px-4 py-3 mb-3 flex items-start gap-3" style={{ background: rateBg, border: `1px solid ${rateBorder}` }}>
                       <div className="flex-1">
@@ -534,17 +548,49 @@ export default function MatchTargets() {
                         )}
                         {mrw.level !== 'ok' && (
                           <p className="text-[11px] mt-1" style={{ color: '#9CA3AF' }}>
-                            Only records priced from actual sold comps count toward match rate. LP Fallback, Low Offer, and No Data records are excluded.
+                            Match rate counts only records with LP comps within 3 miles. ZIP-matched and LP Fallback are excluded from this rate.
                           </p>
                         )}
                       </div>
                     </div>
                   )}
 
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    <a href={getMatchedLeadsDownloadUrl(matchId, 'comp-matched')} download className="btn-primary text-sm no-underline" style={{ padding: '8px 16px' }}>
-                      ✓ Comp-Matched Records ({matchedCt.toLocaleString()})
-                    </a>
+                  {/* Three-category breakdown */}
+                  <div className="flex flex-col gap-2 mb-4">
+                    <div className="rounded-lg px-3 py-2 flex items-center justify-between" style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)' }}>
+                      <div>
+                        <span className="text-sm font-semibold" style={{ color: '#059669' }}>Distance-matched: {distMatchedCt.toLocaleString()} records</span>
+                        <span className="text-xs ml-2" style={{ color: '#9CA3AF' }}>strong comps within 3 miles — recommended for mailing</span>
+                      </div>
+                      <a href={getMatchedLeadsDownloadUrl(matchId, 'comp-matched')} download className="btn-primary text-xs no-underline" style={{ padding: '4px 10px', flexShrink: 0 }}>
+                        Download
+                      </a>
+                    </div>
+                    {zipMatchedCt > 0 && (
+                      <div className="rounded-lg px-3 py-2 flex items-center justify-between" style={{ background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.15)' }}>
+                        <div>
+                          <span className="text-sm font-semibold" style={{ color: '#2563EB' }}>ZIP-matched: {zipMatchedCt.toLocaleString()} records</span>
+                          <span className="text-xs ml-2" style={{ color: '#9CA3AF' }}>matched by ZIP code — less precise, use as bonus</span>
+                        </div>
+                        <a href={getMailingDownloadUrl(matchId, 'full-list', 'full')} download className="btn-secondary text-xs no-underline" style={{ padding: '4px 10px', flexShrink: 0 }}>
+                          Download
+                        </a>
+                      </div>
+                    )}
+                    {lpFallbackCt > 0 && (
+                      <div className="rounded-lg px-3 py-2" style={{ background: 'rgba(92,41,119,0.08)', border: '1px solid rgba(92,41,119,0.2)' }}>
+                        <span className="text-sm font-semibold" style={{ color: '#7C3AED' }}>LP Fallback: {lpFallbackCt.toLocaleString()} records</span>
+                        <span className="text-xs ml-2" style={{ color: '#9CA3AF' }}>no local comps — priced from LP estimate only</span>
+                      </div>
+                    )}
+                    {unpricedCt > 0 && (
+                      <p className="text-[11px]" style={{ color: '#6B7280' }}>
+                        {unpricedCt.toLocaleString()} records have no data (no comps and no LP estimate) — skip these
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
                     <a href={getMailingDownloadUrl(matchId, 'high-confidence', 'high-confidence')} download className="btn-secondary text-sm no-underline">
                       High Confidence Only
                     </a>
@@ -552,22 +598,6 @@ export default function MatchTargets() {
                       Full List
                     </a>
                   </div>
-
-                  {lpFallbackCt > 0 && (
-                    <div className="rounded-lg p-2.5 mb-2" style={{ background: 'rgba(92,41,119,0.15)', border: '1px solid rgba(92,41,119,0.3)' }}>
-                      <p className="text-[11px] font-semibold mb-0.5" style={{ color: '#C084FC' }}>
-                        {lpFallbackCt.toLocaleString()} records have LP estimate only — not recommended for mailing without local comp data
-                      </p>
-                      <p className="text-[10px]" style={{ color: '#C084FC' }}>
-                        These are priced from Land Portal's automated estimate with no local sold comps to verify. Upload more comps from nearby areas to convert them to comp-matched.
-                      </p>
-                    </div>
-                  )}
-                  {unpricedCt > 0 && (
-                    <p className="text-[10px]" style={{ color: '#6B7280' }}>
-                      {unpricedCt.toLocaleString()} records have no data — skip these (no comps and no LP estimate available)
-                    </p>
-                  )}
                 </div>
               )
             })()}

@@ -589,3 +589,30 @@ export async function getAgentFaq(): Promise<FaqItem[]> {
 export async function saveAgentFaq(items: FaqItem[]): Promise<void> {
   await api.post('/api/calls/faq', items)
 }
+
+// ── Match Filter Settings ──────────────────────────────────────────────
+
+export interface MatchFilterSettings {
+  radius_miles?: number
+  acreage_tolerance_pct?: number
+  flood_zone_filter?: string
+  min_buildability?: number
+  require_road_frontage?: boolean
+  exclude_land_locked?: boolean
+  min_offer_floor?: number
+  min_lp_estimate?: number
+  max_retail_price?: number
+}
+
+export async function getMatchFilters(): Promise<MatchFilterSettings> {
+  try {
+    const { data } = await api.get<{ value: MatchFilterSettings }>('/crm/settings/match_filters')
+    return data?.value ?? {}
+  } catch {
+    return {}
+  }
+}
+
+export async function saveMatchFilters(filters: MatchFilterSettings): Promise<void> {
+  await api.put('/crm/settings/match_filters', { value: filters })
+}

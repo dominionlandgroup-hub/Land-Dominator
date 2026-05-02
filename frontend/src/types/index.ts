@@ -213,13 +213,14 @@ export interface MatchResult {
   match_id: string
   total_targets: number
   matched_count: number
+  distance_matched_count?: number
+  zip_matched_count?: number
+  zip_coord_free_count?: number
   mailable_count?: number
   lp_fallback_count?: number
   low_offer_count?: number
   low_value_count?: number
   unpriced_count?: number
-  zip_matched_count?: number
-  zip_coord_free_count?: number
   smart_floor_recommendation?: number | null
   results: MatchedParcel[]
   warnings?: string[]

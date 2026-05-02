@@ -232,8 +232,6 @@ def _extract_street_name(address: str) -> str:
 # ─────────────────────────────────────────────
 
 COMP_SEARCH_STEPS = [
-    (0.25, '0.25mi'),
-    (0.50, '0.50mi'),
     (1.00, '1mi'),
     (2.00, '2mi'),
     (3.00, '3mi'),
@@ -392,18 +390,16 @@ def get_confidence(n_comps: int, radius_label: Optional[str] = None) -> str:
 
 def calculate_score(radius_label: Optional[str], same_street_used: bool, comp_count: int) -> int:
     """
-    Client-requested score model tied to comp quality/radius.
+    Score model: same_street=5, 1mi=3, 2mi=2, 3mi or ZIP=1.
     """
     if comp_count == 0:
         return 0
     if same_street_used:
         return 5
-    if radius_label == '0.25mi':
-        return 4 if comp_count >= 3 else 3
-    if radius_label == '0.50mi':
-        return 3 if comp_count >= 3 else 2
     if radius_label == '1mi':
-        return 2 if comp_count >= 3 else 1
+        return 3 if comp_count >= 3 else 2
+    if radius_label == '2mi':
+        return 2 if comp_count >= 2 else 1
     return 1
 
 
@@ -885,7 +881,7 @@ def calculate_offer_price(
         closest_comp_distance = float(np.min(distances))
 
     # Derive radius_used_miles from radius_label
-    _radius_map = {'0.25mi': 0.25, '0.50mi': 0.50, '1mi': 1.0, 'same_street': 0.0}
+    _radius_map = {'1mi': 1.0, '2mi': 2.0, '3mi': 3.0, 'same_street': 0.0}
     radius_used_miles = _radius_map.get(radius_label) if radius_label else None
 
     result: Dict[str, Any] = {
@@ -2126,7 +2122,7 @@ def run_matching(
         print(f"[match] Uncovered counties: {uncovered_counties}", flush=True)
 
     # ── Pricing method breakdown ──────────────────────────────────────────
-    _breakdown_keys = ['0.25mi', '0.50mi', '1mi', '2mi', '3mi', 'ZIP', 'ZIP_MATCH', 'LP_FALLBACK', 'NO_DATA']
+    _breakdown_keys = ['1mi', '2mi', '3mi', 'ZIP', 'ZIP_MATCH', 'LP_FALLBACK', 'NO_DATA']
     pricing_breakdown: dict = {k: 0 for k in _breakdown_keys}
     county_median_count = 0
     for _r in results:
@@ -2150,18 +2146,20 @@ def run_matching(
         print("  OK: All fields populated correctly", flush=True)
         print("")
 
-    matched_count     = sum(1 for r in results if r.get("pricing_flag") == "MATCHED")
-    lp_fallback_count = sum(1 for r in results if r.get("pricing_flag") == "LP_FALLBACK")
-    low_offer_count   = sum(1 for r in results if r.get("pricing_flag") == "LOW_OFFER")
-    low_value_count   = sum(1 for r in results if r.get("pricing_flag") == "LOW_VALUE")
-    unpriced_count    = sum(1 for r in results if r.get("pricing_flag") in ("NO_COMPS", None))
-    llc_priced_count  = sum(1 for r in results if r.get("pricing_source") == "LLC_PRICED")
-    zip_matched_count = sum(1 for r in results if r.get("pricing_flag") == "MATCHED" and r.get("radius_label") in ("ZIP", "ZIP_MATCH"))
+    matched_count        = sum(1 for r in results if r.get("pricing_flag") == "MATCHED")
+    lp_fallback_count    = sum(1 for r in results if r.get("pricing_flag") == "LP_FALLBACK")
+    low_offer_count      = sum(1 for r in results if r.get("pricing_flag") == "LOW_OFFER")
+    low_value_count      = sum(1 for r in results if r.get("pricing_flag") == "LOW_VALUE")
+    unpriced_count       = sum(1 for r in results if r.get("pricing_flag") in ("NO_COMPS", None))
+    llc_priced_count     = sum(1 for r in results if r.get("pricing_source") == "LLC_PRICED")
+    zip_matched_count    = sum(1 for r in results if r.get("pricing_flag") == "MATCHED" and r.get("radius_label") in ("ZIP", "ZIP_MATCH"))
     zip_coord_free_count = sum(1 for r in results if r.get("pricing_flag") == "MATCHED" and r.get("radius_label") == "ZIP_MATCH")
+    # Distance-matched = radius-based matches only (excludes ZIP fallback)
+    distance_matched_count = matched_count - zip_matched_count
     mailable_count    = matched_count + lp_fallback_count
 
-    # Match rate = comp-matched only / total targets (LP fallback does NOT count)
-    match_rate_pct = round(matched_count / total_targets * 100) if total_targets > 0 else 0
+    # Match rate = distance-matched (radius-based) only — ZIP fallback is "bonus" not "strong"
+    match_rate_pct = round(distance_matched_count / total_targets * 100) if total_targets > 0 else 0
 
     unmatched_zips: dict[str, int] = {}
     for r in results:
@@ -2175,21 +2173,21 @@ def run_matching(
         match_rate_warning = {
             "level": "ok",
             "match_rate_pct": match_rate_pct,
-            "message": f"✓ {match_rate_pct}% match rate",
+            "message": f"✓ {match_rate_pct}% distance-matched (strong comps within 3 miles)",
             "top_unmatched_zips": [],
         }
     elif match_rate_pct >= 60:
         match_rate_warning = {
             "level": "warning",
             "match_rate_pct": match_rate_pct,
-            "message": f"⚠️ {match_rate_pct}% match rate - below 80%",
+            "message": f"⚠️ {match_rate_pct}% distance-matched — below 80%, upload more LP comps",
             "top_unmatched_zips": top_zips,
         }
     else:
         match_rate_warning = {
             "level": "critical",
             "match_rate_pct": match_rate_pct,
-            "message": f"✗ {match_rate_pct}% match rate - upload more comps",
+            "message": f"✗ {match_rate_pct}% distance-matched — upload more LP comps to improve",
             "top_unmatched_zips": top_zips,
         }
 
@@ -2218,6 +2216,7 @@ def run_matching(
         "llc_priced_count": llc_priced_count,
         "zip_matched_count": zip_matched_count,
         "zip_coord_free_count": zip_coord_free_count,
+        "distance_matched_count": distance_matched_count,
         "smart_floor_recommendation": smart_floor_recommendation,
         "results": results,
         "warnings": warnings,
