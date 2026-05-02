@@ -1028,16 +1028,35 @@ def run_matching(
     # ── 1. Clean comps (removes bulk sales, outliers, data errors) ───
     raw_comp_count = len(comps_df)
     filter_counts['total_comps'] = raw_comp_count
-    
-    vc = comps_df[
+
+    _valid_price_acres = (
         (comps_df["Current Sale Price"].notna())
         & (comps_df["Current Sale Price"] > 0)
         & (comps_df["Lot Acres"].notna())
         & (comps_df["Lot Acres"] > 0)
+    )
+
+    # Comps with coordinates — used for distance-based matching
+    vc = comps_df[
+        _valid_price_acres
         & (comps_df["Latitude"].notna())
         & (comps_df["Longitude"].notna())
     ].copy()
     vc = vc.reset_index(drop=True)
+
+    # Comps WITHOUT coordinates — saved with NULL lat/lon (e.g. MLS comps geocoding failed)
+    # These can only be matched by ZIP code
+    vc_zip_only = comps_df[
+        _valid_price_acres
+        & (comps_df["Latitude"].isna() | comps_df["Longitude"].isna())
+    ].copy().reset_index(drop=True)
+    if len(vc_zip_only) > 0 and 'ppa' not in vc_zip_only.columns:
+        vc_zip_only['ppa'] = vc_zip_only['Current Sale Price'] / vc_zip_only['Lot Acres']
+    zip_only_count = len(vc_zip_only)
+    if zip_only_count > 0:
+        warnings.append(
+            f"{zip_only_count} comps have no coordinates and will be used for ZIP-code matching only."
+        )
 
     # Apply full data cleaning pipeline
     vc = clean_comps_for_pricing(vc)
@@ -1094,6 +1113,22 @@ def run_matching(
         bl, bh, _ = get_acreage_band(float(ac))
         comp_band_lows[i] = bl
         comp_band_highs[i] = bh
+
+    # ZIP-only comp arrays (no coordinates)
+    _zip_col_name = "Parcel Zip" if "Parcel Zip" in vc_zip_only.columns else None
+    zip_comp_zips = (
+        vc_zip_only[_zip_col_name].fillna("").astype(str).apply(lambda z: str(z).split('.')[0].strip()).values
+        if _zip_col_name and len(vc_zip_only) > 0
+        else np.array([], dtype=object)
+    )
+    zip_comp_acres_arr = vc_zip_only["Lot Acres"].values.astype(np.float64) if len(vc_zip_only) > 0 else np.array([], dtype=np.float64)
+    zip_comp_band_lows = np.zeros(len(vc_zip_only), dtype=np.float64)
+    zip_comp_band_highs = np.zeros(len(vc_zip_only), dtype=np.float64)
+    for _i, _ac in enumerate(zip_comp_acres_arr):
+        _bl, _bh, _ = get_acreage_band(float(_ac))
+        zip_comp_band_lows[_i] = _bl
+        zip_comp_band_highs[_i] = _bh
+    print(f"[match] ZIP-only comps (no coordinates): {len(vc_zip_only)}", flush=True)
 
     # ── 2. Prep targets ──────────────────────────────────────────────
     targets = targets_df.copy()
@@ -1596,7 +1631,24 @@ def run_matching(
 
             # No fallback beyond 3 miles for distance-based matching (ZIP fallback handles rest)
 
+        # ZIP-only comp fallback: comps with no coordinates, matched by ZIP
+        _zip_only_matched_df = None
+        if matched_mask.sum() == 0 and len(zip_comp_zips) > 0 and _t_zip_str and _t_zip_str not in ('nan', 'None', ''):
+            _zo_zip = zip_comp_zips == _t_zip_str
+            if has_acres and target_acres > 0:
+                _zo_band = _zo_zip & (zip_comp_band_lows <= target_acres) & (target_acres <= zip_comp_band_highs)
+                _zo_idx = np.where(_zo_band)[0] if int(_zo_band.sum()) >= 1 else np.where(_zo_zip)[0]
+            else:
+                _zo_idx = np.where(_zo_zip)[0]
+            if len(_zo_idx) > 0:
+                _zip_only_matched_df = vc_zip_only.iloc[_zo_idx].copy().reset_index(drop=True)
+                _zip_only_matched_df['distance_miles'] = 0.0
+                radius_label = 'ZIP_MATCH'
+
         n_matched = int(matched_mask.sum())
+        if n_matched == 0 and _zip_only_matched_df is not None:
+            n_matched = len(_zip_only_matched_df)
+
         t_zip = t_zips[ti]
 
         # ── Scoring ──────────────────────────────────────────────────
@@ -1619,11 +1671,13 @@ def run_matching(
         tlp_val = _f(tlp_raw) if tlp_raw else None
 
         # Build matched comps DataFrame for pricing (include distances for weighting)
-        if n_matched > 0:
+        if matched_mask.sum() > 0:
             matched_indices = np.where(matched_mask)[0]
             matched_comps_df = vc.iloc[matched_indices].copy()
             if row_distances is not None:
                 matched_comps_df['distance_miles'] = row_distances[matched_indices]
+        elif _zip_only_matched_df is not None:
+            matched_comps_df = _zip_only_matched_df
         else:
             matched_comps_df = pd.DataFrame()
 
@@ -1797,7 +1851,10 @@ def run_matching(
                 sorted_comps = matched_comps_df.reset_index(drop=True)
 
             num_comps_used = len(sorted_comps)
-            pricing_method = "SINGLE" if num_comps_used == 1 else "MEDIAN"
+            if radius_label == 'ZIP_MATCH':
+                pricing_method = "ZIP_MATCHED"
+            else:
+                pricing_method = "SINGLE" if num_comps_used == 1 else "MEDIAN"
 
             _cutoff_18mo = pd.Timestamp.now() - pd.DateOffset(months=18)
             _target_ac = float(target_acres) if has_acres and target_acres > 0 else None
@@ -2069,7 +2126,7 @@ def run_matching(
         print(f"[match] Uncovered counties: {uncovered_counties}", flush=True)
 
     # ── Pricing method breakdown ──────────────────────────────────────────
-    _breakdown_keys = ['0.25mi', '0.50mi', '1mi', '2mi', '3mi', 'ZIP', 'LP_FALLBACK', 'NO_DATA']
+    _breakdown_keys = ['0.25mi', '0.50mi', '1mi', '2mi', '3mi', 'ZIP', 'ZIP_MATCH', 'LP_FALLBACK', 'NO_DATA']
     pricing_breakdown: dict = {k: 0 for k in _breakdown_keys}
     county_median_count = 0
     for _r in results:
@@ -2099,7 +2156,8 @@ def run_matching(
     low_value_count   = sum(1 for r in results if r.get("pricing_flag") == "LOW_VALUE")
     unpriced_count    = sum(1 for r in results if r.get("pricing_flag") in ("NO_COMPS", None))
     llc_priced_count  = sum(1 for r in results if r.get("pricing_source") == "LLC_PRICED")
-    zip_matched_count = sum(1 for r in results if r.get("pricing_flag") == "MATCHED" and r.get("radius_label") == "ZIP")
+    zip_matched_count = sum(1 for r in results if r.get("pricing_flag") == "MATCHED" and r.get("radius_label") in ("ZIP", "ZIP_MATCH"))
+    zip_coord_free_count = sum(1 for r in results if r.get("pricing_flag") == "MATCHED" and r.get("radius_label") == "ZIP_MATCH")
     mailable_count    = matched_count + lp_fallback_count
 
     # Match rate = comp-matched only / total targets (LP fallback does NOT count)
@@ -2159,6 +2217,7 @@ def run_matching(
         "county_median_count": county_median_count,
         "llc_priced_count": llc_priced_count,
         "zip_matched_count": zip_matched_count,
+        "zip_coord_free_count": zip_coord_free_count,
         "smart_floor_recommendation": smart_floor_recommendation,
         "results": results,
         "warnings": warnings,

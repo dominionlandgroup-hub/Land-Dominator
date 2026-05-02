@@ -568,6 +568,12 @@ export default function MatchTargets() {
               <ResultCard label="Below Floor" value={((matchResult.low_offer_count ?? 0) + (matchResult.low_value_count ?? 0)).toLocaleString()} accent="#F59E0B" sub="Offer too low" />
               <ResultCard label="No Data" value={(matchResult.unpriced_count ?? 0).toLocaleString()} accent="#6B7280" sub="Skip these" />
             </div>
+            {(matchResult.zip_coord_free_count ?? 0) > 0 && (
+              <div className="mb-4 px-4 py-2.5 rounded-lg text-sm flex items-center gap-2" style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1D4ED8' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <span><strong>ZIP Matched: {(matchResult.zip_coord_free_count ?? 0).toLocaleString()} records</strong> — matched via ZIP code (no coordinates available). These comps were saved without GPS coordinates.</span>
+              </div>
+            )}
 
             {/* Pricing method breakdown */}
             {(matchResult as any).pricing_breakdown && (() => {
@@ -579,6 +585,7 @@ export default function MatchTargets() {
                 { label: 'Within 2 miles', key: '2mi', color: '#16A34A' },
                 { label: 'Within 3 miles', key: '3mi', color: '#D97706' },
                 { label: 'Same ZIP', key: 'ZIP', color: '#2563EB' },
+                { label: 'ZIP (no coords)', key: 'ZIP_MATCH', color: '#60A5FA' },
                 { label: 'LP fallback', key: 'LP_FALLBACK', color: '#C084FC' },
                 { label: 'No data', key: 'NO_DATA', color: '#6B7280' },
               ].filter(r => pb[r.key] > 0)
