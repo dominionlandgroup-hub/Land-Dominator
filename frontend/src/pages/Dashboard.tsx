@@ -559,8 +559,8 @@ ${sec('4. Land Quality',
   row('Buildability minimum', buildabilityLabel) + (slopeLabel ? row('Maximum slope', slopeLabel) : '') + (wetlandsLabel ? row('Wetlands coverage', wetlandsLabel) : '') +
   check('Exclude all FEMA flood zones', false) + check('Exclude landlocked parcels', false) + row('Road frontage', roadFrontageLabel)
 )}
-${sec('5. Sale History',
-  check('Include: sold in last 5 years') + check('Exclude: unknown sale dates', false) + check('Exclude: sold in last 2 years', false)
+${sec('5. Comp Filters (Land Portal Export)',
+  check('Sale Date: last 24 months') + check('Buyer Type: LLC / Corporation only') + check('Exclude: Individual / Trust buyers', false)
 )}
 ${sec('6. Owner',
   row('Owner type', 'Individual / Trust only') + check('Exclude LLC / Corp owners', false) + row('Owner tenure', '5+ years') + row('Absentee', 'Cross-county absentees preferred')
@@ -688,13 +688,13 @@ ${sec('6. Owner',
 
         {/* Section 5 — Sale History */}
         <div className="rounded-xl p-4" style={cardStyle}>
-          {hdr('5 · Sale History')}
+          {hdr('5 · Comp Filters (Land Portal Export)')}
           <div className="space-y-2 text-xs">
-            <div className="flex gap-2"><span style={{ color: '#2D7A4F', fontWeight: 700 }}>✓</span><span style={{ color: '#1A0A2E' }}>Sold comps: last 5 years</span></div>
-            <div className="flex gap-2"><span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>Exclude unknown sale dates</span></div>
-            <div className="flex gap-2"><span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>Exclude sold last 2 years (recent buyers less motivated)</span></div>
-            <div className="flex gap-2"><span style={{ color: '#2D7A4F', fontWeight: 700 }}>✓</span><span style={{ color: '#1A0A2E' }}>Absentee owners preferred</span></div>
+            <div className="flex gap-2"><span style={{ color: '#2D7A4F', fontWeight: 700 }}>✓</span><span style={{ color: '#1A0A2E' }}>Sale Date: last 24 months</span></div>
+            <div className="flex gap-2"><span style={{ color: '#2D7A4F', fontWeight: 700 }}>✓</span><span style={{ color: '#1A0A2E' }}>Buyer Type: LLC / Corporation only</span></div>
+            <div className="flex gap-2"><span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>Individual / Trust buyers (exclude — less reliable pricing)</span></div>
           </div>
+          <p className="text-[10px] mt-2 italic" style={{ color: '#9B8AAE' }}>LLC buyers are professional investors who pay retail — best benchmark for offer pricing</p>
         </div>
 
         {/* Section 6 — Owner */}

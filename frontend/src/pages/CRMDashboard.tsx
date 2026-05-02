@@ -99,12 +99,32 @@ const IconInbox = () => (
 )
 
 export default function CRMDashboard() {
-  const { setCurrentPage, unreadCount } = useApp()
+  const { setCurrentPage, unreadCount, setShowSetupGuide, compsStats, dashboardData,
+          campaigns: ctxCampaigns, loadingCampaigns } = useApp()
   const [properties, setProperties] = useState<CRMProperty[]>([])
   const [deals, setDeals] = useState<CRMDeal[]>([])
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [loading, setLoading] = useState(true)
   const [commStats, setCommStats] = useState<CommStats | null>(null)
+  const [quickStartDismissed, setQuickStartDismissed] = useState(() => {
+    try { return localStorage.getItem('ld_quickstart_dismissed') === '1' } catch { return false }
+  })
+
+  function dismissQuickStart() {
+    try { localStorage.setItem('ld_quickstart_dismissed', '1') } catch {}
+    setQuickStartDismissed(true)
+  }
+
+  function setupComplete(): number {
+    let done = 2
+    if (dashboardData?.top_states?.length || dashboardData?.top_counties?.length) done++
+    if (compsStats?.valid_rows && compsStats.valid_rows > 0) done++
+    if (ctxCampaigns.length > 0) done++
+    if (ctxCampaigns.some(c => (c.cost_per_piece ?? 0) > 0)) done++
+    return done
+  }
+  const completedSteps = loadingCampaigns ? null : setupComplete()
+  const showQuickStart = !quickStartDismissed && completedSteps !== null && completedSteps < 6
 
   useEffect(() => {
     Promise.all([
@@ -148,6 +168,41 @@ export default function CRMDashboard() {
       </div>
 
       <div className="p-6 max-w-[1300px] mx-auto w-full space-y-6">
+
+        {/* Quick Start card */}
+        {showQuickStart && (
+          <div className="rounded-xl px-5 py-4" style={{ background: '#fff', border: '1.5px solid rgba(92,41,119,0.25)', boxShadow: '0 2px 12px rgba(92,41,119,0.08)' }}>
+            <div className="flex items-start justify-between mb-3">
+              <div>
+                <p className="font-semibold text-sm" style={{ color: '#1A0A2E' }}>
+                  Quick Start — {completedSteps} of 6 steps complete
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: '#9B8AAE' }}>
+                  Complete these steps to send your first mailer
+                </p>
+              </div>
+              <button
+                onClick={dismissQuickStart}
+                className="text-xs ml-4 flex-none"
+                style={{ color: '#C4B8D0' }}
+                title="Dismiss"
+              >✕</button>
+            </div>
+            <div className="h-1.5 rounded-full overflow-hidden mb-4" style={{ background: '#EDE8F5' }}>
+              <div
+                className="h-full rounded-full transition-all duration-500"
+                style={{ width: `${((completedSteps ?? 0) / 6) * 100}%`, background: '#5C2977' }}
+              />
+            </div>
+            <button
+              className="btn-primary text-sm"
+              onClick={() => setShowSetupGuide(true)}
+            >
+              Continue Setup →
+            </button>
+          </div>
+        )}
+
         {/* Stat cards */}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
           {STAT_CARDS.map((card) => (

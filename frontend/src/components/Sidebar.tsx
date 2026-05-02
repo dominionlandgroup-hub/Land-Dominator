@@ -2,6 +2,14 @@ import React, { useState } from 'react'
 import { useApp } from '../context/AppContext'
 import type { AppPage } from '../types'
 
+const IconGuide = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10"/>
+    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+    <line x1="12" y1="17" x2="12.01" y2="17"/>
+  </svg>
+)
+
 // ── Icons ───────────────────────────────────────────────────────────────────
 
 const IconDashboard = () => (
@@ -145,13 +153,60 @@ function NavBtn({
   )
 }
 
+function SetupGuideBtn({ active, incompleteCount, onClick }: {
+  active: boolean
+  incompleteCount: number | null
+  onClick: () => void
+}) {
+  const [hovered, setHovered] = React.useState(false)
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      className="w-full flex items-center gap-2.5 rounded-lg text-left transition-all duration-150"
+      style={{
+        padding: '7px 12px',
+        background: active ? ACTIVE_BG : hovered ? HOVER_BG : 'transparent',
+        color: active ? TEXT_ACTIVE : TEXT_DEFAULT,
+        borderLeft: active ? `3px solid ${ACTIVE_GOLD}` : '3px solid transparent',
+      }}
+    >
+      <span className="flex-none" style={{ opacity: active ? 1 : 0.75 }}><IconGuide /></span>
+      <span className="text-sm font-medium flex-1">Setup Guide</span>
+      {incompleteCount !== null && incompleteCount > 0 && (
+        <span style={{
+          background: '#D5A940', color: '#1A0A2E', borderRadius: 10,
+          padding: '1px 6px', fontSize: 10, fontWeight: 700, lineHeight: '1.4',
+          minWidth: 18, textAlign: 'center',
+        }}>{incompleteCount}</span>
+      )}
+      {incompleteCount === 0 && (
+        <span style={{ fontSize: 11, color: '#2D7A4F', fontWeight: 700 }}>✓</span>
+      )}
+    </button>
+  )
+}
+
 // ── Sidebar ──────────────────────────────────────────────────────────────────
 
 export default function Sidebar() {
-  const { currentPage, setCurrentPage, compsStats, targetStats, matchResult, unreadCount } = useApp()
+  const { currentPage, setCurrentPage, compsStats, targetStats, matchResult, unreadCount,
+          showSetupGuide, setShowSetupGuide, dashboardData, campaigns, loadingCampaigns } = useApp()
   const [boardsOpen, setBoardsOpen] = useState(
     ['boards-seller', 'boards-buyer', 'boards-inventory'].includes(currentPage)
   )
+
+  function setupIncomplete(): number | null {
+    if (loadingCampaigns) return null
+    let done = 2 // steps 1 & 2 always complete
+    if (dashboardData?.top_states?.length || dashboardData?.top_counties?.length) done++
+    if (compsStats?.valid_rows && compsStats.valid_rows > 0) done++
+    if (campaigns.length > 0) done++
+    if (campaigns.some(c => (c.cost_per_piece ?? 0) > 0)) done++
+    return 6 - done
+  }
+  const incompleteCount = setupIncomplete()
 
   const boardsActive = ['boards-seller', 'boards-buyer', 'boards-inventory'].includes(currentPage)
 
@@ -227,6 +282,14 @@ export default function Sidebar() {
         <div style={{ borderTop: '1px solid rgba(213,169,64,0.1)', margin: '6px 4px' }} />
 
         <NavBtn id="upload-comps" label="Upload Comps" icon={<IconUpload />}   active={currentPage === 'upload-comps' || currentPage === 'dashboard' || currentPage === 'match-targets'} onClick={() => nav('upload-comps')} />
+
+        {/* Setup Guide — opens drawer, not a page */}
+        <SetupGuideBtn
+          active={showSetupGuide}
+          incompleteCount={incompleteCount}
+          onClick={() => setShowSetupGuide(!showSetupGuide)}
+        />
+
         <NavBtn id="settings"     label="Settings"     icon={<IconSettings />} active={currentPage === 'settings'}     onClick={() => nav('settings')} />
       </nav>
 

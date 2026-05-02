@@ -326,22 +326,42 @@ _FLOAT_FIELDS = {
 _FALLBACK_COLS: set[str] = {"mail names", "calc acreage"}
 
 
+_INSTITUTIONAL_PREFIXES = frozenset([
+    "LLC", "INC", "CORP", "LTD", "LP", "LLP", "TRUST", "ESTATE",
+    "COUNTY", "CITY", "STATE", "TOWN", "VILLAGE", "TOWNSHIP", "CHURCH",
+    "SCHOOL", "DISTRICT",
+])
+
+
+def _is_institutional(s: str) -> bool:
+    """True if name looks like a company/org rather than a person."""
+    words = s.strip().upper().split()
+    if not words:
+        return False
+    first = words[0].rstrip(".,;")
+    last = words[-1].rstrip(".,;")
+    return (first in _INSTITUTIONAL_PREFIXES or last in _INSTITUTIONAL_PREFIXES
+            or " OF " in s.upper() or " LLC" in s.upper() or " INC" in s.upper())
+
+
 def _looks_like_lp_name(s: str) -> bool:
     """True if string looks like Land Portal 'LAST FIRST MIDDLE' format (all caps, 2+ words)."""
+    if _is_institutional(s):
+        return False
     stripped = s.replace("&", "").replace("AND", "").strip()
     return len(stripped) > 3 and stripped == stripped.upper() and " " in stripped
 
 
 def _reformat_lp_name(raw: str) -> str:
-    """Convert 'FOSTER DAVID A & SMITH MARY B' → 'David Foster & Mary Smith'."""
+    """Convert 'FOSTER DAVID A & SMITH MARY B' → 'David A Foster & Mary B Smith'."""
     owners = re.split(r"\s*&\s*", raw)
     formatted = []
     for owner in owners:
         words = owner.strip().split()
         if len(words) >= 2:
-            first = words[1].capitalize()
             last = words[0].capitalize()
-            formatted.append(f"{first} {last}")
+            rest = [w.capitalize() for w in words[1:]]
+            formatted.append(" ".join(rest + [last]))
         elif words:
             formatted.append(words[0].title())
     return " & ".join(formatted)
@@ -406,11 +426,12 @@ def _map_pebble_row(row: dict, col_to_field: dict[str, str]) -> dict:
         raw = result["owner_full_name"]
         if _looks_like_lp_name(raw):
             result["owner_full_name"] = _reformat_lp_name(raw)
-            # Also populate first/last from owner 1 for convenience
-            parts = result["owner_full_name"].split(" & ")
-            name_parts = parts[0].split(" ", 1)
-            result.setdefault("owner_first_name", name_parts[0])
-            result.setdefault("owner_last_name", name_parts[1] if len(name_parts) > 1 else "")
+            # Extract first/last from original raw (before reformatting) for correct values
+            orig_owners = re.split(r"\s*&\s*", raw)
+            orig_words = orig_owners[0].strip().split()
+            if len(orig_words) >= 2:
+                result.setdefault("owner_first_name", orig_words[1].capitalize())
+                result.setdefault("owner_last_name", orig_words[0].capitalize())
 
     return result
 
@@ -1070,10 +1091,22 @@ async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)
             owner_full = r.get("owner_name") or r.get("owner_full_name") or ""
             owner_first = r.get("owner_first_name") or ""
             owner_last = r.get("owner_last_name") or ""
-            if not owner_first and not owner_last and owner_full.strip():
-                parts = owner_full.strip().split(" ", 1)
-                owner_first = parts[0]
-                owner_last = parts[1] if len(parts) > 1 else ""
+            # Reformat LP "LAST FIRST MIDDLE" all-caps format to "First Middle Last"
+            if owner_full and _looks_like_lp_name(owner_full):
+                orig_owners = re.split(r"\s*&\s*", owner_full)
+                orig_words = orig_owners[0].strip().split()
+                owner_full = _reformat_lp_name(owner_full)
+                if not owner_first and len(orig_words) >= 2:
+                    owner_first = orig_words[1].capitalize()
+                if not owner_last and orig_words:
+                    owner_last = orig_words[0].capitalize()
+            elif not owner_first and not owner_last and owner_full.strip():
+                parts = owner_full.strip().split()
+                if len(parts) >= 2:
+                    owner_first = parts[0]
+                    owner_last = parts[-1]
+                elif parts:
+                    owner_first = parts[0]
             rows.append({
                 # Basic
                 "campaign_id": campaign_id,
@@ -1526,6 +1559,42 @@ async def get_property_tags(campaign_id: Optional[str] = Query(None)) -> dict:
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+@router.get("/properties/fix-names")
+async def fix_property_names() -> dict:
+    """One-time fix: reformat owner_full_name from LP all-caps 'LAST FIRST' format to 'First Last'."""
+    try:
+        sb = get_supabase()
+        fixed = 0
+        page = 0
+        while True:
+            result = (sb.table("crm_properties")
+                      .select("id, owner_full_name, owner_first_name, owner_last_name")
+                      .range(page * 500, (page + 1) * 500 - 1)
+                      .execute())
+            batch = result.data or []
+            if not batch:
+                break
+            for row in batch:
+                raw = row.get("owner_full_name") or ""
+                if raw and _looks_like_lp_name(raw):
+                    new_full = _reformat_lp_name(raw)
+                    orig_owners = re.split(r"\s*&\s*", raw)
+                    orig_words = orig_owners[0].strip().split()
+                    new_first = orig_words[1].capitalize() if len(orig_words) >= 2 else (row.get("owner_first_name") or "")
+                    new_last = orig_words[0].capitalize() if orig_words else (row.get("owner_last_name") or "")
+                    (sb.table("crm_properties")
+                       .update({"owner_full_name": new_full, "owner_first_name": new_first, "owner_last_name": new_last})
+                       .eq("id", row["id"])
+                       .execute())
+                    fixed += 1
+            if len(batch) < 500:
+                break
+            page += 1
+        return {"fixed": fixed, "message": f"Reformatted {fixed} property names from LP format to First Last"}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 @router.get("/properties")
 async def list_properties(
     status: Optional[str] = Query(None),
@@ -1621,23 +1690,54 @@ async def export_properties_csv(
 
         HEADERS = [
             "Owner Full Name", "Owner First Name", "Owner Last Name",
-            "Mailing Address Line 1", "Mailing City", "Mailing State", "Mailing Zip",
+            "Mailing Address", "Mailing City", "Mailing State", "Mailing Zip",
+            "Property Address", "Property City", "Property State", "Property Zip",
             "APN", "County", "State", "Acreage",
-            "Campaign Code", "Offer Price", "LP Estimate",
-            "Comp Based Offer", "Recommended Offer", "Confidence Level",
+            "Campaign Code", "Offer Price", "Confidence Level", "Pricing Method",
+            "Comp 1 Address", "Comp 1 Price", "Comp 1 Acreage", "Comp 1 Date",
+            "Comp 2 Address", "Comp 2 Price", "Comp 2 Acreage", "Comp 2 Date",
+            "Comp 3 Address", "Comp 3 Price", "Comp 3 Acreage", "Comp 3 Date",
             "Status",
-        ]
-        FIELDS = [
-            "owner_full_name", "owner_first_name", "owner_last_name",
-            "owner_mailing_address", "owner_mailing_city", "owner_mailing_state", "owner_mailing_zip",
-            "apn", "county", "state", "acreage",
-            "campaign_code", "offer_price", "lp_estimate",
-            "comp_based_offer", "recommended_offer", "confidence_level",
-            "status",
         ]
 
         def _row_values(row: dict) -> list:
-            return [row.get(f, "") or "" for f in FIELDS]
+            full_name = row.get("owner_full_name") or ""
+            if full_name and _looks_like_lp_name(full_name):
+                full_name = _reformat_lp_name(full_name)
+            return [
+                full_name,
+                row.get("owner_first_name") or "",
+                row.get("owner_last_name") or "",
+                row.get("owner_mailing_address") or "",
+                row.get("owner_mailing_city") or "",
+                row.get("owner_mailing_state") or "",
+                row.get("owner_mailing_zip") or "",
+                row.get("property_address") or "",
+                row.get("property_city") or "",
+                row.get("state") or "",
+                row.get("property_zip") or "",
+                row.get("apn") or "",
+                row.get("county") or "",
+                row.get("state") or "",
+                row.get("acreage") or "",
+                row.get("campaign_code") or "",
+                row.get("offer_price") or "",
+                row.get("confidence_level") or "",
+                row.get("pricing_method_used") or "",
+                row.get("comp_1_address") or "",
+                row.get("comp1_price") or "",
+                row.get("comp1_acreage") or "",
+                row.get("comp_1_date") or "",
+                row.get("comp_2_address") or "",
+                row.get("comp2_price") or "",
+                row.get("comp2_acreage") or "",
+                row.get("comp_2_date") or "",
+                row.get("comp_3_address") or "",
+                row.get("comp3_price") or "",
+                row.get("comp3_acreage") or "",
+                row.get("comp_3_date") or "",
+                row.get("status") or "",
+            ]
 
         writer.writerow(HEADERS)
         for row in all_rows:

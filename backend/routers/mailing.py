@@ -18,85 +18,69 @@ router = APIRouter(prefix="/mailing", tags=["mailing"])
 FOREIGN_STATES = {"AE", "AP", "AS"}
 
 OUTPUT_HEADERS = [
-    # PROPERTY
-    "APN",
-    "Parcel Address",
-    "Parcel City",
-    "Parcel State",
-    "Parcel Zip",
-    "Parcel County",
-    "Latitude",
-    "Longitude",
-    # OWNER
-    "Owner Name",
+    "Owner Full Name",
     "Owner First Name",
     "Owner Last Name",
-    "Mail Full Address",
-    "Mail City",
-    "Mail State",
-    "Mail Zip",
-    # PRICING
-    "Retail Estimate",
-    "Suggested Offer Low",
-    "Suggested Offer Mid",
-    "Suggested Offer High",
-    # MATCH DATA
-    "Comp Count",
-    "Clean Comp Count",
-    "Closest Comp Distance (mi)",
-    "Acreage Band",
-    "Same Street Match",
-    # ADDITIONAL
-    "Lot Acres",
-    "Match Score",
-    "Outliers Removed",
-    "Confidence",
-    "Median Comp Sale Price",
-    "Median PPA",
-    "Min Comp Price",
-    "Max Comp Price",
-    "TLP Estimate",
-    "Pricing Flag",
-    "No Match Reason",
-    "Cross County Match",
-    "Comp Avg Age Days",
-    "Premium ZIP",
-    "Flood Zone",
-    "Buildability %",
-    "Road Frontage",
-    "Possible Issue",
-    "Nano Warning",
-    # Comp 1 transparency
-    "Comp 1 Address",
-    "Comp 1 Sale Price",
-    "Comp 1 Sale Date",
-    "Comp 1 Acreage",
-    "Comp 1 Distance (mi)",
-    "Comp 1 $/Acre",
-    "Comp 1 Same Street",
-    # Comp 2 transparency
-    "Comp 2 Address",
-    "Comp 2 Sale Price",
-    "Comp 2 Sale Date",
-    "Comp 2 Acreage",
-    "Comp 2 Distance (mi)",
-    "Comp 2 $/Acre",
-    # Comp 3 transparency
-    "Comp 3 Address",
-    "Comp 3 Sale Price",
-    "Comp 3 Sale Date",
-    "Comp 3 Acreage",
-    "Comp 3 Distance (mi)",
-    "Comp 3 $/Acre",
-    # Pricing metadata
-    "Num Comps Used",
+    "Mailing Address",
+    "Mailing City",
+    "Mailing State",
+    "Mailing Zip",
+    "Property Address",
+    "Property City",
+    "Property State",
+    "Property Zip",
+    "APN",
+    "County",
+    "State",
+    "Acreage",
+    "Offer Price",
+    "Confidence Level",
     "Pricing Method",
-    "Comp Quality Flags",
-    # Override (blank — user fills before mail house)
-    "Override Offer",
-    # Pricing sanity
-    "Pricing Sanity Flag",
+    "Comp 1 Address",
+    "Comp 1 Price",
+    "Comp 1 Acreage",
+    "Comp 1 Date",
+    "Comp 2 Address",
+    "Comp 2 Price",
+    "Comp 2 Acreage",
+    "Comp 2 Date",
+    "Comp 3 Address",
+    "Comp 3 Price",
+    "Comp 3 Acreage",
+    "Comp 3 Date",
+    "Pricing Flag",
 ]
+
+
+def _looks_like_lp_name_simple(s: str) -> bool:
+    """True if string looks like LP all-caps 'LAST FIRST' format (no institutional check needed here)."""
+    stripped = s.replace("&", "").strip()
+    if not stripped or len(stripped) <= 3 or stripped != stripped.upper() or " " not in stripped:
+        return False
+    first_word = stripped.split()[0].upper()
+    # Skip institutional prefixes
+    institutional = {"LLC", "INC", "CORP", "LTD", "LP", "LLP", "TRUST", "ESTATE",
+                     "COUNTY", "CITY", "STATE", "TOWN", "VILLAGE", "TOWNSHIP"}
+    last_word = stripped.split()[-1].upper().rstrip(".,;")
+    if first_word in institutional or last_word in institutional or " OF " in s.upper():
+        return False
+    return True
+
+
+def _reformat_lp_name_simple(raw: str) -> str:
+    """Convert 'FOSTER DAVID A & SMITH MARY B' → 'David A Foster & Mary B Smith'."""
+    import re as _re
+    owners = _re.split(r"\s*&\s*", raw)
+    formatted = []
+    for owner in owners:
+        words = owner.strip().split()
+        if len(words) >= 2:
+            last = words[0].capitalize()
+            rest = [w.capitalize() for w in words[1:]]
+            formatted.append(" ".join(rest + [last]))
+        elif words:
+            formatted.append(words[0].title())
+    return " & ".join(formatted)
 
 
 # Cache for pre-serialized mailing preview JSON (avoids reprocessing 14K+ records)
@@ -392,88 +376,46 @@ def _build_csv(parcels: list[MatchedParcel]) -> bytes:
     writer.writerow(OUTPUT_HEADERS)
 
     for p in parcels:
-        writer.writerow(
-            [
-                # PROPERTY
-                p.apn,
-                p.parcel_address or "",
-                p.parcel_city or "",
-                p.parcel_state or "",
-                p.parcel_zip or "",
-                p.parcel_county or "",
-                p.latitude if p.latitude is not None else "",
-                p.longitude if p.longitude is not None else "",
-                # OWNER
-                p.owner_name,
-                p.owner_first_name or "",
-                p.owner_last_name or "",
-                p.mail_address,
-                p.mail_city,
-                p.mail_state,
-                p.mail_zip,
-                # PRICING
-                _fmt_currency(p.retail_estimate),
-                _fmt_currency(p.suggested_offer_low),
-                _fmt_currency(p.suggested_offer_mid),
-                _fmt_currency(p.suggested_offer_high),
-                # MATCH DATA
-                p.comp_count,
-                p.clean_comp_count,
-                f"{p.closest_comp_distance:.2f}" if p.closest_comp_distance is not None else "",
-                p.acreage_band or "",
-                "Yes" if p.same_street_match else "No",
-                # ADDITIONAL
-                p.lot_acres if p.lot_acres is not None else "",
-                p.match_score,
-                p.outliers_removed,
-                p.confidence,
-                _fmt_currency(p.median_comp_sale_price),
-                _fmt_currency(p.median_ppa),
-                _fmt_currency(p.min_comp_price),
-                _fmt_currency(p.max_comp_price),
-                _fmt_currency(p.tlp_estimate),
-                p.pricing_flag or "",
-                p.no_match_reason or "",
-                "Yes" if p.cross_county_match else "No",
-                p.comp_avg_age_days if p.comp_avg_age_days is not None else "",
-                "Yes" if p.premium_zip else "No",
-                p.flood_zone or "",
-                p.buildability_pct if p.buildability_pct is not None else "",
-                p.road_frontage if p.road_frontage is not None else "",
-                p.possible_issue or "",
-                "Yes" if p.nano_buildability_warning else "",
-                # Comp 1 transparency
-                p.comp_1_address or "",
-                _fmt_currency(p.comp_1_price),
-                p.comp_1_date or "",
-                f"{p.comp_1_acres:.2f}" if p.comp_1_acres is not None else "",
-                f"{p.comp_1_distance:.2f}" if p.comp_1_distance is not None else "",
-                _fmt_currency(p.comp_1_ppa),
-                "Yes" if p.comp_1_same_street else "No",
-                # Comp 2 transparency
-                p.comp_2_address or "",
-                _fmt_currency(p.comp_2_price),
-                p.comp_2_date or "",
-                f"{p.comp_2_acres:.2f}" if p.comp_2_acres is not None else "",
-                f"{p.comp_2_distance:.2f}" if p.comp_2_distance is not None else "",
-                _fmt_currency(p.comp_2_ppa),
-                # Comp 3 transparency
-                p.comp_3_address or "",
-                _fmt_currency(p.comp_3_price),
-                p.comp_3_date or "",
-                f"{p.comp_3_acres:.2f}" if p.comp_3_acres is not None else "",
-                f"{p.comp_3_distance:.2f}" if p.comp_3_distance is not None else "",
-                _fmt_currency(p.comp_3_ppa),
-                # Pricing metadata
-                p.num_comps_used if p.num_comps_used else "",
-                p.pricing_method or "",
-                p.comp_quality_flags or "",
-                # Override Offer (blank — user fills before sending to mail house)
-                "",
-                # Pricing sanity
-                p.pricing_sanity_flag or "",
-            ]
-        )
+        # Apply LP name format fix on export
+        owner_name = p.owner_name or ""
+        if owner_name and _looks_like_lp_name_simple(owner_name):
+            owner_name = _reformat_lp_name_simple(owner_name)
+        first = p.owner_first_name or ""
+        last = p.owner_last_name or ""
+
+        writer.writerow([
+            owner_name,
+            first,
+            last,
+            p.mail_address or "",
+            p.mail_city or "",
+            p.mail_state or "",
+            p.mail_zip or "",
+            p.parcel_address or "",
+            p.parcel_city or "",
+            p.parcel_state or "",
+            p.parcel_zip or "",
+            p.apn or "",
+            p.parcel_county or "",
+            p.parcel_state or "",
+            p.lot_acres if p.lot_acres is not None else "",
+            _fmt_currency(p.suggested_offer_mid),
+            p.confidence or "",
+            p.pricing_method or "",
+            p.comp_1_address or "",
+            _fmt_currency(p.comp_1_price),
+            f"{p.comp_1_acres:.2f}" if p.comp_1_acres is not None else "",
+            p.comp_1_date or "",
+            p.comp_2_address or "",
+            _fmt_currency(p.comp_2_price),
+            f"{p.comp_2_acres:.2f}" if p.comp_2_acres is not None else "",
+            p.comp_2_date or "",
+            p.comp_3_address or "",
+            _fmt_currency(p.comp_3_price),
+            f"{p.comp_3_acres:.2f}" if p.comp_3_acres is not None else "",
+            p.comp_3_date or "",
+            p.pricing_flag or "",
+        ])
 
     return buf.getvalue().encode("utf-8")
 

@@ -40,6 +40,7 @@ type Strategy = 'infill_lots' | 'rural_acreage' | 'subdivide_and_sell'
 
 interface WizardProps {
   onComplete: () => void
+  startAtStep?: number
 }
 
 // ── Progress Bar ─────────────────────────────────────────────────────────────
@@ -807,8 +808,8 @@ function Step6Launch({
 
 // ── Main Wizard ───────────────────────────────────────────────────────────────
 
-export default function OnboardingWizard({ onComplete }: WizardProps) {
-  const [step, setStep] = useState(1)
+export default function OnboardingWizard({ onComplete, startAtStep = 1 }: WizardProps) {
+  const [step, setStep] = useState(startAtStep)
   const [strategy, setStrategy] = useState<Strategy>('infill_lots')
   const [selectedState, setSelectedState] = useState('')
   const [researchResult, setResearchResult] = useState<StateResearchResult | null>(null)

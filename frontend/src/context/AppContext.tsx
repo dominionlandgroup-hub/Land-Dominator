@@ -9,7 +9,7 @@ import type {
   AppPage,
 } from '../types'
 import { restoreLatestCompsSession, fetchDashboard } from '../api/client'
-import { getUnreadCount } from '../api/crm'
+import { getUnreadCount, listCrmCampaigns } from '../api/crm'
 
 const LS_COMPS_KEY = 'ld_comps_stats'
 
@@ -54,6 +54,15 @@ interface AppState {
   // Unread inbox count (polled every 30s)
   unreadCount: number
   setUnreadCount: (n: number) => void
+
+  // Setup Guide drawer
+  showSetupGuide: boolean
+  setShowSetupGuide: (v: boolean) => void
+
+  // Campaigns (used for setup guide step tracking)
+  campaigns: { id: string; name?: string; cost_per_piece?: number }[]
+  loadingCampaigns: boolean
+  refreshCampaigns: () => void
 }
 
 const AppContext = createContext<AppState | null>(null)
@@ -78,6 +87,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [propertyCampaignId, setPropertyCampaignId] = useState<string | null>(null)
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null)
   const [unreadCount, setUnreadCount] = useState(0)
+  const [showSetupGuide, setShowSetupGuide] = useState(false)
+  const [campaigns, setCampaigns] = useState<{ id: string; name?: string; cost_per_piece?: number }[]>([])
+  const [loadingCampaigns, setLoadingCampaigns] = useState(true)
 
   const setCompsStats = useCallback((s: UploadStats | null) => {
     _setCompsStats(s)
@@ -96,6 +108,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     pollUnreadRef.current = setInterval(poll, 30000)
     return () => { if (pollUnreadRef.current) clearInterval(pollUnreadRef.current) }
   }, [])
+
+  const refreshCampaigns = useCallback(() => {
+    setLoadingCampaigns(true)
+    listCrmCampaigns()
+      .then(list => setCampaigns(list as { id: string; name?: string; cost_per_piece?: number }[]))
+      .catch(() => {})
+      .finally(() => setLoadingCampaigns(false))
+  }, [])
+
+  useEffect(() => { refreshCampaigns() }, [refreshCampaigns])
 
   // Auto-restore comps session from Supabase Storage on app load
   const restoreRan = useRef(false)
@@ -144,6 +166,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSelectedPropertyId: useCallback((id) => setSelectedPropertyId(id), []),
     unreadCount,
     setUnreadCount: useCallback((n) => setUnreadCount(n), []),
+    showSetupGuide,
+    setShowSetupGuide: useCallback((v) => setShowSetupGuide(v), []),
+    campaigns,
+    loadingCampaigns,
+    refreshCampaigns,
   }
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>

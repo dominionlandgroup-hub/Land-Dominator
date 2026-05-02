@@ -17,6 +17,7 @@ import Boards from './pages/Boards'
 import SettingsPage from './pages/SettingsPage'
 import MailCalendar from './pages/MailCalendar'
 import OnboardingWizard from './pages/OnboardingWizard'
+import SetupGuideDrawer from './components/SetupGuideDrawer'
 import { getSetting, listCrmCampaigns } from './api/crm'
 
 class ErrorBoundary extends React.Component<
@@ -79,7 +80,9 @@ function PageContent() {
 }
 
 function AppShell() {
+  const { showSetupGuide, setShowSetupGuide } = useApp()
   const [wizardVisible, setWizardVisible] = useState(false)
+  const [wizardStartStep, setWizardStartStep] = useState(1)
   const [checked, setChecked] = useState(false)
 
   useEffect(() => {
@@ -95,6 +98,12 @@ function AppShell() {
       setChecked(true)
     })
   }, [])
+
+  function openWizardAtStep(step: number) {
+    setWizardStartStep(step)
+    setShowSetupGuide(false)
+    setWizardVisible(true)
+  }
 
   if (!checked) {
     return (
@@ -113,7 +122,8 @@ function AppShell() {
         </ErrorBoundary>
       </main>
       <AIAssistant />
-      {wizardVisible && <OnboardingWizard onComplete={() => setWizardVisible(false)} />}
+      {wizardVisible && <OnboardingWizard onComplete={() => setWizardVisible(false)} startAtStep={wizardStartStep} />}
+      {showSetupGuide && <SetupGuideDrawer onClose={() => setShowSetupGuide(false)} onOpenStep={openWizardAtStep} />}
     </div>
   )
 }

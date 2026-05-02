@@ -60,6 +60,43 @@ export default function UploadComps() {
       </div>
 
       <div className="p-8 max-w-4xl mx-auto w-full">
+
+        {/* Land Portal Export Instructions */}
+        <div className="card mb-6">
+          <h2 className="font-semibold mb-1" style={{ color: '#1A0A2E' }}>How to Export Sold Comps from Land Portal</h2>
+          <p className="text-xs mb-4" style={{ color: '#9B8AAE' }}>Follow these steps exactly — LLC/Corporate buyer sales give the most accurate pricing data</p>
+
+          <div className="space-y-2 mb-5">
+            {[
+              { n: 1, text: 'Log in to Land Portal and click "Sold Data" in the top navigation' },
+              { n: 2, text: 'Set Property Type → "Vacant Land"' },
+              { n: 3, text: 'Set Sale Date → Last 24 months (not 5 years — recent LLC sales reflect true market value)' },
+              { n: 4, text: 'Set Buyer Type → "LLC" and "Corporation" (uncheck Individual/Trust — LLC buyers are investors who pay retail)' },
+              { n: 5, text: 'Set your target State and County from your Buy Box' },
+              { n: 6, text: 'Set Acreage range matching your target lot sizes (e.g., 1–100 acres)' },
+              { n: 7, text: 'Click "Search" and wait for results to load' },
+              { n: 8, text: 'Click "Export" → "Export to CSV" (all columns)' },
+              { n: 9, text: 'Upload the downloaded CSV file below' },
+            ].map(step => (
+              <div key={step.n} className="flex items-start gap-3">
+                <span
+                  className="w-5 h-5 rounded-full flex items-center justify-center flex-none text-[10px] font-bold mt-0.5"
+                  style={{ background: '#5C2977', color: '#fff' }}
+                >{step.n}</span>
+                <p className="text-sm" style={{ color: '#1A0A2E' }}>{step.text}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="rounded-lg px-4 py-3" style={{ background: 'rgba(92,41,119,0.05)', border: '1px solid rgba(92,41,119,0.15)' }}>
+            <p className="text-xs font-semibold mb-1" style={{ color: '#5C2977' }}>Why LLC/Corporate buyers only?</p>
+            <p className="text-xs" style={{ color: '#6B5B8A' }}>
+              Individual buyers often overpay or underpay due to emotion. LLC and corporate buyers are professional investors
+              who consistently pay fair market retail prices — making them the most reliable benchmark for setting your acquisition offers.
+            </p>
+          </div>
+        </div>
+
         {/* Upload zone */}
         <div className="card mb-6">
           <FileUpload
