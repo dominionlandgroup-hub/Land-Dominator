@@ -14,11 +14,58 @@ Minimum 1 comp required for pricing. No TLP cap. No fallback beyond 1 mile.
 Data cleaning removes bulk sales, PPA outliers, and data errors.
 Acreage band matching prevents cross-band distortion.
 """
+import re
 import uuid
 import datetime
 import numpy as np
 import pandas as pd
 from typing import Any, Dict, List, Optional, Tuple
+
+
+# ─────────────────────────────────────────────
+# Owner name fixer — converts LP "LAST FIRST MIDDLE" format to "First Last"
+# ─────────────────────────────────────────────
+
+def fix_name(raw):
+    """Convert LP all-caps 'LAST FIRST [MIDDLE]' format to 'First Last'.
+    Returns (full_name, first_name, last_name).
+    Handles couples separated by ' & ' or ', '.
+    """
+    if not raw or not isinstance(raw, str):
+        return raw, "", ""
+    raw = raw.strip()
+    skip = ['llc', 'corp', 'inc', 'ltd', 'county', 'city', 'state', 'bank', 'trust fund', 'church', 'association']
+    if any(s in raw.lower() for s in skip):
+        return raw.title(), "", ""
+    # Handle couples: "SMITH JOHN & JONES MARY" or "SMITH JOHN, SMITH MARY"
+    for sep in [' & ', ', ']:
+        if sep in raw:
+            parts = raw.split(sep, 1)
+            name1_parts = parts[0].strip().split()
+            name2_parts = parts[1].strip().split() if len(parts) > 1 else []
+            if len(name1_parts) >= 2 and raw == raw.upper():
+                first1 = name1_parts[1].capitalize()
+                last1 = name1_parts[0].capitalize()
+                if name2_parts and len(name2_parts) >= 2:
+                    first2 = name2_parts[1].capitalize()
+                    last2 = name2_parts[0].capitalize()
+                    full = f"{first1} {last1} & {first2} {last2}"
+                else:
+                    full = f"{first1} {last1}"
+                return full, first1, last1
+    # Single name: "LAST FIRST MIDDLE" or "LAST FIRST"
+    parts = raw.split()
+    if len(parts) >= 2 and raw == raw.upper():
+        last = parts[0].capitalize()
+        first = parts[1].capitalize()
+        if len(parts) >= 3:
+            middle = parts[2].capitalize()
+            full = f"{first} {middle} {last}"
+        else:
+            full = f"{first} {last}"
+        return full, first, last
+    # Already formatted correctly
+    return raw, "", ""
 
 
 # ─────────────────────────────────────────────
@@ -163,9 +210,6 @@ COMP_SEARCH_STEPS = [
     (0.50, '0.50mi'),
     (1.00, '1mi'),
     (2.00, '2mi'),
-    (3.00, '3mi'),
-    (5.00, '5mi'),
-    (10.00, '10mi'),
 ]
 
 # Minimum comps before stopping radius expansion; accept 1 at final step
@@ -1432,7 +1476,7 @@ def run_matching(
                     cross_county_match = True
 
             if debug and radius_label == 'NO_COMPS':
-                print(f"[DEBUG {target_apn}] NO_COMPS - no comps within 3mi", flush=True)
+                print(f"[DEBUG {target_apn}] NO_COMPS - no comps within 2mi", flush=True)
 
             # ── Acreage similarity filter (band-specific thresholds) ──
             # Micro/nano bands: lots under 0.5ac vary widely, use looser threshold
@@ -1504,28 +1548,7 @@ def run_matching(
                                 flush=True,
                             )
 
-            # ── Step: Same ZIP code, any acreage band (no distance constraint) ──
-            if matched_mask.sum() == 0 and t_zip_str and t_zip_str not in ('nan', 'None', ''):
-                zip_all_mask = np.array([str(z).split('.')[0].strip() == t_zip_str for z in comp_zips])
-                if int(zip_all_mask.sum()) >= 2:
-                    matched_mask = zip_all_mask
-                    radius_label = 'ZIP'
-                    if debug:
-                        print(
-                            f"[DEBUG {target_apn}] ZIP FALLBACK: {zip_all_mask.sum()} comps in ZIP {t_zip_str}",
-                            flush=True,
-                        )
-
-            # ── Step: Same county, any acreage band (set radius label — pricing handled below) ──
-            if matched_mask.sum() == 0 and target_county_raw:
-                target_county_key = target_county_raw.split()[0]
-                county_key_match = (
-                    target_county_key if target_county_key in county_ppa_medians
-                    else (target_county_raw if target_county_raw in county_ppa_medians else None)
-                )
-                if county_key_match:
-                    # Mark so county median pricing fires below
-                    radius_label = 'COUNTY_MEDIAN'
+            # No fallback beyond 2 miles — NO_COMPS if nothing found in radius steps
 
         n_matched = int(matched_mask.sum())
         t_zip = t_zips[ti]
@@ -1592,36 +1615,11 @@ def run_matching(
         if cross_county_match and pricing.get('pricing_flag') == 'NO_COMPS':
             pricing['no_match_reason'] = 'NO_LOCAL_COMPS'
 
-        # ── COUNTY_MEDIAN: county PPA median × target acres ──
-        if pricing['pricing_flag'] == 'NO_COMPS' and radius_label == 'COUNTY_MEDIAN' and has_acres and target_acres > 0:
-            target_county_key = target_county_raw.split()[0] if target_county_raw else ''
-            _county_ppa = (
-                county_ppa_medians.get(target_county_key)
-                or county_ppa_medians.get(target_county_raw)
-            )
-            if _county_ppa and _county_ppa > 0:
-                _county_retail = _county_ppa * float(target_acres)
-                if _county_retail > 0 and (not max_retail_price or _county_retail <= max_retail_price):
-                    pricing.update({
-                        'pricing_flag': 'COUNTY_MEDIAN',
-                        'pricing_source': 'COUNTY_MEDIAN',
-                        'retail_estimate': round(_county_retail),
-                        'offer_low': round(_county_retail * LOW_PCT, 2),
-                        'offer_mid': round(_county_retail * MID_PCT, 2),
-                        'offer_high': round(_county_retail * HIGH_PCT, 2),
-                        'confidence': 'EST',
-                        'no_match_reason': f'No comps within 10mi — county median used',
-                        'radius_label': 'COUNTY_MEDIAN',
-                        'comp_count': 0,
-                        'clean_comp_count': 0,
-                        'closest_comp_distance': None,
-                    })
-
         # ── LP_FALLBACK: no comps but target has a TLP/LP Estimate ──
         # Use lp_estimate × pricing percentages as fallback pricing
         if pricing['pricing_flag'] == 'NO_COMPS' and tlp_val and tlp_val > 0:
             lp_retail = float(tlp_val)
-            _lp_reason = _no_match_pre_reason or 'No comps within 10 miles'
+            _lp_reason = _no_match_pre_reason or 'No comps within 2 miles'
             pricing.update({
                 'pricing_flag': 'LP_FALLBACK',
                 'pricing_source': 'LP_FALLBACK',
@@ -1637,7 +1635,7 @@ def run_matching(
 
         # Set human-readable no_match_reason for records that remain unpriced
         if pricing.get('pricing_flag') == 'NO_COMPS' and not pricing.get('no_match_reason'):
-            pricing['no_match_reason'] = _no_match_pre_reason or 'No comps within 10 miles'
+            pricing['no_match_reason'] = _no_match_pre_reason or 'No comps within 2 miles'
 
         if debug:
             print(f"[DEBUG {target_apn}] PRICING RESULT:", flush=True)
@@ -1655,39 +1653,30 @@ def run_matching(
                 return ""
             return str(v)
 
-        # Parse owner name into first/last if separate columns don't exist
-        owner_full = _s(row.get("Owner Name(s)") or row.get("Owner 1 Full Name"))
+        # Read raw name from CSV and fix LP "LAST FIRST MIDDLE" format at the source
+        raw_name = str(row.get("Owner Name(s)") or row.get("Owner 1 Full Name") or "").strip()
+        print(f"RAW NAME FROM CSV: {raw_name!r}", flush=True)
+        owner_full, owner_first, owner_last = fix_name(raw_name)
 
-        # Try to get first/last from dedicated columns first
-        owner_first = _s(
+        # If dedicated first/last columns exist, prefer them (overrides fix_name result)
+        col_first = _s(
             row.get("Owner 1 First Name") or
             row.get("Owner1FirstName") or
             row.get("Owner First Name") or
             row.get("Owner1 First Name")
         )
-        owner_last = _s(
+        col_last = _s(
             row.get("Owner 1 Last Name") or
             row.get("Owner1LastName") or
             row.get("Owner Last Name") or
             row.get("Owner1 Last Name")
         )
+        if col_first and col_last:
+            owner_first = col_first.strip().capitalize()
+            owner_last = col_last.strip().capitalize()
+            owner_full = f"{owner_first} {owner_last}"
 
-        # If no dedicated columns, parse from full name
-        # LP format: "Last First [Middle]" — single name or comma/& separated couples
-        if not owner_first and not owner_last and owner_full:
-            # Use first owner segment only (before comma or &)
-            first_segment = re.split(r"[,&]", owner_full)[0].strip()
-            seg_parts = first_segment.split()
-            # LP "Last First [Middle]" order: first word is last name
-            if len(seg_parts) >= 2:
-                owner_last = seg_parts[0].capitalize()
-                owner_first = seg_parts[1].capitalize()
-            elif seg_parts:
-                owner_last = seg_parts[0].capitalize()
-
-            # Debug first parsed name
-            if ti == 0:
-                print(f"[DEBUG] First owner name parsed: '{owner_full}' -> first='{owner_first}', last='{owner_last}'", flush=True)
+        print(f"Name fixed: {raw_name!r} → {owner_full!r} (first={owner_first!r} last={owner_last!r})", flush=True)
 
         # Build parcel address - try dedicated columns first, then construct from available data
         parcel_street_address = _s(
@@ -1780,8 +1769,8 @@ def run_matching(
         # Update pricing_method for LP_FALLBACK case
         if pricing.get('pricing_flag') == 'LP_FALLBACK':
             pricing_method = 'LP_FALLBACK'
-        if pricing.get('pricing_flag') == 'COUNTY_MEDIAN':
-            pricing_method = 'COUNTY_MEDIAN'
+        if pricing.get('pricing_flag') == 'LP_FALLBACK':
+            pricing_method = 'LP_FALLBACK'
 
         # ── Pricing sanity flag (TLP comparison) ──
         pricing_sanity_flag = "NO_TLP"
@@ -2003,7 +1992,7 @@ def run_matching(
         print(f"[match] Uncovered counties: {uncovered_counties}", flush=True)
 
     # ── Pricing method breakdown ──────────────────────────────────────────
-    _breakdown_keys = ['0.25mi', '0.50mi', '1mi', '2mi', '3mi', '5mi', '10mi', 'ZIP', 'COUNTY_MEDIAN', 'LP_FALLBACK', 'NO_DATA']
+    _breakdown_keys = ['0.25mi', '0.50mi', '1mi', '2mi', 'LP_FALLBACK', 'NO_DATA']
     pricing_breakdown: dict = {k: 0 for k in _breakdown_keys}
     county_median_count = 0
     for _r in results:
@@ -2011,9 +2000,6 @@ def run_matching(
         _rl   = _r.get('radius_label', '')
         if _flag == 'MATCHED' and _rl in pricing_breakdown:
             pricing_breakdown[_rl] += 1
-        elif _flag == 'COUNTY_MEDIAN':
-            pricing_breakdown['COUNTY_MEDIAN'] += 1
-            county_median_count += 1
         elif _flag == 'LP_FALLBACK':
             pricing_breakdown['LP_FALLBACK'] += 1
         elif _flag in ('NO_COMPS', None):
