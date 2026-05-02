@@ -16,6 +16,11 @@ import WelcomeScreen from './WelcomeScreen'
 
 const ZIP_COLORS = ['#5C2977','#8B4DB8','#2D7A4F','#D5A940','#7B3E99','#C05000','#4CAF7A','#B8860B','#3D1A5C']
 
+const fmtUSD = (v: number | null | undefined): string => {
+  if (v == null) return '—'
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)
+}
+
 export default function MailingList() {
   const {
     matchResult,
@@ -257,7 +262,7 @@ export default function MailingList() {
       align: 'right',
       defaultHidden: true,
       render: (v) =>
-        v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span>,
+        v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">{fmtUSD(v as number)}</span>,
     },
     {
       key: 'suggested_offer_mid',
@@ -269,7 +274,7 @@ export default function MailingList() {
           <span style={{ color: '#9B8AAE' }}>—</span>
         ) : (
           <span className="font-semibold" style={{ color: '#2D7A4F' }}>
-            ${Math.round(v as number).toLocaleString()}
+            {fmtUSD(v as number)}
           </span>
         ),
     },
@@ -280,7 +285,7 @@ export default function MailingList() {
       align: 'right',
       defaultHidden: true,
       render: (v) =>
-        v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span>,
+        v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">{fmtUSD(v as number)}</span>,
     },
     {
       key: 'tlp_estimate',
@@ -288,7 +293,7 @@ export default function MailingList() {
       align: 'right',
       defaultHidden: true,
       render: (v) =>
-        v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs" style={{ color: '#6B5B8A' }}>${Math.round(v as number).toLocaleString()}</span>,
+        v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs" style={{ color: '#6B5B8A' }}>{fmtUSD(v as number)}</span>,
     },
     {
       key: 'flood_zone',
@@ -327,7 +332,7 @@ export default function MailingList() {
       align: 'right',
       defaultHidden: true,
       render: (v) =>
-        v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span>,
+        v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">{fmtUSD(v as number)}</span>,
     },
     {
       key: 'median_comp_sale_price',
@@ -335,7 +340,7 @@ export default function MailingList() {
       align: 'right',
       defaultHidden: true,
       render: (v) =>
-        v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span>,
+        v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">{fmtUSD(v as number)}</span>,
     },
     {
       key: 'median_ppa',
@@ -343,7 +348,7 @@ export default function MailingList() {
       align: 'right',
       defaultHidden: true,
       render: (v) =>
-        v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span>,
+        v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">{fmtUSD(v as number)}</span>,
     },
     {
       key: 'min_comp_price',
@@ -351,7 +356,7 @@ export default function MailingList() {
       align: 'right',
       defaultHidden: true,
       render: (v) =>
-        v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span>,
+        v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">{fmtUSD(v as number)}</span>,
     },
     {
       key: 'max_comp_price',
@@ -359,7 +364,7 @@ export default function MailingList() {
       align: 'right',
       defaultHidden: true,
       render: (v) =>
-        v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span>,
+        v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">{fmtUSD(v as number)}</span>,
     },
     {
       key: 'outliers_removed',
@@ -502,13 +507,13 @@ export default function MailingList() {
                 <div>
                   <p style={{ color: '#6B5B8A' }}>Total acquisition value</p>
                   <p className="font-semibold" style={{ color: '#2D7A4F' }}>
-                    ${Math.round(totalAcq).toLocaleString()}
+                    {fmtUSD(totalAcq)}
                     {hasOutlier && <span className="text-xs font-normal ml-1" style={{ color: '#6B5B8A' }}>(includes outliers)</span>}
                   </p>
                 </div>
                 <div>
                   <p style={{ color: '#6B5B8A' }}>Average offer per parcel</p>
-                  <p className="font-semibold" style={{ color: '#1A0A2E' }}>${Math.round(avgOffer).toLocaleString()}</p>
+                  <p className="font-semibold" style={{ color: '#1A0A2E' }}>{fmtUSD(avgOffer)}</p>
                 </div>
                 <div>
                   <p style={{ color: '#6B5B8A' }}>ZIP breakdown</p>
@@ -527,7 +532,7 @@ export default function MailingList() {
                   </p>
                   {hasOutlier && (
                     <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>
-                      95th pct cap · actual max ${Math.round(offerMax).toLocaleString()}
+                      95th pct cap · actual max {fmtUSD(offerMax)}
                     </p>
                   )}
                 </div>
