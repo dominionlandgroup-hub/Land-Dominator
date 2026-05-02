@@ -263,20 +263,27 @@ def _save_comps_to_db(
                 sb.table("crm_sold_comps").delete().eq("state", state).execute()
             print(f"[comps-db] Replace mode: cleared comps for states {states}", flush=True)
 
-        # For append mode, preload existing APNs so we can skip duplicates
-        existing_apns: set[str] = set()
+        # For append mode, preload existing (apn, sale_date) pairs so we can skip true duplicates.
+        # Same APN on different dates = different sales = keep both.
+        # Same APN on same date = true duplicate = skip.
+        existing_apn_dates: set[tuple] = set()
         if append:
-            # Load APNs already in DB for any matching states
             for state in (states or [""]):
-                q = sb.table("crm_sold_comps").select("apn")
+                q = sb.table("crm_sold_comps").select("apn,sale_date")
                 if state:
                     q = q.eq("state", state)
-                res = q.execute()
-                for r in (res.data or []):
-                    apn = (r.get("apn") or "").strip()
-                    if apn:
-                        existing_apns.add(apn)
-            print(f"[comps-db] Append mode: {len(existing_apns)} existing APNs loaded for dedup", flush=True)
+                offset = 0
+                while True:
+                    batch = q.range(offset, offset + 999).execute()
+                    for r in (batch.data or []):
+                        apn_v = (r.get("apn") or "").strip()
+                        date_v = (r.get("sale_date") or "").strip()
+                        if apn_v and date_v:
+                            existing_apn_dates.add((apn_v, date_v))
+                    if len(batch.data or []) < 1000:
+                        break
+                    offset += 1000
+            print(f"[comps-db] Append mode: {len(existing_apn_dates)} existing (apn, sale_date) pairs loaded for dedup", flush=True)
 
         # Bulk sale detection (same buyer+price+date)
         bulk_key_counts: dict[tuple, int] = {}
@@ -331,8 +338,8 @@ def _save_comps_to_db(
             if bulk_keys and (bn, sale_price, sale_date) in bulk_keys:
                 skipped_filter += 1; continue
 
-            # APN dedup (append mode)
-            if append and apn and apn in existing_apns:
+            # APN+date dedup (append mode) — same APN on different dates = different sale = keep
+            if append and apn and sale_date and (apn, sale_date) in existing_apn_dates:
                 deduped += 1; continue
 
             lat = _sf(_col_value(row, ["Latitude", "latitude"]))
@@ -390,7 +397,7 @@ def _save_comps_to_db(
                     "zip":     zip_val or "",
                 })
 
-        print(f"[comps-db] {len(rows)} rows passed filters, {skipped_filter} skipped, {deduped} deduped (APN clash)", flush=True)
+        print(f"[comps-db] {len(rows)} rows passed filters, {skipped_filter} skipped, {deduped} deduped (APN+date clash)", flush=True)
 
         # Geocode MLS rows (batch Census API, up to 10 000 per call)
         geocoded_count = 0
@@ -654,18 +661,20 @@ async def upload_comps(
     for _ri, (_, _rrow) in enumerate(df.head(5).iterrows()):
         print(f"[comps] RAW ROW {_ri}: {dict(_rrow)}", flush=True)
 
-    # Per-row accept/reject trace for first 20 rows
+    # Per-row accept/reject trace for first 20 rows (direct column access, no helpers)
     print("[comps] --- 20-row decision trace ---", flush=True)
     for _ri, (_, _rrow) in enumerate(df.head(20).iterrows()):
-        _p  = parse_price(_fv(_rrow, "Current Sale Price", "Close Price", "Sold Price", "sale_price"))
-        _ac = parse_float(_fv(_rrow, "Lot Acres", "Approximate Acres", "Calc Acreage", "Acreage", "Acres", "acreage")) or 0.0
-        _co = str(_fv(_rrow, "Parcel County", "Parcel Address County", "County", "county") or "").strip()
-        _dt = parse_date(_fv(_rrow, "Current Sale Recording Date", "Close Date", "Sold Date", "sale_date"))
-        _verdict = "ACCEPT" if (_p > 0 and _ac > 0) else "REJECT"
-        _reason  = "" if _verdict == "ACCEPT" else (
-            "no_price" if _p <= 0 else "no_acreage"
-        )
-        print(f"  Row {_ri}: price={_p} acreage={_ac} county={_co!r} date={_dt} → {_verdict} {_reason}", flush=True)
+        _p_raw  = _rrow.get("Current Sale Price")
+        _ac_raw = _rrow.get("Lot Acres")
+        _co_raw = _rrow.get("Parcel County")
+        _lu_raw = _rrow.get("Land Use")
+        _p   = parse_price(_p_raw)
+        _ac  = parse_float(_ac_raw) or 0.0
+        _co  = str(_co_raw or "").strip()
+        _lu  = str(_lu_raw or "").strip()
+        _ok  = _p > 0 and _ac > 0
+        _lu_ok = not _lu or ("vacant" in _lu.lower() or "land" in _lu.lower())
+        print(f"  Row {_ri}: raw_price={_p_raw!r} parsed={_p} | raw_acres={_ac_raw!r} parsed={_ac} | county={_co!r} | lu={_lu!r} | price_ok={_p>0} acres_ok={_ac>0} lu_ok={_lu_ok}", flush=True)
     print("[comps] --- end trace ---", flush=True)
 
     rows = []
@@ -676,45 +685,36 @@ async def upload_comps(
     skipped_mega_sale = 0
     _logged_rows = 0
     for _, row in df.iterrows():
-        # ── Sale price: Current Sale Price → MLS Price → TLP Estimate (strip $) ──
-        sale_price = parse_price(_fv(row, "Current Sale Price"))
+        # ── Direct column access using exact LP column names ──
+        sale_price = parse_price(row.get("Current Sale Price") or row.get("MLS Price") or 0)
         if sale_price <= 0:
-            sale_price = parse_price(_fv(row, "MLS Price"))
-        if sale_price <= 0:
-            _tlp_raw = _fv(row, "TLP Estimate")
-            if _tlp_raw:
+            # Last resort: TLP Estimate (strip $ and commas)
+            _tlp_raw = row.get("TLP Estimate")
+            if _tlp_raw and str(_tlp_raw).strip().lower() not in ('', 'nan', 'none'):
                 sale_price = parse_price(str(_tlp_raw).replace("$", "").replace(",", "").strip())
 
-        # ── Acreage: Lot Acres → Calc Acreage → MLS Parcel Acreage ──
-        acreage = parse_float(_fv(row, "Lot Acres")) or 0.0
-        if acreage <= 0:
-            acreage = parse_float(_fv(row, "Calc Acreage")) or 0.0
-        if acreage <= 0:
-            acreage = parse_float(_fv(row, "MLS Parcel Acreage")) or 0.0
+        acreage = parse_float(row.get("Lot Acres") or row.get("Calc Acreage") or row.get("MLS Parcel Acreage") or 0) or 0.0
 
-        # ── Core fields ──
-        county = str(_fv(row, "Parcel County", "Parcel Address County", "County", "county") or "").lower().strip().replace(" county", "").replace("county", "").strip()
-        state = str(_fv(row, "Parcel State", "State", "state") or "TN").upper().strip()
-        zip_code = str(_fv(row, "Parcel Zip", "Zip Code", "Postal Code", "zip_code") or "").strip()
-        if zip_code.endswith('.0'):
-            zip_code = zip_code[:-2]
-        sale_date = parse_date(_fv(row, "Current Sale Recording Date", "Close Date", "Sold Date", "sale_date"))
+        county = str(row.get("Parcel County") or row.get("county") or "").lower().strip().replace(" county", "").replace("county", "").strip()
+        state = str(row.get("Parcel State") or "TN").upper().strip()
+        zip_code = str(row.get("Parcel Zip") or "").replace(".0", "").strip()
+        sale_date = parse_date(row.get("Current Sale Recording Date") or row.get("Close Date") or row.get("Sold Date"))
         lat = _parse_coord(row, "Latitude", "latitude", "LAT", "lat", "Y", "y")
         lon = _parse_coord(row, "Longitude", "longitude", "LON", "lon", "LNG", "lng", "X", "x")
-        apn = str(_fv(row, "APN", "Parcel Number", "apn") or "").strip()
-        land_use = str(_fv(row, "Land Use", "land_use") or "").strip()
-        buyer_name = str(_fv(row, "Current Sale Buyer 1 Full Name", "buyer_name") or "").strip()
+        apn = str(row.get("APN") or row.get("Parcel Number") or "").strip()
+        land_use = str(row.get("Land Use") or "").strip()
+        buyer_name = str(row.get("Current Sale Buyer 1 Full Name") or "").strip()
 
-        # ── Extended LP fields ──
-        slope_avg       = parse_float(_fv(row, "Slope AVG", "Average Slope", "Slope", "slope_avg"))
-        buildability    = parse_float(_fv(row, "Buildability total (%)", "Buildability", "buildability"))
-        road_frontage   = parse_float(_fv(row, "Road Frontage", "road_frontage"))
-        fema_coverage   = parse_float(_fv(row, "FEMA Flood Coverage", "fema_coverage"))
-        wetlands_cov    = parse_float(_fv(row, "Wetlands Coverage", "wetlands_coverage"))
-        elevation_avg   = parse_float(_fv(row, "Elevation AVG", "elevation_avg"))
-        land_locked     = str(_fv(row, "Land Locked", "land_locked") or "").strip() or None
-        property_id     = str(_fv(row, "propertyID", "PropertyID", "property_id") or "").strip() or None
-        fips_val        = str(_fv(row, "Parcel FIPS", "FIPS", "fips") or "").strip()
+        # ── Extended LP fields (direct access) ──
+        slope_avg    = parse_float(row.get("Slope AVG") or row.get("Average Slope"))
+        buildability = parse_float(row.get("Buildability total (%)") or row.get("Buildability"))
+        road_frontage = parse_float(row.get("Road Frontage"))
+        fema_coverage = parse_float(row.get("FEMA Flood Coverage"))
+        wetlands_cov  = parse_float(row.get("Wetlands Coverage"))
+        elevation_avg = parse_float(row.get("Elevation AVG"))
+        land_locked   = str(row.get("Land Locked") or "").strip() or None
+        property_id   = str(row.get("propertyID") or row.get("PropertyID") or "").strip() or None
+        fips_val      = str(row.get("Parcel FIPS") or row.get("FIPS") or "").strip()
         if fips_val.endswith(".0"):
             fips_val = fips_val[:-2]
         fips_val = fips_val or None
@@ -722,7 +722,7 @@ async def upload_comps(
         price_per_acre = sale_price / acreage if acreage > 0 else 0.0
 
         if _logged_rows < 3:
-            print(f"Row {_logged_rows}: price={sale_price}, acreage={acreage}, county={county!r}, land_use={land_use!r}, date={sale_date}, lat={lat}, lon={lon}", flush=True)
+            print(f"Row parsed: price={sale_price} acreage={acreage} county={county!r} lat={lat} lon={lon} land_use={land_use!r} date={sale_date}", flush=True)
             _logged_rows += 1
 
         # ── Filters ──
@@ -735,7 +735,7 @@ async def upload_comps(
         if not county:
             skipped_no_county += 1
             continue
-        # Land use filter: if present, must contain "Vacant" or "Land"
+        # Land use: if present, must contain "Vacant" or "Land"
         if land_use and "vacant" not in land_use.lower() and "land" not in land_use.lower():
             skipped_land_use += 1
             continue

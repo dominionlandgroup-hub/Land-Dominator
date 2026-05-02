@@ -2832,4 +2832,6 @@ CREATE INDEX IF NOT EXISTS idx_crm_sold_comps_state_county ON crm_sold_comps (st
 CREATE INDEX IF NOT EXISTS idx_crm_sold_comps_zip ON crm_sold_comps (zip_code);
 CREATE INDEX IF NOT EXISTS idx_crm_sold_comps_latlon ON crm_sold_comps (latitude, longitude);
 CREATE INDEX IF NOT EXISTS idx_crm_sold_comps_buyer_type ON crm_sold_comps (buyer_type);
+ALTER TABLE crm_sold_comps DROP CONSTRAINT IF EXISTS unique_apn;
+ALTER TABLE crm_sold_comps ADD CONSTRAINT unique_apn_date UNIQUE (apn, sale_date);
 """.strip()
