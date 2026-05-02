@@ -24,6 +24,13 @@ import pandas as pd
 from typing import Any, Dict, List, Optional, Tuple
 
 
+def normalize_county(name: str) -> str:
+    """Strip ' county' suffix and lowercase for consistent comparison."""
+    if not name:
+        return ""
+    return name.lower().strip().replace(" county", "").replace("county", "").strip()
+
+
 def _vary_price(price: float, apn: str) -> float:
     """
     Apply a small APN-seeded variation (±0.3%) to break round numbers.
@@ -1056,24 +1063,11 @@ def run_matching(
     comp_ppa = vc["ppa"].values.astype(np.float64)
     comp_zips = vc["Parcel Zip"].astype(str).values if "Parcel Zip" in vc.columns else np.full(len(vc), "")
     # County-awareness: target comps use `Parcel County` from the source export.
+    _county_col = "Parcel County" if "Parcel County" in vc.columns else ("Parcel Address County" if "Parcel Address County" in vc.columns else None)
     comp_counties = (
-        vc["Parcel County"]
-        .fillna("")
-        .astype(str)
-        .str.strip()
-        .str.lower()
-        .values
-        if "Parcel County" in vc.columns
-        else (
-            vc["Parcel Address County"]
-            .fillna("")
-            .astype(str)
-            .str.strip()
-            .str.lower()
-            .values
-            if "Parcel Address County" in vc.columns
-            else np.full(len(vc), "", dtype=object)
-        )
+        np.array([normalize_county(v) for v in vc[_county_col].fillna("").astype(str).values], dtype=object)
+        if _county_col
+        else np.full(len(vc), "", dtype=object)
     )
     comp_band_labels = _acreage_band_label_vec(comp_acres)
 
@@ -1354,12 +1348,12 @@ def run_matching(
         target_apn = str(row.get("APN", "")).strip()
         debug = target_apn in DEBUG_APNS
         is_premium = False  # Initialize here
-        target_county_raw = str(
+        target_county_raw = normalize_county(str(
             row.get("Parcel County")
             or row.get("Parcel Address County")
             or row.get("County")
             or ""
-        ).strip().lower()
+        ))
 
         # Apply acreage band filter
         band_label = 'unknown'
@@ -1505,9 +1499,8 @@ def run_matching(
             # (sparse areas with 1-4 comps often span county borders legitimately).
             if matched_mask.sum() >= 5 and target_county_raw:
                 nearby_counties = comp_counties[matched_mask]
-                target_county_key = target_county_raw.strip().lower().split()[0]
-                nearby_counties_clean = [c.strip().lower() for c in nearby_counties if c and c.strip()]
-                has_local = any(target_county_key in c for c in nearby_counties_clean)
+                nearby_counties_clean = [c for c in nearby_counties if c]
+                has_local = target_county_raw in nearby_counties_clean
                 if nearby_counties_clean and not has_local:
                     matched_mask = np.zeros(len(vc), dtype=bool)
                     radius_label = 'NO_COMPS'

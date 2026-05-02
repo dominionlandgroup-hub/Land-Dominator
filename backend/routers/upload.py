@@ -328,9 +328,11 @@ def _save_comps_to_db(
             zip_val   = str(_col_value(row, ["Parcel Zip", "zip_code"]) or "").strip().split(".")[0] or None
             addr_val  = str(_col_value(row, ["Parcel Full Address", "full_address", "address"]) or "").strip() or None
 
+            _raw_county = str(_col_value(row, ["Parcel County", "Parcel Address County", "county"]) or "").strip()
+            _norm_county = _raw_county.lower().replace(" county", "").replace("county", "").strip() if _raw_county else None
             row_dict = {
                 "apn":               apn or None,
-                "county":            str(_col_value(row, ["Parcel County", "Parcel Address County", "county"]) or "").strip() or None,
+                "county":            _norm_county or None,
                 "state":             state_val,
                 "zip_code":          zip_val,
                 "acreage":           acreage,
@@ -700,3 +702,24 @@ async def clear_comps_by_file(filename: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     return {"filename": filename, "deleted": deleted}
+
+
+@router.post("/comps/normalize-counties")
+async def normalize_counties_in_db():
+    """One-time migration: strip ' County' suffix from all county values in crm_sold_comps."""
+    from services.supabase_client import get_supabase
+    sb = get_supabase()
+    try:
+        # Fetch all rows with a county value
+        res = sb.table("crm_sold_comps").select("id,county").not_.is_("county", "null").execute()
+        rows = res.data or []
+        updated = 0
+        for row in rows:
+            raw = row.get("county") or ""
+            normalized = raw.lower().strip().replace(" county", "").replace("county", "").strip()
+            if normalized != raw:
+                sb.table("crm_sold_comps").update({"county": normalized}).eq("id", row["id"]).execute()
+                updated += 1
+        return {"total_checked": len(rows), "updated": updated}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
