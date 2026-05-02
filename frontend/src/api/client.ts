@@ -80,6 +80,11 @@ export async function restoreLatestCompsSession(): Promise<UploadStats> {
   return data
 }
 
+export async function restoreLatestTargetSession(): Promise<UploadStats> {
+  const { data } = await api.get<UploadStats>('/upload/targets/restore')
+  return data
+}
+
 // ─── Dashboard ─────────────────────────────────────────────────────────────
 
 export async function fetchDashboard(

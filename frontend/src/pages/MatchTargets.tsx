@@ -24,6 +24,7 @@ export default function MatchTargets() {
     compsStats,
     compsRestoring,
     targetStats, setTargetStats,
+    targetRestoring,
     matchResult, setMatchResult,
     setCurrentPage, setLastFilters,
     dashboardData,
@@ -295,14 +296,19 @@ export default function MatchTargets() {
         {/* ── Target upload ─────────────────────────────────────── */}
         <div className="card mb-6">
           <h2 className="font-semibold mb-4" style={{ color: '#111827' }}>Target Parcels CSV</h2>
-          {targetStats ? (
+          {targetRestoring ? (
+            <div className="rounded-lg px-4 py-3 flex items-center gap-3" style={{ background: 'rgba(79,70,229,0.04)', border: '1px solid rgba(79,70,229,0.12)' }}>
+              <div style={{ width: 14, height: 14, border: '2px solid #C7D2FE', borderTopColor: '#4F46E5', borderRadius: '50%', animation: 'spin 0.8s linear infinite', flexShrink: 0 }} />
+              <p className="text-sm" style={{ color: '#6B7280' }}>Restoring target file…</p>
+            </div>
+          ) : targetStats ? (
             <div className="rounded-lg px-4 py-3 flex items-center justify-between" style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)' }}>
               <div>
                 <p className="font-medium text-sm" style={{ color: '#10B981' }}>
                   ✓ {targetStats.total_rows.toLocaleString()} rows loaded
                 </p>
                 <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>
-                  {targetStats.columns_found.length} columns · {fileName}
+                  {targetStats.columns_found.length} columns · {fileName ?? targetStats.filename ?? 'targets.csv'}
                 </p>
               </div>
               <button className="text-xs" style={{ color: '#9CA3AF' }} onClick={() => { setTargetStats(null); setFileName(null) }}>

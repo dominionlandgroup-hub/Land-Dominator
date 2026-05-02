@@ -8,10 +8,11 @@ import type {
   MailingPreview,
   AppPage,
 } from '../types'
-import { restoreLatestCompsSession, fetchDashboard } from '../api/client'
+import { restoreLatestCompsSession, restoreLatestTargetSession, fetchDashboard } from '../api/client'
 import { getUnreadCount, listCrmCampaigns } from '../api/crm'
 
 const LS_COMPS_KEY = 'ld_comps_stats'
+const LS_TARGET_KEY = 'ld_target_stats'
 
 interface AppState {
   // Comps
@@ -26,6 +27,7 @@ interface AppState {
   // Targets
   targetStats: UploadStats | null
   setTargetStats: (s: UploadStats | null) => void
+  targetRestoring: boolean
 
   // Match results
   matchResult: MatchResult | null
@@ -79,7 +81,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   })
   const [compsRestoring, setCompsRestoring] = useState(true)
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
-  const [targetStats, setTargetStats] = useState<UploadStats | null>(null)
+  const [targetStats, _setTargetStats] = useState<UploadStats | null>(() => {
+    try {
+      const cached = localStorage.getItem(LS_TARGET_KEY)
+      return cached ? JSON.parse(cached) : null
+    } catch { return null }
+  })
+  const [targetRestoring, setTargetRestoring] = useState(false)
   const [matchResult, setMatchResult] = useState<MatchResult | null>(null)
   const [lastFilters, setLastFilters] = useState<Partial<MatchFilters> | null>(null)
   const [mailingPreview, setMailingPreview] = useState<MailingPreview | null>(null)
@@ -97,6 +105,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       try { localStorage.setItem(LS_COMPS_KEY, JSON.stringify(s)) } catch {}
     } else {
       try { localStorage.removeItem(LS_COMPS_KEY) } catch {}
+    }
+  }, [])
+
+  const setTargetStats = useCallback((s: UploadStats | null) => {
+    _setTargetStats(s)
+    if (s) {
+      try { localStorage.setItem(LS_TARGET_KEY, JSON.stringify(s)) } catch {}
+    } else {
+      try { localStorage.removeItem(LS_TARGET_KEY) } catch {}
     }
   }, [])
 
@@ -144,6 +161,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
       })
   }, [])
 
+  // Auto-restore target session from Supabase Storage on app load
+  const targetRestoreRan = useRef(false)
+  useEffect(() => {
+    if (targetRestoreRan.current) return
+    targetRestoreRan.current = true
+
+    // Only attempt restore if localStorage suggests there was a previous session
+    const cached = (() => { try { const v = localStorage.getItem(LS_TARGET_KEY); return v ? JSON.parse(v) : null } catch { return null } })()
+    if (!cached) return
+
+    setTargetRestoring(true)
+    restoreLatestTargetSession()
+      .then(stats => {
+        _setTargetStats(stats)
+        try { localStorage.setItem(LS_TARGET_KEY, JSON.stringify(stats)) } catch {}
+      })
+      .catch(() => {
+        // Restore failed — keep the stale stats for display but session_id is invalid
+        // MatchTargets will handle this by showing re-upload prompt
+      })
+      .finally(() => setTargetRestoring(false))
+  }, [])
+
   const value: AppState = {
     compsStats,
     setCompsStats,
@@ -151,7 +191,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     dashboardData,
     setDashboardData: useCallback((d) => setDashboardData(d), []),
     targetStats,
-    setTargetStats: useCallback((s) => setTargetStats(s), []),
+    setTargetStats,
+    targetRestoring,
     matchResult,
     setMatchResult: useCallback((r) => setMatchResult(r), []),
     lastFilters,

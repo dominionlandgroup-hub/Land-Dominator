@@ -817,6 +817,17 @@ async def upload_targets(file: UploadFile = File(...)) -> UploadResponse:
 
     session_id = str(uuid.uuid4())
     store_targets(session_id, df)
+
+    # Persist to Supabase Storage so session survives navigation / server restart
+    stats_with_file = {**stats, "filename": file.filename or "targets.csv"}
+    try:
+        import asyncio as _aio
+        loop = _aio.get_running_loop()
+        from services.targets_persistence import persist_targets as _persist
+        await loop.run_in_executor(None, lambda: _persist(session_id, df, stats_with_file))
+    except Exception as _pe:
+        print(f"[targets] persist warning: {_pe}", flush=True)
+
     return UploadResponse(
         session_id=session_id,
         total_rows=stats["total_rows"],
@@ -824,7 +835,42 @@ async def upload_targets(file: UploadFile = File(...)) -> UploadResponse:
         columns_found=stats["columns_found"],
         missing_columns=stats["missing_columns"],
         preview=stats["preview"],
+        uploaded_at=datetime.now(timezone.utc).isoformat(),
+        filename=file.filename,
     )
+
+
+@router.get("/targets/restore")
+async def restore_targets_session():
+    """
+    Restore the latest target session from Supabase Storage.
+    Called on app load when the in-memory session has expired.
+    Returns a fresh session_id + upload stats.
+    """
+    from services.targets_persistence import restore_targets as _restore
+    try:
+        import asyncio as _aio
+        loop = _aio.get_running_loop()
+        result = await loop.run_in_executor(None, _restore)
+    except Exception:
+        result = None
+
+    if result is None:
+        raise HTTPException(status_code=404, detail="No persisted target session found.")
+
+    new_session_id, df, stats = result
+    store_targets(new_session_id, df)
+
+    return {
+        "session_id":    new_session_id,
+        "total_rows":    stats["total_rows"],
+        "valid_rows":    stats["valid_rows"],
+        "columns_found": stats["columns_found"],
+        "missing_columns": [],
+        "preview":       [],
+        "filename":      stats.get("filename"),
+        "uploaded_at":   stats.get("uploaded_at"),
+    }
 
 
 # ── Restore latest comps session ──────────────────────────────────────────────

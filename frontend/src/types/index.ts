@@ -13,6 +13,7 @@ export interface UploadStats {
   deduped_count?: number
   geocoded_count?: number
   db_total?: number
+  filename?: string
 }
 
 // ─── Dashboard ─────────────────────────────────────────────────────────────

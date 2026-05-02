@@ -17,6 +17,7 @@ class UploadResponse(BaseModel):
     detected_format: Optional[str] = None   # land_portal | mls | generic
     deduped_count: Optional[int] = None     # APNs skipped because already in DB
     geocoded_count: Optional[int] = None    # MLS rows that got coordinates
+    filename: Optional[str] = None
 
 
 class CompInventoryItem(BaseModel):
