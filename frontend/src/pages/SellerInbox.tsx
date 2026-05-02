@@ -342,32 +342,49 @@ function MessageEntry({ c, onSelect }: { c: Communication; onSelect: (c: Communi
     )
   }
 
-  const icon = isOutbound ? '↗' : '↙'
-  const label = isOutbound ? 'Outbound call' : 'Inbound call'
-  const bg = isOutbound ? 'rgba(92,41,119,0.08)' : '#F3EEF9'
-  const col = isOutbound ? '#5C2977' : '#5C2977'
+  const isMissed = !isOutbound && (
+    (c.summary?.includes('Missed call') ?? false) ||
+    (c.summary === 'Call in progress...' && (c.duration_seconds ?? 0) < 5)
+  )
+  const isInProgress = c.summary === 'Call in progress...'
+  const icon = isMissed ? '✗' : isOutbound ? '↗' : '↙'
+  const label = isMissed ? 'Missed call' : isOutbound ? 'Outbound call' : isInProgress ? 'Call in progress…' : 'Inbound call'
+  const bg = isMissed ? '#FFF1F2' : isOutbound ? 'rgba(92,41,119,0.08)' : '#F3EEF9'
+  const col = isMissed ? '#DC2626' : '#5C2977'
+  const borderCol = isMissed ? '#FECDD3' : '#E8E0F0'
 
   return (
     <div className="flex justify-center mb-3" style={{ cursor: 'pointer' }} onClick={() => onSelect(c)} title="Click to view call details">
       <div style={{
-        background: bg, border: `1px solid #E8E0F0`, borderRadius: 8, padding: '10px 16px', maxWidth: '85%', width: '100%',
+        background: bg, border: `1px solid ${borderCol}`, borderRadius: 8, padding: '10px 16px', maxWidth: '85%', width: '100%',
         transition: 'border-color 0.1s',
       }}
-        onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = '#D4C5E8' }}
-        onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = '#E8E0F0' }}
+        onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = isMissed ? '#FCA5A5' : '#D4C5E8' }}
+        onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = borderCol }}
       >
         <div className="flex items-center gap-2 mb-1 flex-wrap">
           <span style={{ color: col, fontWeight: 700, fontSize: 13 }}>{icon} {label}</span>
-          {c.duration_seconds != null && <span style={{ color: '#6B5B8A', fontSize: 11 }}>{fmtTalk(c.duration_seconds)}</span>}
+          {c.duration_seconds != null && c.duration_seconds > 0 && (
+            <span style={{ color: '#6B5B8A', fontSize: 11 }}>{fmtTalk(c.duration_seconds)}</span>
+          )}
           {c.disposition && <DispositionBadge disposition={c.disposition} />}
           <span style={{ color: '#9B8AAE', fontSize: 11, marginLeft: 'auto' }}>{fmtMsgTime(c.created_at)}</span>
         </div>
-        {c.recording_url && <span style={{ fontSize: 11, color: '#059669', fontWeight: 600 }}>▶ Recording available</span>}
-        {c.summary
-          ? <p style={{ color: '#6B5B8A', fontSize: 12, margin: '4px 0 0', lineHeight: 1.4 }}>{c.summary}</p>
-          : <p style={{ color: '#9B8AAE', fontSize: 11, margin: '4px 0 0', fontStyle: 'italic' }}>Call completed — no summary generated</p>
+        {c.recording_url
+          ? <span style={{ fontSize: 11, color: '#059669', fontWeight: 600 }}>▶ Recording available</span>
+          : !isInProgress && !isMissed && c.type?.startsWith('call') && (
+            <span style={{ fontSize: 11, color: '#9B8AAE', fontStyle: 'italic' }}>Recording processing…</span>
+          )
         }
-        <p style={{ color: '#9B8AAE', fontSize: 10, margin: '4px 0 0' }}>Click to view full transcript →</p>
+        {c.summary && c.summary !== 'Call in progress...'
+          ? <p style={{ color: '#6B5B8A', fontSize: 12, margin: '4px 0 0', lineHeight: 1.4 }}>{c.summary}</p>
+          : isInProgress
+            ? <p style={{ color: '#D97706', fontSize: 12, margin: '4px 0 0', fontStyle: 'italic' }}>Active call — details will appear when call ends</p>
+            : !isMissed && <p style={{ color: '#9B8AAE', fontSize: 11, margin: '4px 0 0', fontStyle: 'italic' }}>Call completed — no summary generated</p>
+        }
+        {!isMissed && !isInProgress && (
+          <p style={{ color: '#9B8AAE', fontSize: 10, margin: '4px 0 0' }}>Click to view full transcript →</p>
+        )}
       </div>
     </div>
   )

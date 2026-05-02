@@ -50,35 +50,22 @@ _AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 # RULE: No dynamic content here. Dynamic parts use Polly <Say> at zero latency.
 _PHRASES: dict[str, str] = {
     "greeting": (
-        "Thank you for calling Dominion Land Group. "
-        "My name is Myra, an AI assistant. "
-        "I'm here to gather a few details and connect you with a team member. "
-        "Can I start with the offer code from the letter we sent you?"
+        "Thank you for calling Dominion Land Group. I'm Myra. "
+        "Do you have the offer code from your letter?"
     ),
     "offer_code_hint": (
-        "It's a short code located just below your mailing address on the letter. "
-        "It looks like two numbers, a dash, then a few more numbers."
+        "The code is just below your mailing address — "
+        "two numbers, a dash, then a few more numbers. Do you see it?"
     ),
-    "not_found": (
-        "I want to make sure I have that right. "
-        "Can you repeat the code slowly?"
-    ),
-    "got_it_name": "Got it. And can I get your first and last name please?",
+    "not_found": "I wasn't able to find that code. Can you repeat it slowly, one number at a time?",
+    "got_it_name": "Got it. Can I get your first and last name?",
     "no_code_name": "No problem. Can I get your first and last name?",
     "no_code_county": "And what county is the property located in?",
-    "interested": (
-        "Are you calling because you received our offer and are interested in selling?"
-    ),
-    "confirm_callback": "Is that the best number for our team to reach you?",
-    "close_hot": (
-        "Perfect. Someone from our team will be in touch with you very shortly. "
-        "Have a great day."
-    ),
-    "close_cold": (
-        "I understand. I will make a note and pass this along to our team. "
-        "Have a great day."
-    ),
-    "still_there": "Are you still there? Take your time.",
+    "interested": "Are you interested in our cash offer for your property?",
+    "confirm_callback": "Is that the best number to reach you?",
+    "close_hot": "Perfect. Someone will call you back shortly. Have a great day.",
+    "close_cold": "I understand. Thank you for calling. Have a great day.",
+    "still_there": "Are you still there?",
     "goodbye": "Thank you for calling. Have a great day.",
     "voicemail": (
         "Hi, this is Dominion Land Group calling about your property. "
@@ -86,10 +73,8 @@ _PHRASES: dict[str, str] = {
         "Please call us back at your earliest convenience. Thank you!"
     ),
     "faq_redirect": (
-        "That is a great question. For detailed answers you can visit our FAQ page at "
-        "dominionlandgroup.land. A team member will also be happy to answer any questions "
-        "when they call you back. Now can I get your first and last name so our team "
-        "can follow up with you?"
+        "Great question. A team member will answer that when they call you back. "
+        "Can I get your first and last name?"
     ),
 }
 
@@ -235,6 +220,7 @@ def _texml_gather(
             f'\n          recordingStatusCallbackMethod="POST"'
         )
 
+    # bargeIn is implicit when input="speech" — caller speaking stops <Play>/<Say> immediately
     xml = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         "<Response>\n"
@@ -544,6 +530,17 @@ async def _log_comm(
         return {}
 
 
+async def _update_comm(comm_id: str, **fields) -> None:
+    """Update an existing crm_communications record by id."""
+    try:
+        sb = get_supabase()
+        updates = {k: v for k, v in fields.items() if v is not None}
+        if updates:
+            sb.table("crm_communications").update(updates).eq("id", comm_id).execute()
+    except Exception as exc:
+        print(f"[comms] update_comm error: {exc}")
+
+
 async def _notify_email(subject: str, html: str) -> None:
     api_key = _sendgrid_key()
     if not api_key:
@@ -742,14 +739,40 @@ async def inbound_call(request: Request) -> Response:
         "transcript": [],
         "started_at": _now(),
         "retries": {},
+        "comm_id": None,
     }
+
+    # Create the DB record immediately so missed/short calls are always logged
+    try:
+        comm = await _log_comm(
+            property_id=None,
+            comm_type="call_inbound",
+            phone=caller,
+            direction="inbound",
+            call_id=call_sid,
+            summary="Call in progress...",
+        )
+        if comm.get("id"):
+            _call_states[call_sid]["comm_id"] = comm["id"]
+    except Exception as exc:
+        print(f"[comms] inbound log error: {exc}")
 
     return _texml_gather("greeting", _phrase("greeting"), call_sid, with_recording=True)
 
 
 @router.post("/api/calls/gather/{step}")
 async def call_gather(step: str, request: Request, background_tasks: BackgroundTasks) -> Response:
-    """Telnyx gather callback — drives the conversation state machine."""
+    """Telnyx gather callback — drives the conversation state machine.
+
+    State transitions:
+      greeting  → confirm (code found) | name (no code / confused)
+      confirm   → interest (yes) | greeting retry once then name (no)
+      name      → interest
+      interest  → callback (yes/maybe) | close_cold (no)
+      callback  → ask_number (different number) | close_hot
+      ask_number → close_hot
+    Max 2 attempts per step, then auto-advance.
+    """
     try:
         form = await request.form()
         call_sid = _form_get(form, "CallSid", "call_control_id")
@@ -762,37 +785,41 @@ async def call_gather(step: str, request: Request, background_tasks: BackgroundT
     state = _call_states.get(call_sid, {})
     state.setdefault("transcript", []).append({"step": step, "speech": speech, "timed_out": timed_out})
 
-    def _on_timeout(step_name: str) -> Response:
-        """Retry up to 3x on silence/timeout, then close gracefully."""
-        retry_count = _inc_step_retries(call_sid, state, step_name)
-        if retry_count < 3:
-            return _texml_gather(step_name, _phrase("still_there"), call_sid)
-        background_tasks.add_task(_finalize_call, call_sid)
-        return _texml_hangup(_phrase("goodbye"))
+    def _attempts(key: str) -> int:
+        return state.get("retries", {}).get(key, 0)
+
+    def _inc(key: str) -> int:
+        return _inc_step_retries(call_sid, state, key)
+
+    def _no_code_response(s: str) -> bool:
+        """True when caller clearly says they don't have / don't know the code."""
+        if re.search(r"\d", s):
+            return False
+        return bool(re.search(
+            r"\b(no|nope|huh)\b|"
+            r"don'?t (have|know)|do not have|no idea|not sure|no code|"
+            r"what (code|is that|'?s that)|never got|didn'?t get|lost it|can'?t find|"
+            r"^what$",
+            s.lower(),
+        ))
 
     # ── Step: greeting — ask for offer code ──────────────────────────────
     if step == "greeting":
         if timed_out or not speech:
-            return _on_timeout("greeting")
+            n = _inc("timeout_greeting")
+            if n < 2:
+                # First silence: ask if still there, replay same question
+                return _texml_gather("greeting", _phrase("still_there"), call_sid)
+            # Second silence: give up on code, move to name
+            return _texml_gather("name", _phrase("no_code_name"), call_sid)
 
-        # FAQ question — play redirect, skip to name step
+        # FAQ question — jump straight to name
         if _is_faq_question(speech):
-            state["code_attempts"] = 99
-            if call_sid in _call_states:
-                _call_states[call_sid]["code_attempts"] = 99
             return _texml_gather("name", _phrase("faq_redirect"), call_sid)
 
-        speech_low = speech.lower()
-        asking_what = (
-            any(w in speech_low for w in [
-                "what", "don't know", "dont know", "no idea", "don't have",
-                "dont have", "not sure", "no code", "i don't", "i dont",
-                "what's that", "whats that", "explain",
-            ])
-            and not re.search(r"\d", speech)
-        )
-        if asking_what:
-            return _texml_gather("greeting", _phrase("offer_code_hint"), call_sid)
+        # Caller says they don't have the code → skip to name immediately
+        if _no_code_response(speech):
+            return _texml_gather("name", _phrase("no_code_name"), call_sid)
 
         state.setdefault("attempted_codes", []).append(speech.strip())
         if call_sid in _call_states:
@@ -800,39 +827,84 @@ async def call_gather(step: str, request: Request, background_tasks: BackgroundT
 
         prop = await _lookup_offer_code(speech)
         if prop:
-            state["property_id"] = prop.get("id")
-            state["offer_price"] = prop.get("offer_price")
-            state["owner_name"] = prop.get("owner_full_name") or prop.get("owner_first_name") or ""
-            state["caller_offer_code"] = speech.strip()
+            state.update({
+                "property_id": prop.get("id"),
+                "offer_price": prop.get("offer_price"),
+                "owner_name": prop.get("owner_full_name") or prop.get("owner_first_name") or "",
+                "caller_offer_code": speech.strip(),
+            })
             if call_sid in _call_states:
                 _call_states[call_sid].update(state)
-            return _texml_gather("name", _phrase("got_it_name"), call_sid)
+            # Build property-confirm prompt
+            county = prop.get("county", "")
+            owner = state["owner_name"]
+            parts = ["I found a property associated with that code"]
+            if county:
+                parts.append(f"in {county} County")
+            if owner:
+                parts.append(f"for {owner}")
+            confirm_text = " ".join(parts) + ". Is that correct?"
+            return _texml_gather("confirm", _say(confirm_text), call_sid)
 
-        attempts = state.get("code_attempts", 0)
-        state["code_attempts"] = attempts + 1
-        if call_sid in _call_states:
-            _call_states[call_sid]["code_attempts"] = attempts + 1
-
-        if attempts == 0:
+        # Code not found — allow one retry, then skip to name
+        code_attempt = _inc("code")
+        if code_attempt < 2:
             return _texml_gather("greeting", _phrase("not_found"), call_sid)
-        # Second failed attempt — skip code, proceed to name
         return _texml_gather("name", _phrase("no_code_name"), call_sid)
 
-    # ── Step: name — capture caller name, then ask if interested ─────────
+    # ── Step: confirm — verify property matched by code ──────────────────
+    elif step == "confirm":
+        if timed_out or not speech:
+            n = _inc("timeout_confirm")
+            if n >= 2:
+                return _texml_gather("name", _phrase("no_code_name"), call_sid)
+            return _texml_gather("confirm", _phrase("still_there"), call_sid)
+
+        low = speech.lower()
+        is_yes = bool(re.search(r"\b(yes|yeah|yep|yup|correct|right|sure|uh.?huh)\b", low))
+        is_no = bool(re.search(r"\b(no|nope|wrong|incorrect|not me|not mine|not right)\b", low))
+
+        if is_yes:
+            return _texml_gather("interest", _phrase("interested"), call_sid)
+        elif is_no:
+            n = _inc("confirm_retry")
+            if n < 1:
+                # One more code attempt
+                return _texml_gather("greeting", _phrase("not_found"), call_sid)
+            # Wrong property — clear match, collect name instead
+            if call_sid in _call_states:
+                _call_states[call_sid].update({"property_id": None, "offer_price": None})
+            return _texml_gather("name", _phrase("no_code_name"), call_sid)
+        else:
+            # Unclear — assume confirmed and continue
+            return _texml_gather("interest", _phrase("interested"), call_sid)
+
+    # ── Step: name — capture caller name, then ask about interest ─────────
     elif step == "name":
         if timed_out or not speech:
-            return _on_timeout("name")
+            n = _inc("timeout_name")
+            if n >= 2:
+                background_tasks.add_task(_finalize_call, call_sid)
+                return _texml_hangup(_phrase("goodbye"))
+            return _texml_gather("name", _phrase("still_there"), call_sid)
 
+        caller_name = speech.strip()
+        state["caller_name"] = caller_name
         if call_sid in _call_states:
-            _call_states[call_sid]["caller_name"] = speech.strip()
-        state["caller_name"] = speech.strip()
+            _call_states[call_sid]["caller_name"] = caller_name
 
-        return _texml_gather("interest", _phrase("interested"), call_sid)
+        first = caller_name.split()[0].capitalize() if caller_name else ""
+        thanks = f"Thank you{', ' + first if first else ''}. Are you interested in our cash offer for your property?"
+        return _texml_gather("interest", _say(thanks), call_sid)
 
-    # ── Step: interest — yes → callback confirm; no → warm close ─────────
+    # ── Step: interest — yes/maybe → callback; no → cold close ──────────
     elif step == "interest":
         if timed_out or not speech:
-            return _on_timeout("interest")
+            n = _inc("timeout_interest")
+            if n >= 2:
+                # Auto-advance after 2 silences — assume maybe
+                return _texml_gather("callback", _phrase("confirm_callback"), call_sid)
+            return _texml_gather("interest", _phrase("still_there"), call_sid)
 
         score = _score_interest(speech)
         if call_sid in _call_states:
@@ -842,10 +914,37 @@ async def call_gather(step: str, request: Request, background_tasks: BackgroundT
             background_tasks.add_task(_finalize_call, call_sid)
             return _texml_hangup(_phrase("close_cold"))
 
-        return _texml_gather("callback", _phrase("confirm_callback"), call_sid)
+        # Hot or warm — confirm callback number
+        caller_phone = state.get("caller") or _call_states.get(call_sid, {}).get("caller", "")
+        if caller_phone:
+            digits = re.sub(r"\D", "", caller_phone)[-10:]
+            fmt = f"{digits[:3]} {digits[3:6]} {digits[6:]}" if len(digits) == 10 else caller_phone
+            callback_q = f"Great. Is {fmt} the best number to reach you?"
+        else:
+            callback_q = "Great. Is the number you called from the best number to reach you?"
+        return _texml_gather("callback", _say(callback_q), call_sid)
 
-    # ── Step: callback — confirm phone number, close hot ─────────────────
+    # ── Step: callback — yes → close hot; no → collect new number ────────
     elif step == "callback":
+        low = (speech or "").lower()
+        wants_different = bool(re.search(r"\b(no|nope|different|other|change|wrong|another)\b", low))
+
+        if wants_different and not timed_out:
+            return _texml_gather("ask_number", _say("What number would you like us to use?"), call_sid)
+
+        background_tasks.add_task(_finalize_call, call_sid)
+        return _texml_hangup(_phrase("close_hot"))
+
+    # ── Step: ask_number — store alternate callback number, then close ────
+    elif step == "ask_number":
+        if speech and not timed_out:
+            spoken_digits = _speech_to_digits(speech)
+            raw_digits = re.sub(r"\D", "", speech)
+            phone_candidate = spoken_digits or raw_digits
+            if phone_candidate:
+                state["preferred_callback"] = phone_candidate
+                if call_sid in _call_states:
+                    _call_states[call_sid]["preferred_callback"] = phone_candidate
         background_tasks.add_task(_finalize_call, call_sid)
         return _texml_hangup(_phrase("close_hot"))
 
@@ -954,17 +1053,31 @@ async def call_hangup(request: Request) -> dict:
         print(f"[comms] hangup parse error: {exc}")
         return {"status": "ok"}
 
-    if call_sid and billing_secs is not None and billing_secs > 0:
+    if call_sid:
         try:
             sb = get_supabase()
-            # Only update if duration_seconds is currently null/0
-            existing = sb.table("crm_communications").select("id, duration_seconds").eq("call_id", call_sid).execute()
+            existing = (
+                sb.table("crm_communications")
+                .select("id, duration_seconds, summary")
+                .eq("call_id", call_sid)
+                .execute()
+            )
             if existing.data:
                 row = existing.data[0]
-                if not row.get("duration_seconds"):
-                    sb.table("crm_communications").update(
-                        {"duration_seconds": billing_secs}
-                    ).eq("call_id", call_sid).execute()
+                updates: dict = {}
+                # Set duration if not already stored
+                if billing_secs and not row.get("duration_seconds"):
+                    updates["duration_seconds"] = billing_secs
+                # If still "Call in progress..." the call ended before finalize ran
+                if row.get("summary") == "Call in progress...":
+                    duration = billing_secs or 0
+                    if duration < 5:
+                        updates["summary"] = "Missed call — caller hung up immediately"
+                        updates["lead_score"] = None
+                    else:
+                        updates["summary"] = f"Call ended — duration {duration}s. Review manually."
+                if updates:
+                    sb.table("crm_communications").update(updates).eq("id", row["id"]).execute()
         except Exception as exc:
             print(f"[comms] hangup DB error: {exc}")
 
@@ -1016,20 +1129,35 @@ async def _finalize_call(call_sid: str) -> None:
     if callback_time and disposition == "CALLBACK_NEEDED":
         callback_requested_at = f"{_now()[:10]} (caller said: {callback_time})"
 
-    await _log_comm(
-        property_id=property_id,
-        comm_type="call_inbound",
-        phone=caller,
-        direction="inbound",
-        transcript=transcript_text,
-        summary=summary,
-        lead_score=score,
-        call_id=call_sid,
-        duration_seconds=duration_seconds,
-        caller_offer_code=caller_offer_code,
-        disposition=disposition,
-        callback_requested_at=callback_requested_at,
-    )
+    comm_id = state.get("comm_id")
+    if comm_id:
+        # Update the record created at call start
+        await _update_comm(
+            comm_id,
+            property_id=property_id,
+            transcript=transcript_text,
+            summary=summary,
+            lead_score=score,
+            duration_seconds=duration_seconds,
+            caller_offer_code=caller_offer_code,
+            disposition=disposition,
+            callback_requested_at=callback_requested_at,
+        )
+    else:
+        await _log_comm(
+            property_id=property_id,
+            comm_type="call_inbound",
+            phone=caller,
+            direction="inbound",
+            transcript=transcript_text,
+            summary=summary,
+            lead_score=score,
+            call_id=call_sid,
+            duration_seconds=duration_seconds,
+            caller_offer_code=caller_offer_code,
+            disposition=disposition,
+            callback_requested_at=callback_requested_at,
+        )
 
     if property_id:
         try:
@@ -1157,19 +1285,33 @@ async def _finalize_unmatched_call(call_sid: str) -> None:
             pass
 
     detail = info or fallback_name or "N/A"
-    await _log_comm(
-        property_id=property_id,
-        comm_type="call_inbound",
-        phone=caller,
-        direction="inbound",
-        transcript=transcript_text,
-        summary=f"Could not match to property. Caller provided: {detail}. Next action: Review manually.",
-        lead_score="cold",
-        call_id=call_sid,
-        duration_seconds=duration_seconds,
-        caller_offer_code=caller_offer_code,
-        disposition="MAYBE",
-    )
+    comm_id = state.get("comm_id")
+    summary_text = f"Could not match to property. Caller provided: {detail}. Next action: Review manually."
+    if comm_id:
+        await _update_comm(
+            comm_id,
+            property_id=property_id,
+            transcript=transcript_text,
+            summary=summary_text,
+            lead_score="cold",
+            duration_seconds=duration_seconds,
+            caller_offer_code=caller_offer_code,
+            disposition="MAYBE",
+        )
+    else:
+        await _log_comm(
+            property_id=property_id,
+            comm_type="call_inbound",
+            phone=caller,
+            direction="inbound",
+            transcript=transcript_text,
+            summary=summary_text,
+            lead_score="cold",
+            call_id=call_sid,
+            duration_seconds=duration_seconds,
+            caller_offer_code=caller_offer_code,
+            disposition="MAYBE",
+        )
 
 
 # ── Inbound SMS ──────────────────────────────────────────────────────────────────
