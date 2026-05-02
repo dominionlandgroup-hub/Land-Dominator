@@ -514,6 +514,21 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
               {lpPulling ? 'Pulling LP…' : 'Pull LP Data'}
             </button>
           )}
+          {!isNew && !property?.property_id && form.apn && (
+            <a
+              href={`https://app.landportal.io/search?q=${encodeURIComponent(form.apn)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-secondary text-sm flex items-center gap-1.5"
+              title="Search for this parcel in Land Portal"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8"/>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              Find in Land Portal ↗
+            </a>
+          )}
           {!isNew && (
             <button className="btn-danger" onClick={() => setConfirmDelete(true)} disabled={deleting}>
               Delete

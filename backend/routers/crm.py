@@ -1088,18 +1088,25 @@ async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)
 
         rows = []
         for seq, r in enumerate(results, start=1):
-            owner_full = r.get("owner_name") or r.get("owner_full_name") or ""
+            owner_full_raw = r.get("owner_name") or r.get("owner_full_name") or ""
             owner_first = r.get("owner_first_name") or ""
             owner_last = r.get("owner_last_name") or ""
-            # Reformat LP "LAST FIRST MIDDLE" all-caps format to "First Middle Last"
+            owner_full = owner_full_raw
+
+            # Reformat LP "LAST FIRST MIDDLE" all-caps format to "First Middle Last".
+            # Always override first/last — matching engine may have parsed them inverted
+            # (it does owner_first=name_parts[0] which is LAST in LP format).
             if owner_full and _looks_like_lp_name(owner_full):
                 orig_owners = re.split(r"\s*&\s*", owner_full)
                 orig_words = orig_owners[0].strip().split()
                 owner_full = _reformat_lp_name(owner_full)
-                if not owner_first and len(orig_words) >= 2:
-                    owner_first = orig_words[1].capitalize()
-                if not owner_last and orig_words:
+                # Always set first/last from original LP words (overwrite any wrong parse)
+                if len(orig_words) >= 2:
+                    owner_first = orig_words[1].capitalize()   # "DAVID" → "David"
+                    owner_last = orig_words[0].capitalize()    # "FOSTER" → "Foster"
+                elif orig_words:
                     owner_last = orig_words[0].capitalize()
+                print(f"[add-match-results] Name fix: '{owner_full_raw}' → '{owner_full}' (first='{owner_first}' last='{owner_last}')", flush=True)
             elif not owner_first and not owner_last and owner_full.strip():
                 parts = owner_full.strip().split()
                 if len(parts) >= 2:
@@ -1107,6 +1114,27 @@ async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)
                     owner_last = parts[-1]
                 elif parts:
                     owner_first = parts[0]
+
+            # Resolve FIPS and Land Portal property_id with broad key fallbacks
+            prop_id = (
+                r.get("lp_property_id")
+                or r.get("property_id")
+                or r.get("propertyid")
+                or r.get("Property ID")
+                or r.get("LP Property ID")
+                or None
+            )
+            fips_val = (
+                r.get("fips")
+                or r.get("fips_code")
+                or r.get("Parcel FIPS")
+                or r.get("County FIPS")
+                or r.get("parcel_fips")
+                or r.get("county_fips")
+                or None
+            )
+            print(f"[add-match-results] FIPS: {fips_val}, Property ID: {prop_id}", flush=True)
+
             rows.append({
                 # Basic
                 "campaign_id": campaign_id,
@@ -1131,8 +1159,8 @@ async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)
                 "county": r.get("parcel_county") or None,
                 "acreage": r.get("lot_acres"),
                 # LP IDs
-                "property_id": r.get("lp_property_id") or r.get("property_id") or None,
-                "fips": r.get("fips") or None,
+                "property_id": prop_id,
+                "fips": fips_val,
                 # Pricing
                 "offer_price": r.get("suggested_offer_mid"),
                 "lp_estimate": r.get("retail_estimate"),
