@@ -3,8 +3,10 @@ CRM module: Properties, Contacts, Deals.
 Backed by Supabase (PostgreSQL). Requires SUPABASE_URL + SUPABASE_KEY env vars.
 """
 import csv
+import hashlib
 import io
 import os
+import random as _random
 import re
 import uuid
 from datetime import datetime, timezone
@@ -34,6 +36,15 @@ _lp_pull_jobs: dict[str, dict] = {}
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _vary_price(price: float, apn: str) -> float:
+    """APN-seeded ±0.3% variation so LP-derived offers don't end in .00"""
+    if not price or not apn:
+        return price
+    seed = int(hashlib.md5(apn.encode()).hexdigest()[:8], 16)
+    rng = _random.Random(seed)
+    return price * (1.0 + rng.uniform(-0.003, 0.003))
 
 
 def _safe_float(val: object) -> Optional[float]:
@@ -703,7 +714,7 @@ def _run_import_job(job_id: str, content: bytes) -> None:
                     continue
                 data["updated_at"] = now
                 if not data.get("offer_price") and data.get("lp_estimate"):
-                    data["offer_price"] = float(data["lp_estimate"]) * 0.525
+                    data["offer_price"] = _vary_price(float(data["lp_estimate"]) * 0.525, str(data.get("apn") or ""))
                 batch.append(data)
                 if len(batch) >= 500:
                     n, warns = _safe_batch_insert(sb, batch)
@@ -769,7 +780,7 @@ async def import_properties_batch(
                     continue
                 data["updated_at"] = now
                 if not data.get("offer_price") and data.get("lp_estimate"):
-                    data["offer_price"] = float(data["lp_estimate"]) * 0.525
+                    data["offer_price"] = _vary_price(float(data["lp_estimate"]) * 0.525, str(data.get("apn") or ""))
                 batch.append(data)
                 if len(batch) >= 50:
                     n, warns = _safe_batch_insert(sb, batch)
@@ -1488,7 +1499,7 @@ def _run_lp_pull_job(job_id: str, campaign_id: str) -> None:
                     if size:
                         lp_estimate = price_acre_mean * size
                         updates["lp_estimate"] = lp_estimate
-                        updates["offer_price"] = lp_estimate * 0.525
+                        updates["offer_price"] = _vary_price(lp_estimate * 0.525, str(prop.get("apn") or ""))
 
                 comps = data.get("list_of_rows_data", [])
                 for i, comp in enumerate(comps[:3], 1):
@@ -1575,7 +1586,7 @@ async def bulk_insert_properties(
                     record_num = starting_record + valid_index
                     data["campaign_code"] = f"{campaign_number:02d}-{record_num}"
             if not data.get("offer_price") and data.get("lp_estimate"):
-                data["offer_price"] = float(data["lp_estimate"]) * 0.525
+                data["offer_price"] = _vary_price(float(data["lp_estimate"]) * 0.525, str(data.get("apn") or ""))
             valid_index += 1
             mapped.append(data)
         except Exception as exc:
@@ -1982,7 +1993,7 @@ async def pull_lp_data_for_property(property_id: str) -> dict:
         if size:
             lp_estimate = price_acre_mean * size
             updates["lp_estimate"] = lp_estimate
-            updates["offer_price"] = lp_estimate * 0.525
+            updates["offer_price"] = _vary_price(lp_estimate * 0.525, str(prop.get("apn") or ""))
 
     comps = data.get("list_of_rows_data", [])
     for i, comp in enumerate(comps[:3], 1):

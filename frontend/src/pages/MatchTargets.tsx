@@ -610,10 +610,15 @@ export default function MatchTargets() {
             {/* Assignment fee calculator */}
             {(() => {
               const fee = parseFloat(assignmentFee) || 0
-              const supporting = matchResult.results.filter(r => {
+              const compMatched = matchResult.results.filter(r => {
                 const retail = r.retail_estimate
                 const offer = r.suggested_offer_mid
-                return retail != null && offer != null && retail >= offer + fee
+                return r.pricing_flag === 'MATCHED' && retail != null && offer != null && retail >= offer + fee
+              }).length
+              const lpSupporting = matchResult.results.filter(r => {
+                const retail = r.retail_estimate
+                const offer = r.suggested_offer_mid
+                return r.pricing_flag === 'LP_FALLBACK' && retail != null && offer != null && retail >= offer + fee
               }).length
               return (
                 <div className="card mb-6">
@@ -630,11 +635,16 @@ export default function MatchTargets() {
                           onChange={e => setAssignmentFee(e.target.value)} />
                       </div>
                     </div>
-                    <div className="rounded-xl px-4 py-3" style={{ background: supporting > 0 ? '#D1FAE5' : '#FEE2E2', border: `1px solid ${supporting > 0 ? 'rgba(5,150,105,0.25)' : 'rgba(220,38,38,0.25)'}` }}>
-                      <p className="text-sm font-semibold" style={{ color: supporting > 0 ? '#059669' : '#DC2626' }}>
-                        {supporting.toLocaleString()} record{supporting !== 1 ? 's' : ''} support a ${Number(assignmentFee || 0).toLocaleString()} assignment fee
+                    <div className="rounded-xl px-4 py-3" style={{ background: compMatched > 0 ? '#D1FAE5' : '#FEE2E2', border: `1px solid ${compMatched > 0 ? 'rgba(5,150,105,0.25)' : 'rgba(220,38,38,0.25)'}` }}>
+                      <p className="text-sm font-semibold" style={{ color: compMatched > 0 ? '#059669' : '#DC2626' }}>
+                        {compMatched.toLocaleString()} comp-matched record{compMatched !== 1 ? 's' : ''} support a ${Number(assignmentFee || 0).toLocaleString()} assignment fee
                       </p>
-                      <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>
+                      {lpSupporting > 0 && (
+                        <p className="text-xs mt-1" style={{ color: '#6B5B8A' }}>
+                          {lpSupporting.toLocaleString()} additional LP estimate record{lpSupporting !== 1 ? 's' : ''} may also support the fee (not comp-verified)
+                        </p>
+                      )}
+                      <p className="text-xs mt-0.5" style={{ color: '#9B8AAE' }}>
                         Formula: retail estimate ≥ offer + ${Number(assignmentFee || 0).toLocaleString()} assignment fee
                       </p>
                     </div>

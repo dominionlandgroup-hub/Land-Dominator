@@ -17,9 +17,28 @@ Acreage band matching prevents cross-band distortion.
 import re
 import uuid
 import datetime
+import hashlib
+import random as _random
 import numpy as np
 import pandas as pd
 from typing import Any, Dict, List, Optional, Tuple
+
+
+def _vary_price(price: float, apn: str) -> float:
+    """
+    Apply a small APN-seeded variation (±0.3%) to break round numbers.
+
+    Land Portal TLP estimates are always round ($114,000, $256,000).
+    Multiplying by a fixed percentage still gives round results.
+    This variation makes offers look hand-calculated ($59,847.23 not $59,850.00)
+    while being fully reproducible — the same APN always produces the same offset.
+    """
+    if not price or not apn:
+        return price
+    seed = int(hashlib.md5(apn.encode()).hexdigest()[:8], 16)
+    rng = _random.Random(seed)
+    variation = rng.uniform(-0.003, 0.003)  # ±0.3%
+    return price * (1.0 + variation)
 
 
 # ─────────────────────────────────────────────
@@ -1868,9 +1887,9 @@ def run_matching(
             "lot_acres": float(target_acres) if has_acres else None,
             "match_score": score,
             "matched_comp_count": pricing['clean_comp_count'],
-            "suggested_offer_low": pricing['offer_low'],
-            "suggested_offer_mid": pricing['offer_mid'],
-            "suggested_offer_high": pricing['offer_high'],
+            "suggested_offer_low": _vary_price(pricing['offer_low'], target_apn) if pricing['offer_low'] is not None else None,
+            "suggested_offer_mid": _vary_price(pricing['offer_mid'], target_apn) if pricing['offer_mid'] is not None else None,
+            "suggested_offer_high": _vary_price(pricing['offer_high'], target_apn) if pricing['offer_high'] is not None else None,
             "retail_estimate": pricing['retail_estimate'],
             "comp_count": pricing['comp_count'],
             "clean_comp_count": pricing['clean_comp_count'],
