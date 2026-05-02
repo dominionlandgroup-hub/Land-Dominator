@@ -902,6 +902,18 @@ async def clear_comps_by_file(filename: str):
     return {"filename": filename, "deleted": deleted}
 
 
+@router.get("/comps/count")
+async def get_comps_count():
+    """Return the total number of comps in crm_sold_comps."""
+    from services.supabase_client import get_supabase
+    try:
+        sb = get_supabase()
+        res = sb.table("crm_sold_comps").select("id", count="exact").execute()
+        return {"count": res.count or 0}
+    except Exception as exc:
+        return {"count": 0, "error": str(exc)}
+
+
 @router.get("/comps/db-status")
 async def comps_db_status():
     """Diagnostic: count comps in DB, list states, and verify Supabase connectivity."""

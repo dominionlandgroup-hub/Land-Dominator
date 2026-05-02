@@ -22,7 +22,7 @@ from services.matching_engine import (
     identify_premium_zips,
     COMP_SEARCH_STEPS,
 )
-from storage.session_store import get_comps, get_targets, store_match
+from storage.session_store import get_targets, store_match
 
 router = APIRouter(prefix="/match", tags=["match"])
 
@@ -132,7 +132,6 @@ async def run_match(filters: MatchFilters) -> Response:
     Uses vectorized Haversine. Runs in a thread pool.
     Returns pre-serialized JSON to avoid Pydantic overhead on large result sets.
     """
-    # Load targets first so we can detect target states for DB comp filtering
     targets_df = get_targets(filters.target_session_id)
     if targets_df is None:
         raise HTTPException(
@@ -140,36 +139,14 @@ async def run_match(filters: MatchFilters) -> Response:
             detail="Target session not found. Please re-upload your targets CSV.",
         )
 
-    # Determine target states for DB filtering
-    target_states: list[str] = []
-    if "Parcel State" in targets_df.columns:
-        target_states = [
-            s for s in targets_df["Parcel State"].dropna().astype(str).str.strip().str.upper().unique()
-            if s and s not in ("NAN", "NONE", "")
-        ]
-
-    # Always load comps from DB (source of truth — not in-memory session which can be stale).
-    # Session is used only as a fallback if the DB is empty.
-    db_comps_df = _load_comps_from_db(states=target_states if target_states else None)
-    if db_comps_df is not None and len(db_comps_df) > 0:
-        comps_df = db_comps_df
-        from storage.session_store import store_comps
-        store_comps(filters.session_id, comps_df)  # refresh session cache
-        print(f"[match] Loaded {len(comps_df)} comps from crm_sold_comps DB", flush=True)
-    else:
-        # DB is empty — fall back to session if available
-        comps_df = get_comps(filters.session_id)
-        if comps_df is not None and len(comps_df) > 0:
-            print(f"[match] DB empty — using session comps ({len(comps_df)} rows). Re-upload comps to persist them.", flush=True)
-        else:
-            raise HTTPException(
-                status_code=404,
-                detail=(
-                    "No comps found in database and no session comps available. "
-                    "Please upload your comps CSV. "
-                    f"Target states detected: {target_states or 'none'}."
-                ),
-            )
+    # Always load ALL comps from DB — no state filtering.
+    comps_df = _load_comps_from_db()
+    if comps_df is None or len(comps_df) == 0:
+        raise HTTPException(
+            status_code=404,
+            detail="No comps found in database. Please upload your comps CSV.",
+        )
+    print(f"[match] Loaded {len(comps_df)} comps from crm_sold_comps DB", flush=True)
 
     flood_mode = (filters.flood_zone_filter or "").strip().lower()
     exclude_flood = filters.exclude_flood

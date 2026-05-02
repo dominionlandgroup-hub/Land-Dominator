@@ -44,6 +44,15 @@ export async function getCompsInventory(): Promise<CompInventoryResponse> {
   return data
 }
 
+export async function getDbCompsCount(): Promise<number> {
+  try {
+    const { data } = await api.get<{ count: number }>('/upload/comps/count')
+    return data.count ?? 0
+  } catch {
+    return 0
+  }
+}
+
 export async function clearAllComps(): Promise<{ deleted: number }> {
   const { data } = await api.delete<{ deleted: number }>('/upload/comps/all')
   return data

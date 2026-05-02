@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useApp } from '../context/AppContext'
-import { fetchDashboard } from '../api/client'
+import { fetchDashboard, getDbCompsCount } from '../api/client'
 import { createCrmCampaign, saveBuyBox } from '../api/crm'
 import LoadingSpinner from '../components/LoadingSpinner'
 import type { ZipStats, CompLocation, SweetSpot, LandQualityStats } from '../types'
@@ -11,6 +11,11 @@ export default function Dashboard() {
   const { compsStats, dashboardData, setDashboardData, setCurrentPage } = useApp()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [dbCompsCount, setDbCompsCount] = useState<number | null>(null)
+
+  useEffect(() => {
+    getDbCompsCount().then(setDbCompsCount).catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (!compsStats) return
@@ -58,7 +63,7 @@ export default function Dashboard() {
           <div>
             <h1 className="text-lg" style={{ color: '#111827', fontWeight: 700 }}>Market Analysis</h1>
             <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>
-              {compsStats.valid_rows.toLocaleString()} valid sold comps · {dashboardData?.available_zips.length ?? '…'} ZIP codes
+              {(dbCompsCount ?? compsStats.valid_rows).toLocaleString()} sold comps in database · {dashboardData?.available_zips.length ?? '…'} ZIP codes
             </p>
           </div>
         </div>

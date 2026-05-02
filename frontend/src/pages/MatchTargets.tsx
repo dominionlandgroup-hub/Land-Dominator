@@ -4,7 +4,7 @@ import DataTable from '../components/DataTable'
 import LoadingSpinner from '../components/LoadingSpinner'
 import LoadingOverlay from '../components/LoadingOverlay'
 import { useApp } from '../context/AppContext'
-import { uploadTargets, runMatch, getMailingDownloadUrl, getMatchedLeadsDownloadUrl } from '../api/client'
+import { uploadTargets, runMatch, getMailingDownloadUrl, getMatchedLeadsDownloadUrl, getDbCompsCount } from '../api/client'
 import { listCrmCampaigns, autoCreateCampaign, addMatchResultsToCampaign } from '../api/crm'
 import type { Column } from '../components/DataTable'
 import type { MatchedParcel, MatchFilters } from '../types'
@@ -37,6 +37,11 @@ export default function MatchTargets() {
   const [matchError, setMatchError] = useState<string | null>(null)
   const [fileName, setFileName] = useState<string | null>(null)
   const [resultView, setResultView] = useState<'table' | 'map'>('table')
+  const [dbCompsCount, setDbCompsCount] = useState<number | null>(null)
+
+  useEffect(() => {
+    getDbCompsCount().then(setDbCompsCount).catch(() => {})
+  }, [])
 
   // ── Filter state ────────────────────────────────────────────────────────
   const init = lastFilters
@@ -274,14 +279,9 @@ export default function MatchTargets() {
             <span style={{ color: '#10B981', fontWeight: 700, fontSize: 16 }}>✓</span>
             <div>
               <p className="text-sm font-medium" style={{ color: '#10B981' }}>
-                Using {compsStats.valid_rows.toLocaleString()} sold comps
-                {compsStats.uploaded_at && (
-                  <span className="font-normal ml-2" style={{ color: '#9CA3AF' }}>
-                    · uploaded {new Date(compsStats.uploaded_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                  </span>
-                )}
+                Using {(dbCompsCount ?? compsStats.valid_rows).toLocaleString()} sold comps from database
               </p>
-              <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>Upload new comps on the Dashboard page to refresh</p>
+              <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>Upload new comps on the Upload Comps page to refresh</p>
             </div>
           </div>
         </div>
@@ -451,7 +451,7 @@ export default function MatchTargets() {
           </button>
           {targetStats && !matchLoading && (
             <p className="text-sm mt-2 text-center" style={{ color: '#9CA3AF' }}>
-              {targetStats.total_rows.toLocaleString()} targets × {compsStats.valid_rows.toLocaleString()} comps
+              {targetStats.total_rows.toLocaleString()} targets × {(dbCompsCount ?? compsStats.valid_rows).toLocaleString()} comps
             </p>
           )}
         </div>
