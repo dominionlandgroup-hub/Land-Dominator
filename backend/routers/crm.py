@@ -1518,33 +1518,78 @@ def _run_lp_pull_job(job_id: str, campaign_id: str) -> None:
     errors: list[str] = []
 
     _LP_URL = "https://landportal.com/wp-json/lp-rest-api/v1/property-data"
-    _LP_HEADERS_BASE = {"Authorization": f"Bearer {token}"}
+    _UA = "Mozilla/5.0"
+
+    # Token age check — JWT decode (no signature verification needed)
+    import base64 as _b64, json as _json_mod, time as _time_mod
+    try:
+        _parts = token.split('.')
+        if len(_parts) == 3:
+            _padded = _parts[1] + '=' * (4 - len(_parts[1]) % 4)
+            _payload = _json_mod.loads(_b64.b64decode(_padded))
+            _exp = _payload.get('exp')
+            _iat = _payload.get('iat')
+            _now = _time_mod.time()
+            if _exp and _now > _exp:
+                _lp_pull_jobs[job_id]["token_warning"] = (
+                    "Your Land Portal token has expired. "
+                    "Get a new one from Land Portal → Settings → API"
+                )
+            elif _iat and (_now - _iat) > 30 * 86400:
+                _lp_pull_jobs[job_id]["token_warning"] = (
+                    "Your Land Portal token may have expired (issued >30 days ago). "
+                    "Get a new one from Land Portal → Settings → API"
+                )
+    except Exception:
+        pass
 
     def _lp_post(client: httpx.Client, pid: str, fips_val: str) -> dict:
-        """POST to Land Portal with three fallback formats."""
+        """POST to Land Portal with three fallback request formats."""
         attempts = [
-            # Attempt 1: form-encoded (most reliable for WP REST plugins)
-            dict(data={"propertyid": pid, "fips": fips_val},
-                 headers={**_LP_HEADERS_BASE, "Content-Type": "application/x-www-form-urlencoded"}),
-            # Attempt 2: JSON body
-            dict(json={"propertyid": pid, "fips": fips_val},
-                 headers={**_LP_HEADERS_BASE, "Content-Type": "application/json"}),
-            # Attempt 3: form-encoded with clusters flag
-            dict(data={"propertyid": pid, "fips": fips_val, "clusters": "true"},
-                 headers=_LP_HEADERS_BASE),
+            # Attempt 1: form-encoded with Bearer token
+            dict(
+                data={"propertyid": pid, "fips": fips_val},
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "User-Agent": _UA,
+                },
+            ),
+            # Attempt 2: JSON body with Bearer token
+            dict(
+                json={"propertyid": pid, "fips": fips_val},
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                    "User-Agent": _UA,
+                },
+            ),
+            # Attempt 3: form-encoded with token as cookie
+            dict(
+                data={"propertyid": pid, "fips": fips_val},
+                headers={"User-Agent": _UA},
+                cookies={"Authorization": token},
+            ),
         ]
         last_r = None
+        last_status = None
         for i, kwargs in enumerate(attempts, 1):
-            fmt = "form" if "data" in kwargs else "json"
-            clusters = " +clusters" if (i == 3) else ""
-            print(f"[lp-pull] Attempt {i} ({fmt}{clusters}): propertyid={pid!r} fips={fips_val!r}", flush=True)
+            fmt = "json" if "json" in kwargs else "form"
+            auth = "cookie" if "cookies" in kwargs else "bearer"
+            print(f"LP API attempt {i} ({fmt}/{auth}): pid={pid!r} fips={fips_val!r}", flush=True)
             r = client.post(_LP_URL, **kwargs)
-            print(f"[lp-pull] Attempt {i} response: {r.status_code} — {r.text[:200]}", flush=True)
+            print(f"LP API attempt {i}: {r.status_code} {r.text[:100]}", flush=True)
             last_r = r
-            if r.status_code not in (404, 405, 400):
+            last_status = r.status_code
+            if r.status_code not in (400, 404, 405):
                 break
-        last_r.raise_for_status()  # type: ignore[union-attr]
-        return last_r.json()  # type: ignore[union-attr]
+        if last_r is None or last_status in (400, 404, 405):
+            raise RuntimeError(
+                "Land Portal API unavailable. The LP estimate shown was calculated at import time "
+                "and may still be used for pricing."
+            )
+        last_r.raise_for_status()
+        return last_r.json()
 
     with httpx.Client(timeout=30.0) as client:
         for prop in eligible:
@@ -2023,32 +2068,84 @@ async def pull_lp_data_for_property(property_id: str) -> dict:
         )
 
     _lp_url = "https://landportal.com/wp-json/lp-rest-api/v1/property-data"
-    _lp_headers_base = {"Authorization": f"Bearer {token}"}
+    _ua = "Mozilla/5.0"
+
+    # Token age check
+    import base64 as _b64s, json as _json_s, time as _time_s
+    _token_warning: Optional[str] = None
+    try:
+        _parts = token.split('.')
+        if len(_parts) == 3:
+            _padded = _parts[1] + '=' * (4 - len(_parts[1]) % 4)
+            _payload = _json_s.loads(_b64s.b64decode(_padded))
+            _exp = _payload.get('exp')
+            _iat = _payload.get('iat')
+            _now = _time_s.time()
+            if _exp and _now > _exp:
+                _token_warning = (
+                    "Your Land Portal token has expired. "
+                    "Get a new one from Land Portal → Settings → API"
+                )
+            elif _iat and (_now - _iat) > 30 * 86400:
+                _token_warning = (
+                    "Your Land Portal token may have expired (issued >30 days ago). "
+                    "Get a new one from Land Portal → Settings → API"
+                )
+    except Exception:
+        pass
+
     print(f"[lp-pull-single] propertyid={lp_pid!r} fips={fips!r} token_set={bool(token)}", flush=True)
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             attempts = [
-                # Attempt 1: form-encoded
-                dict(data={"propertyid": lp_pid, "fips": fips},
-                     headers={**_lp_headers_base, "Content-Type": "application/x-www-form-urlencoded"}),
-                # Attempt 2: JSON body
-                dict(json={"propertyid": lp_pid, "fips": fips},
-                     headers={**_lp_headers_base, "Content-Type": "application/json"}),
-                # Attempt 3: form-encoded with clusters flag
-                dict(data={"propertyid": lp_pid, "fips": fips, "clusters": "true"},
-                     headers=_lp_headers_base),
+                # Attempt 1: form-encoded with Bearer token
+                dict(
+                    data={"propertyid": lp_pid, "fips": fips},
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Content-Type": "application/x-www-form-urlencoded",
+                        "User-Agent": _ua,
+                    },
+                ),
+                # Attempt 2: JSON body with Bearer token
+                dict(
+                    json={"propertyid": lp_pid, "fips": fips},
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Content-Type": "application/json",
+                        "User-Agent": _ua,
+                    },
+                ),
+                # Attempt 3: form-encoded with token as cookie
+                dict(
+                    data={"propertyid": lp_pid, "fips": fips},
+                    headers={"User-Agent": _ua},
+                    cookies={"Authorization": token},
+                ),
             ]
             r = None
+            last_status = None
             for i, kwargs in enumerate(attempts, 1):
-                fmt = "form" if "data" in kwargs else "json"
-                clusters = " +clusters" if i == 3 else ""
-                print(f"[lp-pull-single] Attempt {i} ({fmt}{clusters}): {_lp_url}", flush=True)
+                fmt = "json" if "json" in kwargs else "form"
+                auth = "cookie" if "cookies" in kwargs else "bearer"
+                print(f"LP API attempt {i} ({fmt}/{auth}): pid={lp_pid!r} fips={fips!r}", flush=True)
                 r = await client.post(_lp_url, **kwargs)
-                print(f"[lp-pull-single] Attempt {i} response: {r.status_code} — {r.text[:300]}", flush=True)
-                if r.status_code not in (404, 405, 400):
+                print(f"LP API attempt {i}: {r.status_code} {r.text[:100]}", flush=True)
+                last_status = r.status_code
+                if r.status_code not in (400, 404, 405):
                     break
-            r.raise_for_status()  # type: ignore[union-attr]
-        data = r.json()  # type: ignore[union-attr]
+            if r is None or last_status in (400, 404, 405):
+                msg = (
+                    "Land Portal API unavailable. The LP estimate shown was calculated at import time "
+                    "and may still be used for pricing."
+                )
+                if _token_warning:
+                    msg = f"{_token_warning} — {msg}"
+                raise HTTPException(status_code=502, detail=msg)
+            r.raise_for_status()
+        data = r.json()
+    except HTTPException:
+        raise
     except httpx.HTTPStatusError as exc:
         raise HTTPException(status_code=502, detail=f"Land Portal error {exc.response.status_code}: {exc.response.text[:300]}")
     except Exception as exc:

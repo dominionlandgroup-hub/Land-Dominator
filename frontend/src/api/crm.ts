@@ -287,6 +287,7 @@ export interface LpPullJobStatus {
   total: number
   errors?: string[]
   error?: string
+  token_warning?: string
 }
 
 export async function startCampaignLpPull(campaignId: string): Promise<{ job_id: string }> {

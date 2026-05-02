@@ -91,6 +91,7 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
   const [lpTotal, setLpTotal] = useState(0)
   const [lpStatus, setLpStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
   const [lpError, setLpError] = useState<string | null>(null)
+  const [lpTokenWarning, setLpTokenWarning] = useState<string | null>(null)
   const lpPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Sort
@@ -343,6 +344,7 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
           const s = await getCampaignLpPullStatus(campaign.id, job_id)
           setLpDone(s.done)
           setLpTotal(s.total)
+          if (s.token_warning) setLpTokenWarning(s.token_warning)
           if (s.status === 'done' || s.status === 'error') {
             setLpStatus(s.status)
             if (s.status === 'error') setLpError(s.error ?? 'LP pull failed')
@@ -476,6 +478,11 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
           {lpStatus === 'error' && (
             <span className="text-xs font-semibold" style={{ color: '#DC2626' }}>
               LP pull failed: {lpError}
+            </span>
+          )}
+          {lpTokenWarning && (
+            <span className="text-xs font-semibold" style={{ color: '#D97706' }}>
+              ⚠️ {lpTokenWarning}
             </span>
           )}
 
