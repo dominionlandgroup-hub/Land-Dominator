@@ -10,24 +10,24 @@ interface BoardsProps {
 // Column definitions per board view
 const BOARD_COLUMNS: Record<string, { status: string; label: string; color: string }[]> = {
   'boards-seller': [
-    { status: 'lead',           label: 'New Lead',       color: '#F59E0B' },
+    { status: 'lead',           label: 'New Lead',       color: '#5C2977' },
     { status: 'prospect',       label: 'Contacted',      color: '#4A90D9' },
-    { status: 'offer_sent',     label: 'Offer Sent',     color: '#A78BFA' },
-    { status: 'under_contract', label: 'Under Contract', color: '#10B981' },
-    { status: 'due_diligence',  label: 'Due Diligence',  color: '#F59E0B' },
-    { status: 'closed_won',     label: 'Closed Won',     color: '#10B981' },
-    { status: 'closed_lost',    label: 'Closed Lost',    color: '#EF4444' },
+    { status: 'offer_sent',     label: 'Offer Sent',     color: '#7C3AED' },
+    { status: 'under_contract', label: 'Under Contract', color: '#059669' },
+    { status: 'due_diligence',  label: 'Due Diligence',  color: '#D97706' },
+    { status: 'closed_won',     label: 'Closed Won',     color: '#059669' },
+    { status: 'closed_lost',    label: 'Closed Lost',    color: '#DC2626' },
   ],
   'boards-buyer': [
     { status: 'lead',           label: 'Available',      color: '#4A90D9' },
-    { status: 'prospect',       label: 'Buyer Found',    color: '#A78BFA' },
-    { status: 'under_contract', label: 'Under Contract', color: '#10B981' },
-    { status: 'closed_won',     label: 'Closed',         color: '#10B981' },
+    { status: 'prospect',       label: 'Buyer Found',    color: '#7C3AED' },
+    { status: 'under_contract', label: 'Under Contract', color: '#059669' },
+    { status: 'closed_won',     label: 'Closed',         color: '#059669' },
   ],
   'boards-inventory': [
     { status: 'lead',           label: 'Listed',         color: '#4A90D9' },
-    { status: 'under_contract', label: 'Under Contract', color: '#10B981' },
-    { status: 'closed_won',     label: 'Sold',           color: '#10B981' },
+    { status: 'under_contract', label: 'Under Contract', color: '#059669' },
+    { status: 'closed_won',     label: 'Sold',           color: '#059669' },
   ],
 }
 
@@ -121,15 +121,15 @@ export default function Boards({ view }: BoardsProps) {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#0F0F0F', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#F8F6FB', overflow: 'hidden' }}>
       {/* Header */}
       <div className="page-header" style={{ flexShrink: 0 }}>
-        <h1 style={{ fontSize: 18, fontWeight: 700, color: '#F5F5F5' }}>{BOARD_LABELS[view]}</h1>
+        <h1 style={{ fontSize: 18, fontWeight: 700, color: '#1A0A2E' }}>{BOARD_LABELS[view]}</h1>
         <button className="btn-secondary text-sm" onClick={load}>↻ Refresh</button>
       </div>
 
       {loading ? (
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6B6B6B' }}>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9B8AAE' }}>
           Loading board…
         </div>
       ) : (
@@ -153,7 +153,7 @@ export default function Boards({ view }: BoardsProps) {
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span style={{ width: 10, height: 10, borderRadius: '50%', background: col.color, display: 'inline-block', flexShrink: 0 }} />
-                      <span style={{ fontWeight: 700, fontSize: 13, color: '#F5F5F5' }}>{col.label}</span>
+                      <span style={{ fontWeight: 700, fontSize: 13, color: '#1A0A2E' }}>{col.label}</span>
                     </div>
                     <span style={{
                       background: `${col.color}18`, color: col.color,
@@ -165,13 +165,13 @@ export default function Boards({ view }: BoardsProps) {
                   {/* Cards container */}
                   <div style={{
                     flex: 1, overflowY: 'auto', borderRadius: 8, padding: '8px 6px',
-                    background: isDragTarget ? `${col.color}08` : '#171717',
+                    background: isDragTarget ? `${col.color}08` : '#F3EEF9',
                     border: `2px dashed ${isDragTarget ? col.color : 'transparent'}`,
                     transition: 'border-color 0.15s, background 0.15s',
                     minHeight: 80,
                   }}>
                     {cards.length === 0 ? (
-                      <div style={{ textAlign: 'center', padding: '20px 12px', color: '#3E3E3E', fontSize: 12 }}>
+                      <div style={{ textAlign: 'center', padding: '20px 12px', color: '#D4C5E8', fontSize: 12 }}>
                         Drop here
                       </div>
                     ) : cards.map(p => {
@@ -185,29 +185,30 @@ export default function Boards({ view }: BoardsProps) {
                           onDragEnd={onDragEnd}
                           onClick={() => openProperty(p)}
                           style={{
-                            background: '#1A1A1A', borderRadius: 8, padding: '12px 14px',
+                            background: '#FFFFFF', borderRadius: 8, padding: '12px 14px',
                             marginBottom: 8, cursor: 'pointer',
-                            border: isDragging ? `1px solid ${col.color}` : '1px solid #2E2E2E',
+                            border: isDragging ? `1px solid ${col.color}` : '1px solid #E8E0F0',
                             opacity: isDragging ? 0.5 : 1,
                             transition: 'border-color 0.1s, opacity 0.1s',
                             userSelect: 'none',
+                            boxShadow: '0 1px 3px rgba(92,41,119,0.08)',
                           }}
-                          onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = '#3E3E3E' }}
-                          onMouseLeave={e => { if (!isDragging) (e.currentTarget as HTMLDivElement).style.borderColor = '#2E2E2E' }}
+                          onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = '#D4C5E8' }}
+                          onMouseLeave={e => { if (!isDragging) (e.currentTarget as HTMLDivElement).style.borderColor = '#E8E0F0' }}
                         >
-                          <p style={{ fontWeight: 700, fontSize: 13, color: '#F5F5F5', margin: '0 0 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <p style={{ fontWeight: 700, fontSize: 13, color: '#1A0A2E', margin: '0 0 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {p.owner_full_name || [p.owner_first_name, p.owner_last_name].filter(Boolean).join(' ') || '—'}
                           </p>
-                          {p.apn && <p style={{ fontSize: 11, color: '#6B6B6B', margin: '0 0 2px', fontFamily: 'monospace' }}>{p.apn}</p>}
-                          {p.county && <p style={{ fontSize: 11, color: '#A0A0A0', margin: '0 0 6px' }}>{p.county}{p.state ? `, ${p.state}` : ''}</p>}
+                          {p.apn && <p style={{ fontSize: 11, color: '#9B8AAE', margin: '0 0 2px', fontFamily: 'monospace' }}>{p.apn}</p>}
+                          {p.county && <p style={{ fontSize: 11, color: '#6B5B8A', margin: '0 0 6px' }}>{p.county}{p.state ? `, ${p.state}` : ''}</p>}
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }}>
                             <span style={{ fontSize: 13, fontWeight: 700, color: col.color }}>
-                              {p.offer_price != null ? fmtCurrency(p.offer_price) : <span style={{ color: '#3E3E3E', fontSize: 11, fontWeight: 400 }}>No offer</span>}
+                              {p.offer_price != null ? fmtCurrency(p.offer_price) : <span style={{ color: '#D4C5E8', fontSize: 11, fontWeight: 400 }}>No offer</span>}
                             </span>
-                            <span style={{ fontSize: 10, color: '#3E3E3E' }}>{days}d ago</span>
+                            <span style={{ fontSize: 10, color: '#D4C5E8' }}>{days}d ago</span>
                           </div>
                           {p.acreage != null && (
-                            <p style={{ fontSize: 10, color: '#6B6B6B', margin: '4px 0 0' }}>{p.acreage.toFixed(2)} acres</p>
+                            <p style={{ fontSize: 10, color: '#9B8AAE', margin: '4px 0 0' }}>{p.acreage.toFixed(2)} acres</p>
                           )}
                         </div>
                       )

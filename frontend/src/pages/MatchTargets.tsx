@@ -185,7 +185,7 @@ export default function MatchTargets() {
       return (
         <div className="flex flex-col items-center justify-center min-h-screen gap-4">
           <LoadingSpinner size="lg" />
-          <p className="text-sm" style={{ color: '#A0A0A0' }}>Loading comps from database…</p>
+          <p className="text-sm" style={{ color: '#6B5B8A' }}>Loading comps from database…</p>
         </div>
       )
     }
@@ -207,38 +207,38 @@ export default function MatchTargets() {
     { key: 'parcel_address', header: 'Parcel Address', defaultHidden: true, render: (v) => <span className="max-w-[220px] block truncate text-xs" title={String(v || '')}>{String(v || '—')}</span> },
     { key: 'parcel_state', header: 'Parcel State', defaultHidden: true, render: (v) => <span className="text-xs">{String(v || '—')}</span> },
     { key: 'parcel_county', header: 'Parcel County', defaultHidden: true, render: (v) => <span className="text-xs">{String(v || '—')}</span> },
-    { key: 'latitude', header: 'Latitude', defaultHidden: true, align: 'right', render: (v) => (v == null ? <span style={{ color: '#6B6B6B' }}>—</span> : <span className="text-xs">{(v as number).toFixed(5)}</span>) },
-    { key: 'longitude', header: 'Longitude', defaultHidden: true, align: 'right', render: (v) => (v == null ? <span style={{ color: '#6B6B6B' }}>—</span> : <span className="text-xs">{(v as number).toFixed(5)}</span>) },
-    { key: 'lot_acres', header: 'Acres', sortable: true, align: 'right', render: (v) => v == null ? <span style={{ color: '#6B6B6B' }}>—</span> : <span>{(v as number).toFixed(2)}</span> },
-    { key: 'acreage_band', header: 'Band', sortable: true, align: 'center', render: (v) => <span className="text-xs" style={{ color: '#6B6B6B' }}>{String(v || '—')}</span> },
+    { key: 'latitude', header: 'Latitude', defaultHidden: true, align: 'right', render: (v) => (v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">{(v as number).toFixed(5)}</span>) },
+    { key: 'longitude', header: 'Longitude', defaultHidden: true, align: 'right', render: (v) => (v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">{(v as number).toFixed(5)}</span>) },
+    { key: 'lot_acres', header: 'Acres', sortable: true, align: 'right', render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span>{(v as number).toFixed(2)}</span> },
+    { key: 'acreage_band', header: 'Band', sortable: true, align: 'center', render: (v) => <span className="text-xs" style={{ color: '#9B8AAE' }}>{String(v || '—')}</span> },
     { key: 'matched_comp_count', header: 'Comps', sortable: true, align: 'center', render: (v) => <span className="text-xs">{String(v ?? '—')}</span> },
     {
       key: 'no_match_reason', header: 'No Match Reason', defaultHidden: false,
       render: (v, row) => {
-        if (!v) return <span style={{ color: '#6B6B6B' }}>—</span>
+        if (!v) return <span style={{ color: '#9B8AAE' }}>—</span>
         const flag = row.pricing_flag
-        const color = flag === 'LP_FALLBACK' ? '#A78BFA' : '#6B6B6B'
+        const color = flag === 'LP_FALLBACK' ? '#5C2977' : '#9B8AAE'
         return <span className="text-xs" style={{ color }}>{String(v)}</span>
       },
     },
     { key: 'comp_count', header: 'Comp Count', sortable: true, align: 'center', defaultHidden: true, render: (v) => <span className="text-xs">{String(v ?? '—')}</span> },
-    { key: 'closest_comp_distance', header: 'Distance to Closest Comp', sortable: true, align: 'right', defaultHidden: true, render: (v) => (v == null ? <span style={{ color: '#6B6B6B' }}>—</span> : <span className="text-xs">{(v as number).toFixed(2)}</span>) },
-    { key: 'retail_estimate', header: 'Retail Est.', sortable: true, align: 'right', defaultHidden: true, render: (v) => v == null ? <span style={{ color: '#6B6B6B' }}>—</span> : <span className="text-xs" style={{ color: '#F5F5F5' }}>${Math.round(v as number).toLocaleString()}</span> },
-    { key: 'suggested_offer_low', header: 'Offer Low', align: 'right', render: (v) => v == null ? <span style={{ color: '#6B6B6B' }}>—</span> : <span className="text-xs" style={{ color: '#A0A0A0' }}>${Math.round(v as number).toLocaleString()}</span> },
-    { key: 'suggested_offer_mid', header: 'Offer Mid', sortable: true, align: 'right', render: (v) => v == null ? <span style={{ color: '#6B6B6B' }}>—</span> : <span className="font-semibold" style={{ color: '#10B981' }}>${Math.round(v as number).toLocaleString()}</span> },
-    { key: 'suggested_offer_high', header: 'Offer High', align: 'right', render: (v) => v == null ? <span style={{ color: '#6B6B6B' }}>—</span> : <span className="text-xs" style={{ color: '#A0A0A0' }}>${Math.round(v as number).toLocaleString()}</span> },
-    { key: 'median_comp_sale_price', header: 'Med. Comp $', align: 'right', defaultHidden: true, render: (v) => v == null ? <span style={{ color: '#6B6B6B' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span> },
-    { key: 'median_ppa', header: 'Med. PPA', align: 'right', defaultHidden: true, render: (v) => v == null ? <span style={{ color: '#6B6B6B' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span> },
-    { key: 'min_comp_price', header: 'Min Comp $', align: 'right', defaultHidden: true, render: (v) => v == null ? <span style={{ color: '#6B6B6B' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span> },
-    { key: 'max_comp_price', header: 'Max Comp $', align: 'right', defaultHidden: true, render: (v) => v == null ? <span style={{ color: '#6B6B6B' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span> },
+    { key: 'closest_comp_distance', header: 'Distance to Closest Comp', sortable: true, align: 'right', defaultHidden: true, render: (v) => (v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">{(v as number).toFixed(2)}</span>) },
+    { key: 'retail_estimate', header: 'Retail Est.', sortable: true, align: 'right', defaultHidden: true, render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs" style={{ color: '#1A0A2E' }}>${Math.round(v as number).toLocaleString()}</span> },
+    { key: 'suggested_offer_low', header: 'Offer Low', align: 'right', render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs" style={{ color: '#6B5B8A' }}>${Math.round(v as number).toLocaleString()}</span> },
+    { key: 'suggested_offer_mid', header: 'Offer Mid', sortable: true, align: 'right', render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="font-semibold" style={{ color: '#059669' }}>${Math.round(v as number).toLocaleString()}</span> },
+    { key: 'suggested_offer_high', header: 'Offer High', align: 'right', render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs" style={{ color: '#6B5B8A' }}>${Math.round(v as number).toLocaleString()}</span> },
+    { key: 'median_comp_sale_price', header: 'Med. Comp $', align: 'right', defaultHidden: true, render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span> },
+    { key: 'median_ppa', header: 'Med. PPA', align: 'right', defaultHidden: true, render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span> },
+    { key: 'min_comp_price', header: 'Min Comp $', align: 'right', defaultHidden: true, render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span> },
+    { key: 'max_comp_price', header: 'Max Comp $', align: 'right', defaultHidden: true, render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span> },
     { key: 'outliers_removed', header: 'Outliers', align: 'center', defaultHidden: true, render: (v) => <span className="text-xs">{String(v ?? 0)}</span> },
-    { key: 'tlp_estimate', header: 'TLP Est.', align: 'right', defaultHidden: true, render: (v) => v == null ? <span style={{ color: '#6B6B6B' }}>—</span> : <span className="text-xs" style={{ color: '#A0A0A0' }}>${Math.round(v as number).toLocaleString()}</span> },
+    { key: 'tlp_estimate', header: 'TLP Est.', align: 'right', defaultHidden: true, render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs" style={{ color: '#6B5B8A' }}>${Math.round(v as number).toLocaleString()}</span> },
     { key: 'tlp_capped', header: 'TLP Cap', align: 'center', defaultHidden: true, render: (v) => <span className="text-xs">{v ? 'Yes' : 'No'}</span> },
-    { key: 'flood_zone', header: 'Flood', defaultHidden: true, render: (v) => <span className="text-xs" style={{ color: '#A0A0A0' }}>{String(v || '—')}</span> },
+    { key: 'flood_zone', header: 'Flood', defaultHidden: true, render: (v) => <span className="text-xs" style={{ color: '#6B5B8A' }}>{String(v || '—')}</span> },
     {
       key: 'buildability_pct', header: 'Build%', sortable: true, align: 'right', defaultHidden: true,
-      render: (v) => v == null ? <span style={{ color: '#6B6B6B' }}>—</span> : (
-        <span style={{ color: (v as number) > 70 ? '#10B981' : (v as number) > 40 ? '#F59E0B' : '#EF4444', fontSize: '12px' }}>
+      render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : (
+        <span style={{ color: (v as number) > 70 ? '#059669' : (v as number) > 40 ? '#D97706' : '#DC2626', fontSize: '12px' }}>
           {(v as number).toFixed(0)}%
         </span>
       ),
@@ -255,8 +255,8 @@ export default function MatchTargets() {
             ← Market Analysis
           </button>
           <div>
-            <h1 className="text-lg font-semibold" style={{ color: '#F5F5F5' }}>Match Targets</h1>
-            <p className="text-xs mt-0.5" style={{ color: '#A0A0A0' }}>Upload target parcels and run the matching engine with smart filters</p>
+            <h1 className="text-lg font-semibold" style={{ color: '#1A0A2E' }}>Match Targets</h1>
+            <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>Upload target parcels and run the matching engine with smart filters</p>
           </div>
         </div>
       </div>
@@ -264,37 +264,37 @@ export default function MatchTargets() {
       <div className="p-8 max-w-[1400px] mx-auto w-full">
 
         {/* ── Comps info banner ────────────────────────────────── */}
-        <div className="rounded-xl px-4 py-3 mb-5 flex items-center justify-between" style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)' }}>
+        <div className="rounded-xl px-4 py-3 mb-5 flex items-center justify-between" style={{ background: '#D1FAE5', border: '1px solid rgba(5,150,105,0.2)' }}>
           <div className="flex items-center gap-3">
-            <span style={{ color: '#10B981', fontWeight: 700, fontSize: 16 }}>✓</span>
+            <span style={{ color: '#059669', fontWeight: 700, fontSize: 16 }}>✓</span>
             <div>
-              <p className="text-sm font-medium" style={{ color: '#10B981' }}>
+              <p className="text-sm font-medium" style={{ color: '#059669' }}>
                 Using {compsStats.valid_rows.toLocaleString()} sold comps
                 {compsStats.uploaded_at && (
-                  <span className="font-normal ml-2" style={{ color: '#A0A0A0' }}>
+                  <span className="font-normal ml-2" style={{ color: '#6B5B8A' }}>
                     · uploaded {new Date(compsStats.uploaded_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
                   </span>
                 )}
               </p>
-              <p className="text-xs mt-0.5" style={{ color: '#A0A0A0' }}>Upload new comps on the Dashboard page to refresh</p>
+              <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>Upload new comps on the Dashboard page to refresh</p>
             </div>
           </div>
         </div>
 
         {/* ── Target upload ─────────────────────────────────────── */}
         <div className="card mb-6">
-          <h2 className="font-semibold mb-4" style={{ color: '#F5F5F5' }}>Target Parcels CSV</h2>
+          <h2 className="font-semibold mb-4" style={{ color: '#1A0A2E' }}>Target Parcels CSV</h2>
           {targetStats ? (
-            <div className="rounded-lg px-4 py-3 flex items-center justify-between" style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)' }}>
+            <div className="rounded-lg px-4 py-3 flex items-center justify-between" style={{ background: 'rgba(5,150,105,0.06)', border: '1px solid rgba(5,150,105,0.15)' }}>
               <div>
-                <p className="font-medium text-sm" style={{ color: '#10B981' }}>
+                <p className="font-medium text-sm" style={{ color: '#059669' }}>
                   ✓ {targetStats.total_rows.toLocaleString()} rows loaded
                 </p>
-                <p className="text-xs mt-0.5" style={{ color: '#A0A0A0' }}>
+                <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>
                   {targetStats.columns_found.length} columns · {fileName}
                 </p>
               </div>
-              <button className="text-xs" style={{ color: '#A0A0A0' }} onClick={() => { setTargetStats(null); setFileName(null) }}>
+              <button className="text-xs" style={{ color: '#6B5B8A' }} onClick={() => { setTargetStats(null); setFileName(null) }}>
                 Replace
               </button>
             </div>
@@ -306,13 +306,13 @@ export default function MatchTargets() {
 
         {/* ── Filters ─────────────────────────────────────────── */}
         <div className="card mb-6">
-          <h2 className="font-semibold mb-5" style={{ color: '#F5F5F5' }}>Filters</h2>
+          <h2 className="font-semibold mb-5" style={{ color: '#1A0A2E' }}>Filters</h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
             {/* 1. Acreage Range */}
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B6B6B' }}>Acreage Range</p>
+              <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#9B8AAE' }}>Acreage Range</p>
               <div className="flex items-start gap-3">
                 <div className="flex-1">
                   <input
@@ -321,13 +321,13 @@ export default function MatchTargets() {
                     value={minAcreage}
                     onChange={e => setMinAcreage(e.target.value)}
                   />
-                  <p className="text-[10px] mt-1" style={{ color: '#6B6B6B' }}>
+                  <p className="text-[10px] mt-1" style={{ color: '#9B8AAE' }}>
                     {minAcreage && Number(minAcreage) > 0
                       ? `${Number(minAcreage).toLocaleString(undefined, { maximumFractionDigits: 2 })} acres (${Math.round(Number(minAcreage) * SQFT_PER_ACRE).toLocaleString()} sq ft)`
                       : 'no min'}
                   </p>
                 </div>
-                <span className="text-sm mt-2" style={{ color: '#A0A0A0' }}>to</span>
+                <span className="text-sm mt-2" style={{ color: '#6B5B8A' }}>to</span>
                 <div className="flex-1">
                   <input
                     type="number" step="0.1" placeholder="Max acres"
@@ -335,7 +335,7 @@ export default function MatchTargets() {
                     value={maxAcreage}
                     onChange={e => setMaxAcreage(e.target.value)}
                   />
-                  <p className="text-[10px] mt-1" style={{ color: '#6B6B6B' }}>
+                  <p className="text-[10px] mt-1" style={{ color: '#9B8AAE' }}>
                     {maxAcreage && Number(maxAcreage) > 0
                       ? `${Number(maxAcreage).toLocaleString(undefined, { maximumFractionDigits: 2 })} acres (${Math.round(Number(maxAcreage) * SQFT_PER_ACRE).toLocaleString()} sq ft)`
                       : 'no max'}
@@ -346,51 +346,51 @@ export default function MatchTargets() {
 
             {/* 2. Flood Zone */}
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B6B6B' }}>Flood Zone</p>
-              <div className="inline-flex rounded-lg overflow-hidden" style={{ border: '1px solid #2E2E2E' }}>
-                <button className="px-4 py-2 text-xs transition-all" style={floodZoneFilter === 'exclude' ? { background: '#7C3AED', color: 'white' } : { background: '#1A1A1A', color: '#A0A0A0' }} onClick={() => setFloodZoneFilter('exclude')}>Exclude</button>
-                <button className="px-4 py-2 text-xs transition-all" style={floodZoneFilter === 'all' ? { background: '#7C3AED', color: 'white' } : { background: '#1A1A1A', color: '#A0A0A0' }} onClick={() => setFloodZoneFilter('all')}>Include All</button>
-                <button className="px-4 py-2 text-xs transition-all" style={floodZoneFilter === 'only' ? { background: '#7C3AED', color: 'white' } : { background: '#1A1A1A', color: '#A0A0A0' }} onClick={() => setFloodZoneFilter('only')}>Only Flood</button>
+              <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#9B8AAE' }}>Flood Zone</p>
+              <div className="inline-flex rounded-lg overflow-hidden" style={{ border: '1px solid #E8E0F0' }}>
+                <button className="px-4 py-2 text-xs transition-all" style={floodZoneFilter === 'exclude' ? { background: '#5C2977', color: 'white' } : { background: '#FFFFFF', color: '#6B5B8A' }} onClick={() => setFloodZoneFilter('exclude')}>Exclude</button>
+                <button className="px-4 py-2 text-xs transition-all" style={floodZoneFilter === 'all' ? { background: '#5C2977', color: 'white' } : { background: '#FFFFFF', color: '#6B5B8A' }} onClick={() => setFloodZoneFilter('all')}>Include All</button>
+                <button className="px-4 py-2 text-xs transition-all" style={floodZoneFilter === 'only' ? { background: '#5C2977', color: 'white' } : { background: '#FFFFFF', color: '#6B5B8A' }} onClick={() => setFloodZoneFilter('only')}>Only Flood</button>
               </div>
-              <p className="text-[10px] mt-1.5" style={{ color: '#6B6B6B' }}>Exclude = no FEMA flood zones (recommended)</p>
+              <p className="text-[10px] mt-1.5" style={{ color: '#9B8AAE' }}>Exclude = no FEMA flood zones (recommended)</p>
             </div>
 
             {/* 3. Minimum Offer Floor */}
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B6B6B' }}>Minimum Offer Floor</p>
+              <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#9B8AAE' }}>Minimum Offer Floor</p>
               <input type="number" step="1000" min="0" placeholder="10000"
                 className="input-base text-xs py-2 w-full"
                 value={minOfferFloor}
                 onChange={e => setMinOfferFloor(e.target.value)} />
-              <p className="text-[10px] mt-1" style={{ color: '#6B6B6B' }}>Below this → flagged LOW_OFFER (kept in results)</p>
+              <p className="text-[10px] mt-1" style={{ color: '#9B8AAE' }}>Below this → flagged LOW_OFFER (kept in results)</p>
             </div>
 
             {/* 4. Minimum Retail Value */}
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B6B6B' }}>Minimum Retail Value</p>
+              <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#9B8AAE' }}>Minimum Retail Value</p>
               <input type="number" step="1000" min="0" placeholder="20000"
                 className="input-base text-xs py-2 w-full"
                 value={minLpEstimate}
                 onChange={e => setMinLpEstimate(e.target.value)} />
-              <p className="text-[10px] mt-1" style={{ color: '#6B6B6B' }}>Below this → flagged LOW_VALUE (kept in results)</p>
+              <p className="text-[10px] mt-1" style={{ color: '#9B8AAE' }}>Below this → flagged LOW_VALUE (kept in results)</p>
             </div>
 
           </div>
 
           {/* 5. ZIP Filter */}
-          <div className="mt-5 pt-5" style={{ borderTop: '1px solid #2E2E2E' }}>
+          <div className="mt-5 pt-5" style={{ borderTop: '1px solid #E8E0F0' }}>
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#6B6B6B' }}>ZIP Filter</p>
+              <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#9B8AAE' }}>ZIP Filter</p>
               <div className="flex gap-2">
                 {top10Zips.length > 0 && (
                   <button className="text-xs px-3 py-1 rounded-lg border transition-colors"
-                    style={{ borderColor: '#2E2E2E', color: '#A78BFA', background: '#1A1A1A' }}
+                    style={{ borderColor: '#E8E0F0', color: '#5C2977', background: '#FFFFFF' }}
                     onClick={useBuyBoxZips}>
                     Use Buy Box ZIPs
                   </button>
                 )}
                 {zipFilter.length > 0 && (
-                  <button className="text-xs" style={{ color: '#6B6B6B' }} onClick={clearZips}>Clear</button>
+                  <button className="text-xs" style={{ color: '#9B8AAE' }} onClick={clearZips}>Clear</button>
                 )}
               </div>
             </div>
@@ -402,7 +402,7 @@ export default function MatchTargets() {
               onChange={e => handleZipInput(e.target.value)}
             />
             {zipFilter.length > 0 && (
-              <p className="text-xs mt-1.5" style={{ color: '#A0A0A0' }}>
+              <p className="text-xs mt-1.5" style={{ color: '#6B5B8A' }}>
                 {zipFilter.length} ZIP{zipFilter.length !== 1 ? 's' : ''} selected: {zipFilter.join(', ')}
               </p>
             )}
@@ -410,7 +410,7 @@ export default function MatchTargets() {
         </div>
 
         {/* ── Active Filters Summary ──────────────────────────── */}
-        <div className="mb-5 px-4 py-3 rounded-xl text-xs" style={{ background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.2)', color: '#A78BFA' }}>
+        <div className="mb-5 px-4 py-3 rounded-xl text-xs" style={{ background: 'rgba(92,41,119,0.08)', border: '1px solid rgba(92,41,119,0.2)', color: '#5C2977' }}>
           {filterSummary}
         </div>
 
@@ -423,12 +423,12 @@ export default function MatchTargets() {
               width: '100%', padding: '18px 32px', fontSize: 18, fontWeight: 700, letterSpacing: '0.5px',
               borderRadius: 8, border: 'none', cursor: !targetStats || matchLoading ? 'not-allowed' : 'pointer',
               opacity: !targetStats || matchLoading ? 0.5 : 1,
-              background: '#7C3AED',
-              color: 'white', boxShadow: '0 4px 20px rgba(124,58,237,0.35)', transition: 'all 0.3s ease',
+              background: '#5C2977',
+              color: 'white', boxShadow: '0 1px 3px rgba(92,41,119,0.08)', transition: 'all 0.3s ease',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
             }}
-            onMouseEnter={e => { if (!matchLoading && targetStats) { (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 8px 30px rgba(124,58,237,0.5)'; (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-2px)' } }}
-            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 4px 20px rgba(124,58,237,0.35)'; (e.currentTarget as HTMLButtonElement).style.transform = 'none' }}
+            onMouseEnter={e => { if (!matchLoading && targetStats) { (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 4px 16px rgba(92,41,119,0.2)'; (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-2px)' } }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 1px 3px rgba(92,41,119,0.08)'; (e.currentTarget as HTMLButtonElement).style.transform = 'none' }}
           >
             {matchLoading ? (
               <><LoadingSpinner size="sm" />Running…</>
@@ -445,14 +445,14 @@ export default function MatchTargets() {
             )}
           </button>
           {targetStats && !matchLoading && (
-            <p className="text-sm mt-2 text-center" style={{ color: '#A0A0A0' }}>
+            <p className="text-sm mt-2 text-center" style={{ color: '#6B5B8A' }}>
               {targetStats.total_rows.toLocaleString()} targets × {compsStats.valid_rows.toLocaleString()} comps
             </p>
           )}
         </div>
 
         {matchError && (
-          <div className="rounded-xl px-5 py-4 mb-6 text-sm" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', color: '#EF4444' }}>
+          <div className="rounded-xl px-5 py-4 mb-6 text-sm" style={{ background: '#FEE2E2', border: '1px solid rgba(220,38,38,0.3)', color: '#DC2626' }}>
             {matchError}
           </div>
         )}
@@ -461,12 +461,12 @@ export default function MatchTargets() {
           <>
             {/* Smart floor recommendation */}
             {matchResult.smart_floor_recommendation != null && (
-              <div className="mb-5 px-4 py-3 rounded-xl flex items-center justify-between" style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)' }}>
+              <div className="mb-5 px-4 py-3 rounded-xl flex items-center justify-between" style={{ background: '#D1FAE5', border: '1px solid rgba(5,150,105,0.25)' }}>
                 <div>
-                  <p className="text-sm font-medium" style={{ color: '#10B981' }}>
+                  <p className="text-sm font-medium" style={{ color: '#059669' }}>
                     Recommended minimum: <strong>${Math.round(matchResult.smart_floor_recommendation).toLocaleString()}</strong> based on comp data
                   </p>
-                  <p className="text-xs mt-0.5" style={{ color: '#A0A0A0' }}>
+                  <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>
                     Hard floor is currently <strong>${Number(minOfferFloor || 10000).toLocaleString()}</strong> — click "Use this floor" to apply the recommendation
                   </p>
                 </div>
@@ -493,10 +493,10 @@ export default function MatchTargets() {
                   <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
                     <div>
                       <div className="flex items-baseline gap-2 mb-0.5">
-                        <span className="text-3xl font-bold" style={{ color: '#10B981' }}>{matchedCt.toLocaleString()}</span>
-                        <span className="text-sm font-semibold" style={{ color: '#10B981' }}>Comp-Matched Records ready to mail</span>
+                        <span className="text-3xl font-bold" style={{ color: '#059669' }}>{matchedCt.toLocaleString()}</span>
+                        <span className="text-sm font-semibold" style={{ color: '#059669' }}>Comp-Matched Records ready to mail</span>
                       </div>
-                      <p className="text-[11px]" style={{ color: '#6B6B6B' }}>{matchRate}% match rate · {total.toLocaleString()} total targets</p>
+                      <p className="text-[11px]" style={{ color: '#9B8AAE' }}>{matchRate}% match rate · {total.toLocaleString()} total targets</p>
                     </div>
                     <button className="btn-primary text-sm" style={{ padding: '8px 16px' }} onClick={() => setShowMailingModal(true)}>
                       + Add to Mailing List
@@ -516,17 +516,17 @@ export default function MatchTargets() {
                   </div>
 
                   {lpFallbackCt > 0 && (
-                    <div className="rounded-lg p-2.5 mb-2" style={{ background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.2)' }}>
-                      <p className="text-[11px] font-semibold mb-0.5" style={{ color: '#A78BFA' }}>
+                    <div className="rounded-lg p-2.5 mb-2" style={{ background: 'rgba(92,41,119,0.08)', border: '1px solid rgba(92,41,119,0.2)' }}>
+                      <p className="text-[11px] font-semibold mb-0.5" style={{ color: '#5C2977' }}>
                         {lpFallbackCt.toLocaleString()} records have LP estimate only — not recommended for mailing without local comp data
                       </p>
-                      <p className="text-[10px]" style={{ color: '#A78BFA' }}>
+                      <p className="text-[10px]" style={{ color: '#5C2977' }}>
                         These are priced from Land Portal's automated estimate with no local sold comps to verify. Upload more comps from nearby areas to convert them to comp-matched.
                       </p>
                     </div>
                   )}
                   {unpricedCt > 0 && (
-                    <p className="text-[10px]" style={{ color: '#6B6B6B' }}>
+                    <p className="text-[10px]" style={{ color: '#9B8AAE' }}>
                       {unpricedCt.toLocaleString()} records have no data — skip these (no comps and no LP estimate available)
                     </p>
                   )}
@@ -536,10 +536,10 @@ export default function MatchTargets() {
 
             {/* Result summary cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-              <ResultCard label="Comp-Matched" value={matchResult.matched_count.toLocaleString()} accent="#10B981" sub="Ready to mail" />
-              <ResultCard label="LP Estimate Only" value={(matchResult.lp_fallback_count ?? 0).toLocaleString()} accent="#A78BFA" sub="Reference only" />
-              <ResultCard label="Below Floor" value={((matchResult.low_offer_count ?? 0) + (matchResult.low_value_count ?? 0)).toLocaleString()} accent="#F59E0B" sub="Offer too low" />
-              <ResultCard label="No Data" value={(matchResult.unpriced_count ?? 0).toLocaleString()} accent="#6B6B6B" sub="Skip these" />
+              <ResultCard label="Comp-Matched" value={matchResult.matched_count.toLocaleString()} accent="#059669" sub="Ready to mail" />
+              <ResultCard label="LP Estimate Only" value={(matchResult.lp_fallback_count ?? 0).toLocaleString()} accent="#5C2977" sub="Reference only" />
+              <ResultCard label="Below Floor" value={((matchResult.low_offer_count ?? 0) + (matchResult.low_value_count ?? 0)).toLocaleString()} accent="#D97706" sub="Offer too low" />
+              <ResultCard label="No Data" value={(matchResult.unpriced_count ?? 0).toLocaleString()} accent="#9B8AAE" sub="Skip these" />
             </div>
 
             {/* Assignment fee calculator */}
@@ -552,12 +552,12 @@ export default function MatchTargets() {
               }).length
               return (
                 <div className="card mb-6">
-                  <h2 className="font-semibold mb-3" style={{ color: '#F5F5F5' }}>Assignment Fee Calculator</h2>
+                  <h2 className="font-semibold mb-3" style={{ color: '#1A0A2E' }}>Assignment Fee Calculator</h2>
                   <div className="flex items-end gap-4 flex-wrap">
                     <div>
-                      <label className="text-xs block mb-1" style={{ color: '#A0A0A0' }}>Target Assignment Fee</label>
+                      <label className="text-xs block mb-1" style={{ color: '#6B5B8A' }}>Target Assignment Fee</label>
                       <div className="flex items-center gap-2">
-                        <span className="text-sm" style={{ color: '#A0A0A0' }}>$</span>
+                        <span className="text-sm" style={{ color: '#6B5B8A' }}>$</span>
                         <input type="number" min="0" step="500" placeholder="5000"
                           className="input-base text-sm py-2"
                           style={{ width: 120 }}
@@ -565,11 +565,11 @@ export default function MatchTargets() {
                           onChange={e => setAssignmentFee(e.target.value)} />
                       </div>
                     </div>
-                    <div className="rounded-xl px-4 py-3" style={{ background: supporting > 0 ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)', border: `1px solid ${supporting > 0 ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)'}` }}>
-                      <p className="text-sm font-semibold" style={{ color: supporting > 0 ? '#10B981' : '#EF4444' }}>
+                    <div className="rounded-xl px-4 py-3" style={{ background: supporting > 0 ? '#D1FAE5' : '#FEE2E2', border: `1px solid ${supporting > 0 ? 'rgba(5,150,105,0.25)' : 'rgba(220,38,38,0.25)'}` }}>
+                      <p className="text-sm font-semibold" style={{ color: supporting > 0 ? '#059669' : '#DC2626' }}>
                         {supporting.toLocaleString()} record{supporting !== 1 ? 's' : ''} support a ${Number(assignmentFee || 0).toLocaleString()} assignment fee
                       </p>
-                      <p className="text-xs mt-0.5" style={{ color: '#A0A0A0' }}>
+                      <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>
                         Formula: retail estimate ≥ offer + ${Number(assignmentFee || 0).toLocaleString()} assignment fee
                       </p>
                     </div>
@@ -579,10 +579,10 @@ export default function MatchTargets() {
             })()}
 
             {matchResult.warnings && matchResult.warnings.filter(w => w.includes('Excluded') || w.includes('WARNING')).length > 0 && (
-              <div className="mb-4 p-3 rounded-lg" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)' }}>
-                <p className="text-xs font-semibold mb-1" style={{ color: '#F59E0B' }}>Filters Applied:</p>
+              <div className="mb-4 p-3 rounded-lg" style={{ background: '#FEF3C7', border: '1px solid rgba(217,119,6,0.25)' }}>
+                <p className="text-xs font-semibold mb-1" style={{ color: '#D97706' }}>Filters Applied:</p>
                 {matchResult.warnings.filter(w => w.includes('Excluded') || w.includes('WARNING')).map((w, i) => (
-                  <p key={i} className="text-xs" style={{ color: '#F59E0B' }}>{w}</p>
+                  <p key={i} className="text-xs" style={{ color: '#D97706' }}>{w}</p>
                 ))}
               </div>
             )}
@@ -605,26 +605,26 @@ export default function MatchTargets() {
                     style={{ marginBottom: showUnmatched ? 12 : 0 }}
                     onClick={() => setShowUnmatched(v => !v)}
                   >
-                    <h2 className="font-semibold" style={{ color: '#F5F5F5' }}>
+                    <h2 className="font-semibold" style={{ color: '#1A0A2E' }}>
                       Unmatched Records
-                      <span className="text-sm font-normal ml-2" style={{ color: '#A0A0A0' }}>({noCompRecords.length.toLocaleString()} records couldn't be comp-matched)</span>
+                      <span className="text-sm font-normal ml-2" style={{ color: '#6B5B8A' }}>({noCompRecords.length.toLocaleString()} records couldn't be comp-matched)</span>
                     </h2>
-                    <span className="text-sm" style={{ color: '#6B6B6B' }}>{showUnmatched ? '▲ Hide' : '▼ Show'}</span>
+                    <span className="text-sm" style={{ color: '#9B8AAE' }}>{showUnmatched ? '▲ Hide' : '▼ Show'}</span>
                   </div>
 
                   {/* Comp coverage — always visible */}
-                  <div className="rounded-lg p-2.5 mt-3" style={{ background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.2)' }}>
-                    <p className="text-xs font-semibold mb-0.5" style={{ color: '#A78BFA' }}>
+                  <div className="rounded-lg p-2.5 mt-3" style={{ background: 'rgba(92,41,119,0.08)', border: '1px solid rgba(92,41,119,0.2)' }}>
+                    <p className="text-xs font-semibold mb-0.5" style={{ color: '#5C2977' }}>
                       Comp coverage: {matchedZipSet.size} of {targetZips.length} target ZIPs have comp-matched records
                     </p>
                     {uncoveredZips.length > 0 && uncoveredZips.length <= 20 && (
-                      <p className="text-[10px]" style={{ color: '#A78BFA' }}>
+                      <p className="text-[10px]" style={{ color: '#5C2977' }}>
                         To increase match rate, upload more comps from:{' '}
                         <span className="font-mono">{uncoveredZips.join(', ')}</span>
                       </p>
                     )}
                     {uncoveredZips.length > 20 && (
-                      <p className="text-[10px]" style={{ color: '#A78BFA' }}>
+                      <p className="text-[10px]" style={{ color: '#5C2977' }}>
                         {uncoveredZips.length} ZIPs have no matched records — upload more comps from these areas to increase match rate
                       </p>
                     )}
@@ -632,36 +632,36 @@ export default function MatchTargets() {
 
                   {showUnmatched && noCompRecords.length > 0 && (
                     <>
-                      <p className="text-[10px] uppercase tracking-wide font-semibold mt-4 mb-2" style={{ color: '#6B6B6B' }}>Why records didn't match:</p>
+                      <p className="text-[10px] uppercase tracking-wide font-semibold mt-4 mb-2" style={{ color: '#9B8AAE' }}>Why records didn't match:</p>
                       <div className="flex flex-col gap-1 mb-4">
                         {Object.entries(reasonGroups).sort(([, a], [, b]) => b - a).map(([reason, count]) => (
-                          <div key={reason} className="flex justify-between items-center px-2.5 py-1.5 rounded-lg" style={{ background: 'rgba(124,58,237,0.06)' }}>
-                            <span className="text-xs" style={{ color: '#F5F5F5' }}>{reason}</span>
-                            <span className="text-xs font-semibold tabular-nums" style={{ color: '#A0A0A0' }}>{count.toLocaleString()}</span>
+                          <div key={reason} className="flex justify-between items-center px-2.5 py-1.5 rounded-lg" style={{ background: 'rgba(92,41,119,0.06)' }}>
+                            <span className="text-xs" style={{ color: '#1A0A2E' }}>{reason}</span>
+                            <span className="text-xs font-semibold tabular-nums" style={{ color: '#6B5B8A' }}>{count.toLocaleString()}</span>
                           </div>
                         ))}
                       </div>
 
-                      <p className="text-[10px] uppercase tracking-wide font-semibold mb-2" style={{ color: '#6B6B6B' }}>
+                      <p className="text-[10px] uppercase tracking-wide font-semibold mb-2" style={{ color: '#9B8AAE' }}>
                         Sample unmatched records (first 20 of {noCompRecords.length.toLocaleString()}):
                       </p>
                       <div className="overflow-x-auto">
                         <table className="w-full text-xs">
                           <thead>
-                            <tr style={{ borderBottom: '1px solid #2E2E2E' }}>
+                            <tr style={{ borderBottom: '1px solid #E8E0F0' }}>
                               {['APN', 'ZIP', 'Acres', 'Band', 'Reason'].map(h => (
-                                <th key={h} className="text-left py-1.5 pr-3 last:pr-0" style={{ color: '#6B6B6B', fontWeight: 500 }}>{h}</th>
+                                <th key={h} className="text-left py-1.5 pr-3 last:pr-0" style={{ color: '#9B8AAE', fontWeight: 500 }}>{h}</th>
                               ))}
                             </tr>
                           </thead>
                           <tbody>
                             {noCompRecords.slice(0, 20).map((r, i) => (
-                              <tr key={i} style={{ borderBottom: '1px solid #242424' }}>
-                                <td className="py-1 pr-3 font-mono" style={{ color: '#F5F5F5' }}>{r.apn || '—'}</td>
-                                <td className="py-1 pr-3" style={{ color: '#A0A0A0' }}>{r.parcel_zip || '—'}</td>
-                                <td className="py-1 pr-3 tabular-nums" style={{ color: '#A0A0A0' }}>{r.lot_acres != null ? Number(r.lot_acres).toFixed(2) : '—'}</td>
-                                <td className="py-1 pr-3" style={{ color: '#A0A0A0' }}>{(r.acreage_band as string) || '—'}</td>
-                                <td className="py-1" style={{ color: '#EF4444' }}>{(r.no_match_reason as string) || 'Unknown'}</td>
+                              <tr key={i} style={{ borderBottom: '1px solid #F3EEF9' }}>
+                                <td className="py-1 pr-3 font-mono" style={{ color: '#1A0A2E' }}>{r.apn || '—'}</td>
+                                <td className="py-1 pr-3" style={{ color: '#6B5B8A' }}>{r.parcel_zip || '—'}</td>
+                                <td className="py-1 pr-3 tabular-nums" style={{ color: '#6B5B8A' }}>{r.lot_acres != null ? Number(r.lot_acres).toFixed(2) : '—'}</td>
+                                <td className="py-1 pr-3" style={{ color: '#6B5B8A' }}>{(r.acreage_band as string) || '—'}</td>
+                                <td className="py-1" style={{ color: '#DC2626' }}>{(r.no_match_reason as string) || 'Unknown'}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -674,14 +674,14 @@ export default function MatchTargets() {
             })()}
 
             <div className="flex items-center gap-3 mb-5">
-              <span className="text-xs" style={{ color: '#A0A0A0' }}>Score distribution:</span>
+              <span className="text-xs" style={{ color: '#6B5B8A' }}>Score distribution:</span>
               {[5, 4, 3, 2, 1, 0].map(s => {
                 const count = matchResult.results.filter(r => r.match_score === s).length
                 if (count === 0) return null
                 return (
                   <span key={s} className="flex items-center gap-1.5">
                     <ScoreBadge score={s} />
-                    <span className="text-xs" style={{ color: '#A0A0A0' }}>{count.toLocaleString()}</span>
+                    <span className="text-xs" style={{ color: '#6B5B8A' }}>{count.toLocaleString()}</span>
                   </span>
                 )
               })}
@@ -689,9 +689,9 @@ export default function MatchTargets() {
 
             <div className="card">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="font-semibold" style={{ color: '#F5F5F5' }}>
+                <h2 className="font-semibold" style={{ color: '#1A0A2E' }}>
                   Matched Parcels
-                  <span className="text-sm font-normal ml-2" style={{ color: '#A0A0A0' }}>sorted by score</span>
+                  <span className="text-sm font-normal ml-2" style={{ color: '#6B5B8A' }}>sorted by score</span>
                 </h2>
                 <div className="inline-flex gap-1">
                   <button className={`toggle-btn${resultView === 'table' ? ' active' : ''}`} onClick={() => setResultView('table')}>Table</button>
@@ -718,20 +718,20 @@ export default function MatchTargets() {
 
       {/* Add to Mailing List modal */}
       {showMailingModal && matchResult && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }}
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(26,10,46,0.5)' }}
           onClick={e => { if (e.target === e.currentTarget) setShowMailingModal(false) }}>
-          <div className="rounded-2xl p-6 shadow-xl" style={{ background: '#1A1A1A', border: '1px solid #2E2E2E', maxWidth: '480px', width: '100%' }}>
+          <div className="rounded-2xl p-6 shadow-xl" style={{ background: '#FFFFFF', border: '1px solid #E8E0F0', maxWidth: '480px', width: '100%' }}>
             <h2 className="section-heading mb-1">Add to Mailing List</h2>
-            <p className="text-xs mb-4" style={{ color: '#6B6B6B' }}>
+            <p className="text-xs mb-4" style={{ color: '#9B8AAE' }}>
               Insert match results into a CRM campaign as leads.
             </p>
 
             <div className="flex flex-col gap-1 mb-3">
               <label className="label-caps">Records to add</label>
-              <div className="rounded-lg px-3 py-2 text-sm font-medium" style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.3)', color: '#10B981' }}>
+              <div className="rounded-lg px-3 py-2 text-sm font-medium" style={{ background: '#D1FAE5', border: '1px solid rgba(5,150,105,0.3)', color: '#059669' }}>
                 ✓ {matchResult.matched_count.toLocaleString()} Comp-Matched Records
               </div>
-              <p className="text-[10px] mt-0.5" style={{ color: '#10B981' }}>
+              <p className="text-[10px] mt-0.5" style={{ color: '#059669' }}>
                 Only records priced from local sold comps — LP Fallback records are excluded
               </p>
             </div>
@@ -756,19 +756,19 @@ export default function MatchTargets() {
                 ))}
               </select>
               {selectedCampaignId === '__new__' && (
-                <p className="text-[10px] mt-1" style={{ color: '#6B6B6B' }}>
+                <p className="text-[10px] mt-1" style={{ color: '#9B8AAE' }}>
                   Will be named based on your comp data counties: {(dashboardData?.top_counties ?? []).slice(0, 3).join(', ') || 'Auto-detect'}
                 </p>
               )}
             </div>
 
-            {mailingError && <p className="text-xs mb-3" style={{ color: '#EF4444' }}>{mailingError}</p>}
+            {mailingError && <p className="text-xs mb-3" style={{ color: '#DC2626' }}>{mailingError}</p>}
             {mailingSuccess && (
-              <div className="mb-3 rounded-lg px-3 py-2" style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)' }}>
-                <p className="text-xs font-medium" style={{ color: '#10B981' }}>{mailingSuccess}</p>
+              <div className="mb-3 rounded-lg px-3 py-2" style={{ background: '#D1FAE5', border: '1px solid rgba(5,150,105,0.2)' }}>
+                <p className="text-xs font-medium" style={{ color: '#059669' }}>{mailingSuccess}</p>
                 <button
                   className="text-xs mt-1 underline"
-                  style={{ color: '#A78BFA', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                  style={{ color: '#5C2977', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
                   onClick={() => { setShowMailingModal(false); setMailingSuccess(null); setMailingError(null); setCurrentPage('crm-campaigns') }}
                 >
                   Go to Campaign →
@@ -781,7 +781,7 @@ export default function MatchTargets() {
               <button
                 className="btn-primary flex-1"
                 disabled={mailingLoading || !selectedCampaignId || mailingDone}
-                style={mailingDone ? { background: '#10B981', cursor: 'default' } : {}}
+                style={mailingDone ? { background: '#059669', cursor: 'default' } : {}}
                 onClick={async () => {
                   setMailingLoading(true)
                   setMailingError(null)
@@ -838,7 +838,7 @@ function ScoreBadge({ score }: { score: number }) {
   return (
     <span
       className="inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold text-white"
-      style={{ background: score === 5 ? '#10B981' : score === 4 ? '#7C3AED' : score === 3 ? '#D5A940' : score === 2 ? '#C06820' : '#EF4444' }}
+      style={{ background: score === 5 ? '#059669' : score === 4 ? '#5C2977' : score === 3 ? '#D5A940' : score === 2 ? '#D97706' : '#DC2626' }}
     >
       {score}
     </span>
@@ -847,10 +847,10 @@ function ScoreBadge({ score }: { score: number }) {
 
 function ResultCard({ label, value, accent, sub }: { label: string; value: string; accent: string; sub?: string }) {
   return (
-    <div className="rounded-xl p-4" style={{ background: '#1A1A1A', border: '1px solid #2E2E2E' }}>
-      <p className="text-xs uppercase tracking-wider mb-1" style={{ color: '#6B6B6B' }}>{label}</p>
+    <div className="rounded-xl p-4" style={{ background: '#FFFFFF', border: '1px solid #E8E0F0', boxShadow: '0 1px 3px rgba(92,41,119,0.08)' }}>
+      <p className="text-xs uppercase tracking-wider mb-1" style={{ color: '#9B8AAE' }}>{label}</p>
       <p className="text-2xl font-bold" style={{ color: accent }}>{value}</p>
-      {sub && <p className="text-[10px] mt-0.5" style={{ color: '#6B6B6B' }}>{sub}</p>}
+      {sub && <p className="text-[10px] mt-0.5" style={{ color: '#9B8AAE' }}>{sub}</p>}
     </div>
   )
 }

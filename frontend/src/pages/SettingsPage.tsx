@@ -7,7 +7,7 @@ const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
 function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
-      <label className="text-xs font-semibold" style={{ color: '#6B6B6B' }}>{label}</label>
+      <label className="text-xs font-semibold" style={{ color: '#9B8AAE' }}>{label}</label>
       {children}
     </div>
   )
@@ -90,11 +90,11 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen" style={{ background: '#0F0F0F' }}>
+    <div className="flex flex-col min-h-screen" style={{ background: '#F8F6FB' }}>
       <div className="page-header">
         <div>
-          <h1 className="text-lg font-bold" style={{ color: '#F5F5F5' }}>Settings</h1>
-          <p className="text-xs mt-0.5" style={{ color: '#6B6B6B' }}>Configure your account and workflow preferences</p>
+          <h1 className="text-lg font-bold" style={{ color: '#1A0A2E' }}>Settings</h1>
+          <p className="text-xs mt-0.5" style={{ color: '#9B8AAE' }}>Configure your account and workflow preferences</p>
         </div>
       </div>
 
@@ -102,10 +102,10 @@ export default function SettingsPage() {
 
         {/* Buy Box Builder */}
         <section>
-          <h2 className="text-sm font-bold uppercase tracking-wider mb-3" style={{ color: '#7C3AED' }}>Buy Box Builder</h2>
-          <div className="rounded-lg p-5" style={{ background: '#1A1A1A', border: '1px solid #2E2E2E' }}>
+          <h2 className="text-sm font-bold uppercase tracking-wider mb-3" style={{ color: '#5C2977' }}>Buy Box Builder</h2>
+          <div className="rounded-lg p-5" style={{ background: '#FFFFFF', border: '1px solid #E8E0F0', boxShadow: '0 1px 3px rgba(92,41,119,0.08)' }}>
             {boxLoading ? (
-              <p className="text-sm" style={{ color: '#A0A0A0' }}>Loading…</p>
+              <p className="text-sm" style={{ color: '#6B5B8A' }}>Loading…</p>
             ) : (
               <>
                 <div className="grid grid-cols-2 gap-4 mb-4">
@@ -135,8 +135,8 @@ export default function SettingsPage() {
                   </FieldRow>
                 </div>
 
-                <div className="border-t pt-4 mb-4" style={{ borderColor: '#2E2E2E' }}>
-                  <p className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: '#6B6B6B' }}>Mail House Settings</p>
+                <div className="border-t pt-4 mb-4" style={{ borderColor: '#E8E0F0' }}>
+                  <p className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: '#9B8AAE' }}>Mail House Settings</p>
                   <div className="grid grid-cols-2 gap-4">
                     <FieldRow label="Mail House Email">
                       <TextInput value={box.mail_house_email} onChange={v => setField('mail_house_email', v)} placeholder="orders@mailhouse.com" />
@@ -157,8 +157,8 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                {boxError && <p className="text-sm mb-2" style={{ color: '#EF4444' }}>{boxError}</p>}
-                {boxSaved && <p className="text-sm mb-2" style={{ color: '#10B981' }}>✓ Buy box saved.</p>}
+                {boxError && <p className="text-sm mb-2" style={{ color: '#DC2626' }}>{boxError}</p>}
+                {boxSaved && <p className="text-sm mb-2" style={{ color: '#059669' }}>✓ Buy box saved.</p>}
 
                 <button
                   className="btn-primary"
@@ -174,7 +174,7 @@ export default function SettingsPage() {
 
         {/* Other settings stubs */}
         <section>
-          <h2 className="text-sm font-bold uppercase tracking-wider mb-3" style={{ color: '#7C3AED' }}>Account & Integrations</h2>
+          <h2 className="text-sm font-bold uppercase tracking-wider mb-3" style={{ color: '#5C2977' }}>Account & Integrations</h2>
           <div className="space-y-3">
             {[
               { title: 'Account',       desc: 'Manage your profile, email, and password.' },
@@ -187,15 +187,15 @@ export default function SettingsPage() {
               <div
                 key={s.title}
                 className="rounded-lg px-5 py-4 flex items-center justify-between cursor-pointer transition-all"
-                style={{ background: '#1A1A1A', border: '1px solid #2E2E2E' }}
-                onMouseEnter={e => (e.currentTarget.style.borderColor = '#3E3E3E')}
-                onMouseLeave={e => (e.currentTarget.style.borderColor = '#2E2E2E')}
+                style={{ background: '#FFFFFF', border: '1px solid #E8E0F0', boxShadow: '0 1px 3px rgba(92,41,119,0.08)' }}
+                onMouseEnter={e => (e.currentTarget.style.borderColor = '#D4C5E8')}
+                onMouseLeave={e => (e.currentTarget.style.borderColor = '#E8E0F0')}
               >
                 <div>
-                  <p className="font-semibold text-sm" style={{ color: '#F5F5F5' }}>{s.title}</p>
-                  <p className="text-xs mt-0.5" style={{ color: '#A0A0A0' }}>{s.desc}</p>
+                  <p className="font-semibold text-sm" style={{ color: '#1A0A2E' }}>{s.title}</p>
+                  <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>{s.desc}</p>
                 </div>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6B6B6B" strokeWidth="2">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9B8AAE" strokeWidth="2">
                   <polyline points="9 18 15 12 9 6"/>
                 </svg>
               </div>
@@ -205,24 +205,24 @@ export default function SettingsPage() {
 
         {/* Danger Zone */}
         <section>
-          <h2 className="text-sm font-bold mb-3 uppercase tracking-wider" style={{ color: '#EF4444' }}>Danger Zone</h2>
-          <div className="rounded-lg px-5 py-4" style={{ background: '#1A1A1A', border: '1px solid rgba(239,68,68,0.3)' }}>
+          <h2 className="text-sm font-bold mb-3 uppercase tracking-wider" style={{ color: '#DC2626' }}>Danger Zone</h2>
+          <div className="rounded-lg px-5 py-4" style={{ background: '#FFFFFF', border: '1px solid rgba(220,38,38,0.3)', boxShadow: '0 1px 3px rgba(92,41,119,0.08)' }}>
             <div className="flex items-center justify-between">
               <div>
-                <p className="font-semibold text-sm" style={{ color: '#F5F5F5' }}>Clear All Properties</p>
-                <p className="text-xs mt-0.5" style={{ color: '#A0A0A0' }}>
+                <p className="font-semibold text-sm" style={{ color: '#1A0A2E' }}>Clear All Properties</p>
+                <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>
                   Permanently delete every property record from the CRM. This cannot be undone.
                 </p>
                 {clearCount !== null && (
-                  <p className="text-xs mt-1 font-semibold" style={{ color: '#10B981' }}>
+                  <p className="text-xs mt-1 font-semibold" style={{ color: '#059669' }}>
                     ✓ {clearCount.toLocaleString()} {clearCount === 1 ? 'property' : 'properties'} deleted successfully.
                   </p>
                 )}
-                {clearError && <p className="text-xs mt-1 font-semibold" style={{ color: '#EF4444' }}>{clearError}</p>}
+                {clearError && <p className="text-xs mt-1 font-semibold" style={{ color: '#DC2626' }}>{clearError}</p>}
               </div>
               <button
                 className="ml-4 px-4 py-2 rounded-lg text-sm font-semibold text-white flex-none"
-                style={{ background: '#EF4444' }}
+                style={{ background: '#DC2626' }}
                 onClick={() => { setClearCount(null); setClearError(null); setShowClearConfirm(true) }}
               >
                 Clear All Properties
@@ -234,15 +234,15 @@ export default function SettingsPage() {
 
       {/* Confirmation dialog */}
       {showClearConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }}>
-          <div className="rounded-lg p-6 w-full" style={{ maxWidth: '420px', background: '#1A1A1A', border: '1px solid #2E2E2E' }}>
-            <h2 className="text-base font-bold mb-2" style={{ color: '#EF4444' }}>Clear All Properties?</h2>
-            <p className="text-sm mb-2" style={{ color: '#A0A0A0' }}>
-              This will permanently delete <strong style={{ color: '#F5F5F5' }}>every property record</strong> in your CRM.
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(26,10,46,0.5)' }}>
+          <div className="rounded-lg p-6 w-full" style={{ maxWidth: '420px', background: '#FFFFFF', border: '1px solid #E8E0F0', boxShadow: '0 1px 3px rgba(92,41,119,0.08)' }}>
+            <h2 className="text-base font-bold mb-2" style={{ color: '#DC2626' }}>Clear All Properties?</h2>
+            <p className="text-sm mb-2" style={{ color: '#6B5B8A' }}>
+              This will permanently delete <strong style={{ color: '#1A0A2E' }}>every property record</strong> in your CRM.
             </p>
-            <p className="text-sm font-semibold mb-6" style={{ color: '#EF4444' }}>This action cannot be undone.</p>
+            <p className="text-sm font-semibold mb-6" style={{ color: '#DC2626' }}>This action cannot be undone.</p>
             {clearError && (
-              <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: 'rgba(239,68,68,0.12)', color: '#F87171', border: '1px solid rgba(239,68,68,0.3)' }}>
+              <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: '#FEE2E2', color: '#DC2626', border: '1px solid rgba(220,38,38,0.3)' }}>
                 {clearError}
               </div>
             )}
@@ -250,7 +250,7 @@ export default function SettingsPage() {
               <button className="btn-secondary flex-1" onClick={() => setShowClearConfirm(false)} disabled={clearing}>Cancel</button>
               <button
                 className="flex-1 px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
-                style={{ background: '#EF4444' }}
+                style={{ background: '#DC2626' }}
                 onClick={handleClearAll}
                 disabled={clearing}
               >

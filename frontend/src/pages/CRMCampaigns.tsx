@@ -144,9 +144,9 @@ export default function CRMCampaigns() {
           fontWeight: 700,
           letterSpacing: '0.06em',
           textTransform: 'uppercase' as const,
-          color: active ? '#A78BFA' : '#6B6B6B',
-          background: '#1A1A1A',
-          borderBottom: '2px solid #2E2E2E',
+          color: active ? '#5C2977' : '#9B8AAE',
+          background: '#F3EEF9',
+          borderBottom: '2px solid #E8E0F0',
           cursor: sk ? 'pointer' : 'default',
           userSelect: 'none' as const,
           whiteSpace: 'nowrap' as const,
@@ -161,7 +161,7 @@ export default function CRMCampaigns() {
   }
 
   return (
-    <div style={{ background: '#0F0F0F', minHeight: '100vh' }}>
+    <div style={{ background: '#F8F6FB', minHeight: '100vh' }}>
       <div className="page-header">
         <div className="page-header-left">
           <h1 className="page-title">Campaigns</h1>
@@ -181,7 +181,7 @@ export default function CRMCampaigns() {
 
       <div className="p-6">
         <div className="mb-4" style={{ position: 'relative', display: 'inline-block' }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6B6B6B" strokeWidth="2"
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9B8AAE" strokeWidth="2"
             style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
             <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
           </svg>
@@ -196,17 +196,17 @@ export default function CRMCampaigns() {
         </div>
 
         {error && (
-          <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: 'rgba(239,68,68,0.12)', color: '#F87171', border: '1px solid rgba(239,68,68,0.25)' }}>
+          <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: '#FEE2E2', color: '#DC2626', border: '1px solid rgba(220,38,38,0.25)' }}>
             {error}
           </div>
         )}
 
         {loading ? (
           <div className="flex items-center justify-center py-20">
-            <div className="text-sm" style={{ color: '#6B6B6B' }}>Loading campaigns…</div>
+            <div className="text-sm" style={{ color: '#9B8AAE' }}>Loading campaigns…</div>
           </div>
         ) : sorted.length === 0 ? (
-          <div className="text-center py-20" style={{ color: '#6B6B6B' }}>
+          <div className="text-center py-20" style={{ color: '#9B8AAE' }}>
             <svg className="mx-auto mb-4 opacity-30" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
             </svg>
@@ -239,51 +239,51 @@ export default function CRMCampaigns() {
                     <tr
                       key={camp.id}
                       style={{
-                        background: idx % 2 === 0 ? '#1A1A1A' : '#171717',
-                        borderBottom: '1px solid #2E2E2E',
+                        background: idx % 2 === 0 ? '#FFFFFF' : '#FAF7FD',
+                        borderBottom: '1px solid #E8E0F0',
                         cursor: 'pointer',
                       }}
-                      onMouseEnter={e => (e.currentTarget.style.background = '#242424')}
-                      onMouseLeave={e => (e.currentTarget.style.background = idx % 2 === 0 ? '#1A1A1A' : '#171717')}
+                      onMouseEnter={e => (e.currentTarget.style.background = '#F7F3FC')}
+                      onMouseLeave={e => (e.currentTarget.style.background = idx % 2 === 0 ? '#FFFFFF' : '#FAF7FD')}
                       onClick={() => openDetail(camp)}
                     >
                       <td style={{ padding: '12px 16px', maxWidth: 260 }}>
-                        <span className="text-sm font-semibold" style={{ color: '#F5F5F5' }}>{camp.name}</span>
+                        <span className="text-sm font-semibold" style={{ color: '#1A0A2E' }}>{camp.name}</span>
                       </td>
                       <td style={{ padding: '12px 16px', whiteSpace: 'nowrap' }}>
-                        <span className="text-sm" style={{ color: '#A0A0A0' }}>{formatDate(camp.created_at)}</span>
+                        <span className="text-sm" style={{ color: '#6B5B8A' }}>{formatDate(camp.created_at)}</span>
                       </td>
                       <td style={{ padding: '12px 16px' }}>
-                        <span className="text-sm font-semibold" style={{ color: '#7C3AED' }}>{stats.total.toLocaleString()}</span>
+                        <span className="text-sm font-semibold" style={{ color: '#5C2977' }}>{stats.total.toLocaleString()}</span>
                       </td>
                       <td style={{ padding: '12px 16px' }}>
-                        <span className="text-sm" style={{ color: camp.amount_spent ? '#F5F5F5' : '#6B6B6B' }}>
+                        <span className="text-sm" style={{ color: camp.amount_spent ? '#1A0A2E' : '#9B8AAE' }}>
                           {camp.amount_spent ? `$${(camp.amount_spent).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '$0'}
                         </span>
                       </td>
                       <td style={{ padding: '12px 16px' }}>
-                        <span className="text-sm font-medium" style={{ color: '#F5F5F5' }}>{stats.deals.toLocaleString()}</span>
+                        <span className="text-sm font-medium" style={{ color: '#1A0A2E' }}>{stats.deals.toLocaleString()}</span>
                       </td>
                       <td style={{ padding: '12px 16px' }}>
-                        <span className="text-sm" style={{ color: stats.responseRate > 0 ? '#10B981' : '#6B6B6B' }}>
+                        <span className="text-sm" style={{ color: stats.responseRate > 0 ? '#059669' : '#9B8AAE' }}>
                           {stats.responseRate > 0 ? `${stats.responseRate.toFixed(1)}%` : '0%'}
                         </span>
                       </td>
                       <td style={{ padding: '12px 16px' }}>
-                        <span className="text-sm" style={{ color: '#F5F5F5' }}>{stats.offers.toLocaleString()}</span>
+                        <span className="text-sm" style={{ color: '#1A0A2E' }}>{stats.offers.toLocaleString()}</span>
                       </td>
                       <td style={{ padding: '12px 16px' }}>
-                        <span className="text-sm" style={{ color: '#F5F5F5' }}>{stats.purchases.toLocaleString()}</span>
+                        <span className="text-sm" style={{ color: '#1A0A2E' }}>{stats.purchases.toLocaleString()}</span>
                       </td>
                       <td style={{ padding: '12px 16px' }}>
-                        <span className="text-sm" style={{ color: '#F5F5F5' }}>{stats.sales.toLocaleString()}</span>
+                        <span className="text-sm" style={{ color: '#1A0A2E' }}>{stats.sales.toLocaleString()}</span>
                       </td>
                       <td style={{ padding: '12px 16px' }} onClick={e => e.stopPropagation()}>
                         {isDeleting ? (
                           <div className="flex items-center gap-1">
                             <button
                               className="text-xs px-2 py-1 rounded font-semibold"
-                              style={{ background: 'rgba(239,68,68,0.12)', color: '#F87171', border: '1px solid rgba(239,68,68,0.25)' }}
+                              style={{ background: '#FEE2E2', color: '#DC2626', border: '1px solid rgba(220,38,38,0.25)' }}
                               onClick={() => handleDelete(camp.id)}
                             >Delete</button>
                             <button className="btn-secondary text-xs py-1 px-2" onClick={() => setDeletingId(null)}>No</button>
@@ -291,10 +291,10 @@ export default function CRMCampaigns() {
                         ) : (
                           <button
                             className="px-2 py-1 rounded transition-all"
-                            style={{ color: '#6B6B6B', border: '1px solid #2E2E2E' }}
+                            style={{ color: '#9B8AAE', border: '1px solid #E8E0F0' }}
                             onClick={() => setDeletingId(camp.id)}
-                            onMouseEnter={e => { e.currentTarget.style.color = '#F87171'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.3)' }}
-                            onMouseLeave={e => { e.currentTarget.style.color = '#6B6B6B'; e.currentTarget.style.borderColor = '#2E2E2E' }}
+                            onMouseEnter={e => { e.currentTarget.style.color = '#DC2626'; e.currentTarget.style.borderColor = 'rgba(220,38,38,0.3)' }}
+                            onMouseLeave={e => { e.currentTarget.style.color = '#9B8AAE'; e.currentTarget.style.borderColor = '#E8E0F0' }}
                             title="Delete campaign"
                           >
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -317,15 +317,15 @@ export default function CRMCampaigns() {
       {showNewModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center"
-          style={{ background: 'rgba(0,0,0,0.7)' }}
+          style={{ background: 'rgba(26,10,46,0.5)' }}
           onClick={e => { if (e.target === e.currentTarget) { resetNewForm(); setShowNewModal(false) } }}
         >
-          <div className="card" style={{ width: 500, maxWidth: '95vw', padding: 24, background: '#1A1A1A' }}>
+          <div className="card" style={{ width: 500, maxWidth: '95vw', padding: 24, background: '#FFFFFF', border: '1px solid #E8E0F0' }}>
             <h2 className="section-heading mb-4">New Campaign</h2>
 
             <div className="space-y-3 mb-4">
               <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: '#6B6B6B' }}>Campaign Name *</label>
+                <label className="block text-xs font-semibold mb-1" style={{ color: '#9B8AAE' }}>Campaign Name *</label>
                 <input
                   type="text"
                   className="input-base w-full text-sm"
@@ -339,11 +339,11 @@ export default function CRMCampaigns() {
                 />
               </div>
 
-              <div style={{ borderTop: '1px solid #2E2E2E', paddingTop: 12, marginTop: 4 }}>
-                <p className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: '#6B6B6B' }}>Budget & Mail Settings</p>
+              <div style={{ borderTop: '1px solid #E8E0F0', paddingTop: 12, marginTop: 4 }}>
+                <p className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: '#9B8AAE' }}>Budget & Mail Settings</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold mb-1" style={{ color: '#6B6B6B' }}>Total Budget ($)</label>
+                    <label className="block text-xs font-semibold mb-1" style={{ color: '#9B8AAE' }}>Total Budget ($)</label>
                     <input
                       type="number"
                       className="input-base w-full text-sm"
@@ -363,7 +363,7 @@ export default function CRMCampaigns() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold mb-1" style={{ color: '#6B6B6B' }}>Cost Per Piece ($)</label>
+                    <label className="block text-xs font-semibold mb-1" style={{ color: '#9B8AAE' }}>Cost Per Piece ($)</label>
                     <input
                       type="number"
                       className="input-base w-full text-sm"
@@ -376,7 +376,7 @@ export default function CRMCampaigns() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold mb-1" style={{ color: '#6B6B6B' }}>Weekly Budget ($)</label>
+                    <label className="block text-xs font-semibold mb-1" style={{ color: '#9B8AAE' }}>Weekly Budget ($)</label>
                     <input
                       type="number"
                       className="input-base w-full text-sm"
@@ -388,7 +388,7 @@ export default function CRMCampaigns() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold mb-1" style={{ color: '#6B6B6B' }}>Send Day</label>
+                    <label className="block text-xs font-semibold mb-1" style={{ color: '#9B8AAE' }}>Send Day</label>
                     <select
                       className="input-base w-full text-sm"
                       value={newSendDay}
@@ -402,7 +402,7 @@ export default function CRMCampaigns() {
                     </select>
                   </div>
                   <div className="col-span-2">
-                    <label className="block text-xs font-semibold mb-1" style={{ color: '#6B6B6B' }}>Mail House Email</label>
+                    <label className="block text-xs font-semibold mb-1" style={{ color: '#9B8AAE' }}>Mail House Email</label>
                     <input
                       type="email"
                       className="input-base w-full text-sm"
@@ -414,7 +414,7 @@ export default function CRMCampaigns() {
                   </div>
                 </div>
                 {newBudget && newCostPerPiece && (
-                  <p className="text-xs mt-2" style={{ color: '#6B6B6B' }}>
+                  <p className="text-xs mt-2" style={{ color: '#9B8AAE' }}>
                     ≈ {Math.floor((parseFloat(newBudget) || 0) / (parseFloat(newCostPerPiece) || 0.55)).toLocaleString()} pieces total
                     {newWeeklyBudget && ` · ${Math.floor((parseFloat(newWeeklyBudget) || 0) / (parseFloat(newCostPerPiece) || 0.55)).toLocaleString()} pieces/week`}
                   </p>
@@ -422,7 +422,7 @@ export default function CRMCampaigns() {
               </div>
             </div>
 
-            {createError && <p className="text-sm mb-3" style={{ color: '#F87171' }}>{createError}</p>}
+            {createError && <p className="text-sm mb-3" style={{ color: '#DC2626' }}>{createError}</p>}
             <div className="flex gap-2 justify-end">
               <button className="btn-secondary" onClick={() => { resetNewForm(); setShowNewModal(false) }}>Cancel</button>
               <button className="btn-primary" onClick={handleCreate} disabled={creating || !newName.trim()}>

@@ -38,7 +38,7 @@ export default function SetupGuideDrawer({ onClose, onOpenStep }: Props) {
       {/* Overlay */}
       <div
         className="fixed inset-0 z-40"
-        style={{ background: 'rgba(0,0,0,0.6)' }}
+        style={{ background: 'rgba(26,10,46,0.4)' }}
         onClick={onClose}
       />
 
@@ -47,22 +47,22 @@ export default function SetupGuideDrawer({ onClose, onOpenStep }: Props) {
         className="fixed top-0 right-0 bottom-0 z-50 flex flex-col"
         style={{
           width: 380,
-          background: '#1A1A1A',
-          borderLeft: '1px solid #2E2E2E',
+          background: '#FFFFFF',
+          borderLeft: '1px solid #E8E0F0',
         }}
       >
         {/* Header */}
-        <div className="px-6 pt-6 pb-4" style={{ borderBottom: '1px solid #2E2E2E' }}>
+        <div className="px-6 pt-6 pb-4" style={{ borderBottom: '1px solid #E8E0F0' }}>
           <div className="flex items-start justify-between mb-3">
             <div>
-              <h2 className="text-base font-bold" style={{ color: '#F5F5F5' }}>Setup Guide</h2>
-              <p className="text-xs mt-0.5" style={{ color: '#A0A0A0' }}>Complete these steps to launch your first campaign</p>
+              <h2 className="text-base font-bold" style={{ color: '#1A0A2E' }}>Setup Guide</h2>
+              <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>Complete these steps to launch your first campaign</p>
             </div>
             <button
               onClick={onClose}
               className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
-              style={{ color: '#A0A0A0', background: 'transparent' }}
-              onMouseEnter={e => (e.currentTarget.style.background = '#242424')}
+              style={{ color: '#6B5B8A', background: 'transparent' }}
+              onMouseEnter={e => (e.currentTarget.style.background = '#F7F3FC')}
               onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -74,14 +74,14 @@ export default function SetupGuideDrawer({ onClose, onOpenStep }: Props) {
           {/* Progress bar */}
           {completedCount !== null && (
             <div>
-              <div className="flex justify-between text-xs mb-1.5" style={{ color: '#6B6B6B' }}>
+              <div className="flex justify-between text-xs mb-1.5" style={{ color: '#9B8AAE' }}>
                 <span>{completedCount} of {totalSteps} steps complete</span>
                 <span>{Math.round((completedCount / totalSteps) * 100)}%</span>
               </div>
-              <div className="h-1.5 rounded-full overflow-hidden" style={{ background: '#2E2E2E' }}>
+              <div className="h-1.5 rounded-full overflow-hidden" style={{ background: '#EDE8F5' }}>
                 <div
                   className="h-full rounded-full transition-all duration-500"
-                  style={{ width: `${(completedCount / totalSteps) * 100}%`, background: '#7C3AED' }}
+                  style={{ width: `${(completedCount / totalSteps) * 100}%`, background: '#5C2977' }}
                 />
               </div>
             </div>
@@ -98,8 +98,8 @@ export default function SetupGuideDrawer({ onClose, onOpenStep }: Props) {
                 key={step.num}
                 className="rounded-xl p-3 transition-all"
                 style={{
-                  background: isNext ? 'rgba(124,58,237,0.12)' : '#242424',
-                  border: isNext ? '1px solid rgba(124,58,237,0.25)' : '1px solid #2E2E2E',
+                  background: isNext ? 'rgba(92,41,119,0.04)' : '#FFFFFF',
+                  border: isNext ? '1px solid rgba(92,41,119,0.2)' : '1px solid #E8E0F0',
                 }}
               >
                 <div className="flex items-start gap-3">
@@ -107,8 +107,8 @@ export default function SetupGuideDrawer({ onClose, onOpenStep }: Props) {
                   <div
                     className="w-6 h-6 rounded-full flex items-center justify-center flex-none mt-0.5 text-xs font-bold"
                     style={{
-                      background: done ? '#10B981' : isNext ? '#7C3AED' : '#2E2E2E',
-                      color: done || isNext ? '#fff' : '#6B6B6B',
+                      background: done ? '#059669' : isNext ? '#5C2977' : '#EDE8F5',
+                      color: done || isNext ? '#fff' : '#9B8AAE',
                     }}
                   >
                     {done ? '✓' : step.num}
@@ -117,19 +117,19 @@ export default function SetupGuideDrawer({ onClose, onOpenStep }: Props) {
                   <div className="flex-1 min-w-0">
                     <p
                       className="text-sm font-semibold truncate"
-                      style={{ color: done ? '#6B6B6B' : '#F5F5F5' }}
+                      style={{ color: done ? '#9B8AAE' : '#1A0A2E' }}
                     >
                       {step.label}
                     </p>
-                    <p className="text-xs mt-0.5" style={{ color: '#A0A0A0' }}>{step.desc}</p>
+                    <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>{step.desc}</p>
                   </div>
 
                   <button
                     className="text-xs px-2.5 py-1 rounded-lg font-medium flex-none transition-colors"
                     style={{
-                      background: done ? 'transparent' : isNext ? '#7C3AED' : 'transparent',
-                      color: done ? '#6B6B6B' : isNext ? '#fff' : '#A0A0A0',
-                      border: done ? '1px solid #2E2E2E' : isNext ? 'none' : '1px solid #3E3E3E',
+                      background: done ? 'transparent' : isNext ? '#5C2977' : 'transparent',
+                      color: done ? '#9B8AAE' : isNext ? '#fff' : '#6B5B8A',
+                      border: done ? '1px solid #E8E0F0' : isNext ? 'none' : '1px solid #D4C5E8',
                     }}
                     onClick={() => onOpenStep(step.num)}
                   >
@@ -142,8 +142,8 @@ export default function SetupGuideDrawer({ onClose, onOpenStep }: Props) {
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4" style={{ borderTop: '1px solid #2E2E2E' }}>
-          <p className="text-[10px] text-center" style={{ color: '#6B6B6B' }}>
+        <div className="px-6 py-4" style={{ borderTop: '1px solid #E8E0F0' }}>
+          <p className="text-[10px] text-center" style={{ color: '#9B8AAE' }}>
             You can always access this guide from the sidebar
           </p>
         </div>

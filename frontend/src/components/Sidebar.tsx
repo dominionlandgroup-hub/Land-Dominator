@@ -100,12 +100,12 @@ const IconChevronRight = () => (
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const SIDEBAR_BG = '#111111'
-const ACTIVE_GOLD = '#A78BFA'
-const TEXT_DEFAULT = '#6B6B6B'
-const TEXT_ACTIVE = '#A78BFA'
-const HOVER_BG = 'rgba(255,255,255,0.04)'
-const ACTIVE_BG = 'rgba(124,58,237,0.12)'
+const SIDEBAR_BG = '#1A0A2E'
+const ACTIVE_GOLD = '#FFFFFF'
+const TEXT_DEFAULT = 'rgba(232,213,245,0.65)'
+const TEXT_ACTIVE = '#FFFFFF'
+const HOVER_BG = 'rgba(124,58,237,0.15)'
+const ACTIVE_BG = '#7C3AED'
 
 const BOARD_SUBITEMS: { id: AppPage; label: string }[] = [
   { id: 'boards-seller', label: 'Seller Deals' },
@@ -217,11 +217,11 @@ export default function Sidebar() {
   return (
     <aside
       className="w-60 min-h-screen flex flex-col shrink-0"
-      style={{ background: SIDEBAR_BG, borderRight: '1px solid #1E1E1E' }}
+      style={{ background: SIDEBAR_BG, borderRight: '1px solid rgba(255,255,255,0.06)' }}
     >
       {/* Logo */}
-      <div className="px-4 py-4" style={{ borderBottom: '1px solid #1E1E1E' }}>
-        <div className="flex items-center justify-center rounded-lg px-3 py-2" style={{ background: '#1A1A1A', border: '1px solid #2E2E2E' }}>
+      <div className="px-4 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <div className="flex items-center justify-center rounded-lg px-3 py-2" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
           <img src="/logo.png" alt="Logo" className="h-10 w-auto object-contain" />
         </div>
       </div>
@@ -271,7 +271,7 @@ export default function Sidebar() {
           />
         ))}
 
-        <div style={{ borderTop: '1px solid #1E1E1E', margin: '6px 4px' }} />
+        <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', margin: '6px 4px' }} />
 
         <NavBtn id="crm-campaigns"  label="Campaigns"      icon={<IconCampaign />} active={currentPage === 'crm-campaigns'}  onClick={() => nav('crm-campaigns')} />
         <NavBtn id="mail-calendar" label="Mail Calendar"  icon={<IconCalendar />} active={currentPage === 'mail-calendar'}  onClick={() => nav('mail-calendar')} />
@@ -279,7 +279,7 @@ export default function Sidebar() {
         <NavBtn id="crm-contacts"   label="Contacts"       icon={<IconPerson />}   active={currentPage === 'crm-contacts'}   onClick={() => nav('crm-contacts')} />
         <NavBtn id="crm-deals"      label="Deals Pipeline" icon={<IconPipeline />} active={currentPage === 'crm-deals'}      onClick={() => nav('crm-deals')} />
 
-        <div style={{ borderTop: '1px solid #1E1E1E', margin: '6px 4px' }} />
+        <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', margin: '6px 4px' }} />
 
         <NavBtn id="upload-comps" label="Upload Comps" icon={<IconUpload />}   active={currentPage === 'upload-comps' || currentPage === 'dashboard' || currentPage === 'match-targets'} onClick={() => nav('upload-comps')} />
 
@@ -295,8 +295,8 @@ export default function Sidebar() {
 
       {/* Session status footer — shown only when workflow data is loaded */}
       {(compsStats || targetStats || matchResult) && (
-        <div className="px-3 py-3 space-y-1.5" style={{ borderTop: '1px solid #1E1E1E' }}>
-          <p style={{ fontSize: '9px', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#3A3A3A', marginBottom: '4px' }}>
+        <div className="px-3 py-3 space-y-1.5" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+          <p style={{ fontSize: '9px', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(232,213,245,0.35)', marginBottom: '4px' }}>
             Session
           </p>
           {compsStats && (
@@ -317,8 +317,8 @@ export default function Sidebar() {
 function StatusRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between">
-      <span style={{ fontSize: '10px', color: '#4A4A4A' }}>{label}</span>
-      <span style={{ fontSize: '10px', color: '#A78BFA', background: 'rgba(124,58,237,0.1)', border: '1px solid rgba(124,58,237,0.2)', borderRadius: '4px', padding: '1px 6px' }}>
+      <span style={{ fontSize: '10px', color: 'rgba(232,213,245,0.45)' }}>{label}</span>
+      <span style={{ fontSize: '10px', color: '#E8D5F5', background: 'rgba(124,58,237,0.2)', border: '1px solid rgba(124,58,237,0.3)', borderRadius: '4px', padding: '1px 6px' }}>
         {value}
       </span>
     </div>

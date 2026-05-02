@@ -58,18 +58,18 @@ function ProgressBar({ step }: { step: number }) {
               <div
                 className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
                 style={{
-                  background: done ? '#10B981' : active ? '#7C3AED' : '#2E2E2E',
-                  color: done || active ? '#F5F5F5' : '#6B6B6B',
+                  background: done ? '#059669' : active ? '#5C2977' : '#E8E0F0',
+                  color: done || active ? '#FFFFFF' : '#9B8AAE',
                 }}
               >
                 {done ? '✓' : num}
               </div>
-              <span className="text-xs font-medium" style={{ color: active ? '#A78BFA' : '#6B6B6B', whiteSpace: 'nowrap' }}>
+              <span className="text-xs font-medium" style={{ color: active ? '#5C2977' : '#9B8AAE', whiteSpace: 'nowrap' }}>
                 {label}
               </span>
             </div>
             {i < STEPS.length - 1 && (
-              <div className="h-0.5 w-8 mb-5 rounded" style={{ background: done ? '#7C3AED' : '#2E2E2E' }} />
+              <div className="h-0.5 w-8 mb-5 rounded" style={{ background: done ? '#5C2977' : '#E8E0F0' }} />
             )}
           </React.Fragment>
         )
@@ -94,7 +94,7 @@ function Confetti() {
       y: Math.random() * -cv.height,
       w: 8 + Math.random() * 8,
       h: 5 + Math.random() * 5,
-      color: ['#7C3AED','#D5A940','#10B981','#4A90D9','#E65100'][Math.floor(Math.random() * 5)],
+      color: ['#5C2977','#D5A940','#059669','#4A90D9','#E65100'][Math.floor(Math.random() * 5)],
       angle: Math.random() * Math.PI * 2,
       vx: (Math.random() - 0.5) * 3,
       vy: 2 + Math.random() * 3,
@@ -139,7 +139,7 @@ const STRATEGIES = [
     description: 'Residential lots inside neighborhoods. Sell to builders and developers. Fast-moving deals.',
     range: '$15k – $150k range',
     tag: 'Best strategy for beginners',
-    color: '#7C3AED',
+    color: '#5C2977',
   },
   {
     id: 'rural_acreage' as Strategy,
@@ -154,7 +154,7 @@ const STRATEGIES = [
     description: 'Larger parcels outside city limits. Sell to investors and land buyers. Higher margins but longer hold times.',
     range: 'Higher margins',
     tag: 'More patient capital required',
-    color: '#10B981',
+    color: '#059669',
   },
   {
     id: 'subdivide_and_sell' as Strategy,
@@ -177,8 +177,8 @@ function Step1Strategy({ onNext }: { onNext: (s: Strategy) => void }) {
   const [selected, setSelected] = useState<Strategy | null>(null)
   return (
     <div>
-      <h2 className="text-2xl font-bold mb-2" style={{ color: '#F5F5F5' }}>What's your investing strategy?</h2>
-      <p className="text-sm mb-8" style={{ color: '#A0A0A0' }}>Choose the type of land you want to buy and sell. You can change this later.</p>
+      <h2 className="text-2xl font-bold mb-2" style={{ color: '#1A0A2E' }}>What's your investing strategy?</h2>
+      <p className="text-sm mb-8" style={{ color: '#6B5B8A' }}>Choose the type of land you want to buy and sell. You can change this later.</p>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
         {STRATEGIES.map(s => (
           <button
@@ -186,8 +186,8 @@ function Step1Strategy({ onNext }: { onNext: (s: Strategy) => void }) {
             onClick={() => setSelected(s.id)}
             className="rounded-lg p-6 text-left transition-all"
             style={{
-              border: selected === s.id ? `2px solid ${s.color}` : '2px solid #2E2E2E',
-              background: selected === s.id ? '#242424' : '#1A1A1A',
+              border: selected === s.id ? `2px solid ${s.color}` : '2px solid #E8E0F0',
+              background: selected === s.id ? '#F7F3FC' : '#FFFFFF',
             }}
           >
             {s.badge && (
@@ -195,10 +195,10 @@ function Step1Strategy({ onNext }: { onNext: (s: Strategy) => void }) {
                 style={{ background: '#D5A94020', color: '#D5A940' }}>{s.badge}</span>
             )}
             <div className="mb-3" style={{ color: s.color }}>{s.icon}</div>
-            <h3 className="font-bold text-base mb-2" style={{ color: '#F5F5F5' }}>{s.title}</h3>
-            <p className="text-xs mb-3" style={{ color: '#A0A0A0', lineHeight: 1.6 }}>{s.description}</p>
+            <h3 className="font-bold text-base mb-2" style={{ color: '#1A0A2E' }}>{s.title}</h3>
+            <p className="text-xs mb-3" style={{ color: '#6B5B8A', lineHeight: 1.6 }}>{s.description}</p>
             <p className="text-xs font-semibold" style={{ color: s.color }}>{s.range}</p>
-            <p className="text-xs mt-1" style={{ color: '#6B6B6B' }}>{s.tag}</p>
+            <p className="text-xs mt-1" style={{ color: '#9B8AAE' }}>{s.tag}</p>
           </button>
         ))}
       </div>
@@ -249,28 +249,28 @@ function Step2Learn({ strategy, onNext, onBack }: { strategy: Strategy; onNext: 
   const stratLabel = STRATEGIES.find(s => s.id === strategy)?.title ?? strategy
   return (
     <div>
-      <h2 className="text-2xl font-bold mb-2" style={{ color: '#F5F5F5' }}>How {stratLabel} works</h2>
-      <p className="text-sm mb-8" style={{ color: '#A0A0A0' }}>Here's the exact process, from finding deals to cashing checks.</p>
+      <h2 className="text-2xl font-bold mb-2" style={{ color: '#1A0A2E' }}>How {stratLabel} works</h2>
+      <p className="text-sm mb-8" style={{ color: '#6B5B8A' }}>Here's the exact process, from finding deals to cashing checks.</p>
       <div className="space-y-4 mb-8">
         {info.steps.map((step, i) => (
-          <div key={i} className="flex gap-4 items-start p-4 rounded-lg" style={{ background: '#242424', border: '1px solid #2E2E2E' }}>
+          <div key={i} className="flex gap-4 items-start p-4 rounded-lg" style={{ background: '#F7F3FC', border: '1px solid #E8E0F0' }}>
             <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
-              style={{ background: '#7C3AED', color: '#F5F5F5' }}>{i + 1}</div>
-            <p className="text-sm pt-1" style={{ color: '#F5F5F5' }}>{step}</p>
+              style={{ background: '#5C2977', color: '#FFFFFF' }}>{i + 1}</div>
+            <p className="text-sm pt-1" style={{ color: '#1A0A2E' }}>{step}</p>
           </div>
         ))}
       </div>
       <div className="grid grid-cols-2 gap-4 mb-8">
-        <div className="rounded-lg p-4" style={{ background: '#242424', border: '1px solid #2E2E2E' }}>
-          <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: '#10B981' }}>Timeline</p>
-          <p className="font-bold" style={{ color: '#F5F5F5' }}>{info.timeline}</p>
+        <div className="rounded-lg p-4" style={{ background: '#F7F3FC', border: '1px solid #E8E0F0' }}>
+          <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: '#059669' }}>Timeline</p>
+          <p className="font-bold" style={{ color: '#1A0A2E' }}>{info.timeline}</p>
         </div>
-        <div className="rounded-lg p-4" style={{ background: '#242424', border: '1px solid #2E2E2E' }}>
+        <div className="rounded-lg p-4" style={{ background: '#F7F3FC', border: '1px solid #E8E0F0' }}>
           <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: '#D5A940' }}>Average Profit</p>
-          <p className="font-bold" style={{ color: '#F5F5F5' }}>{info.profit}</p>
+          <p className="font-bold" style={{ color: '#1A0A2E' }}>{info.profit}</p>
         </div>
       </div>
-      <p className="text-sm font-medium mb-8" style={{ color: '#A78BFA' }}>Ready to find your market? Let's go. 🎯</p>
+      <p className="text-sm font-medium mb-8" style={{ color: '#5C2977' }}>Ready to find your market? Let's go. 🎯</p>
       <div className="flex justify-between">
         <button className="btn-secondary" onClick={onBack}>← Back</button>
         <button className="btn-primary px-8 py-3 text-sm" onClick={onNext}>Find My Market →</button>
@@ -283,11 +283,11 @@ function Step2Learn({ strategy, onNext, onBack }: { strategy: Strategy; onNext: 
 
 function DemandBadge({ level }: { level: string }) {
   const map: Record<string, { bg: string; text: string }> = {
-    High:   { bg: '#10B98120', text: '#10B981' },
-    Medium: { bg: '#F59E0B20', text: '#F59E0B' },
-    Low:    { bg: '#EF444420', text: '#EF4444' },
+    High:   { bg: '#D1FAE5', text: '#059669' },
+    Medium: { bg: '#FEF3C7', text: '#D97706' },
+    Low:    { bg: '#FEE2E2', text: '#DC2626' },
   }
-  const s = map[level] ?? { bg: '#7C3AED20', text: '#A78BFA' }
+  const s = map[level] ?? { bg: 'rgba(92,41,119,0.08)', text: '#5C2977' }
   return <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: s.bg, color: s.text }}>{level}</span>
 }
 
@@ -323,8 +323,8 @@ function Step3Research({
 
   return (
     <div>
-      <h2 className="text-2xl font-bold mb-2" style={{ color: '#F5F5F5' }}>What state do you want to start in?</h2>
-      <p className="text-sm mb-6" style={{ color: '#A0A0A0' }}>Our AI will research the market and recommend the best counties.</p>
+      <h2 className="text-2xl font-bold mb-2" style={{ color: '#1A0A2E' }}>What state do you want to start in?</h2>
+      <p className="text-sm mb-6" style={{ color: '#6B5B8A' }}>Our AI will research the market and recommend the best counties.</p>
 
       <div className="flex gap-3 mb-6">
         <select
@@ -345,15 +345,15 @@ function Step3Research({
       </div>
 
       {loading && (
-        <div className="rounded-lg p-8 text-center" style={{ background: '#242424', border: '1px solid #2E2E2E' }}>
+        <div className="rounded-lg p-8 text-center" style={{ background: '#F7F3FC', border: '1px solid #E8E0F0' }}>
           <div className="w-8 h-8 border-2 border-purple-800 border-t-purple-400 rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-sm font-medium" style={{ color: '#A78BFA' }}>Researching the {selectedState} land market…</p>
-          <p className="text-xs mt-1" style={{ color: '#6B6B6B' }}>Analyzing sales trends, builder demand, and population growth</p>
+          <p className="text-sm font-medium" style={{ color: '#5C2977' }}>Researching the {selectedState} land market…</p>
+          <p className="text-xs mt-1" style={{ color: '#9B8AAE' }}>Analyzing sales trends, builder demand, and population growth</p>
         </div>
       )}
 
       {error && (
-        <div className="rounded-lg p-4 mb-4 text-sm" style={{ background: '#EF444420', color: '#EF4444', border: '1px solid #EF444440' }}>
+        <div className="rounded-lg p-4 mb-4 text-sm" style={{ background: '#FEE2E2', color: '#DC2626', border: '1px solid rgba(220,38,38,0.25)' }}>
           {error}
         </div>
       )}
@@ -361,16 +361,16 @@ function Step3Research({
       {result && (
         <div>
           {result.market_summary && (
-            <div className="rounded-lg p-4 mb-5" style={{ background: '#242424', border: '1px solid #7C3AED40' }}>
-              <p className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: '#A78BFA' }}>Market Overview</p>
-              <p className="text-sm" style={{ color: '#F5F5F5' }}>{result.market_summary}</p>
+            <div className="rounded-lg p-4 mb-5" style={{ background: '#F7F3FC', border: '1px solid rgba(92,41,119,0.25)' }}>
+              <p className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: '#5C2977' }}>Market Overview</p>
+              <p className="text-sm" style={{ color: '#1A0A2E' }}>{result.market_summary}</p>
               {result.cached && result.last_updated && (
-                <p className="text-xs mt-2" style={{ color: '#6B6B6B' }}>Last updated: {result.last_updated}</p>
+                <p className="text-xs mt-2" style={{ color: '#9B8AAE' }}>Last updated: {result.last_updated}</p>
               )}
             </div>
           )}
 
-          <p className="text-sm font-semibold mb-3" style={{ color: '#F5F5F5' }}>Top county recommendations:</p>
+          <p className="text-sm font-semibold mb-3" style={{ color: '#1A0A2E' }}>Top county recommendations:</p>
           <div className="space-y-3 mb-6">
             {(result.counties || []).map((county, i) => (
               <button
@@ -378,29 +378,29 @@ function Step3Research({
                 onClick={() => setChosen(county)}
                 className="w-full rounded-lg p-4 text-left transition-all"
                 style={{
-                  border: chosen?.county === county.county ? '2px solid #7C3AED' : '2px solid #2E2E2E',
-                  background: chosen?.county === county.county ? '#242424' : '#1A1A1A',
+                  border: chosen?.county === county.county ? '2px solid #5C2977' : '2px solid #E8E0F0',
+                  background: chosen?.county === county.county ? '#F7F3FC' : '#FFFFFF',
                 }}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
-                      style={{ background: '#7C3AED20', color: '#A78BFA' }}>
+                      style={{ background: 'rgba(92,41,119,0.08)', color: '#5C2977' }}>
                       {county.rank || i + 1}
                     </span>
                     <div>
-                      <p className="font-bold text-sm" style={{ color: '#F5F5F5' }}>
+                      <p className="font-bold text-sm" style={{ color: '#1A0A2E' }}>
                         {county.county} County, {county.state}
                       </p>
-                      <p className="text-xs mt-0.5" style={{ color: '#A0A0A0' }}>{county.why_good}</p>
+                      <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>{county.why_good}</p>
                     </div>
                   </div>
                   <div className="flex-shrink-0 text-right">
                     <DemandBadge level={county.builder_demand} />
-                    <p className="text-xs mt-1" style={{ color: '#A0A0A0' }}>
+                    <p className="text-xs mt-1" style={{ color: '#6B5B8A' }}>
                       ${(county.price_range_low / 1000).toFixed(0)}k–${(county.price_range_high / 1000).toFixed(0)}k
                     </p>
-                    <p className="text-xs" style={{ color: '#6B6B6B' }}>
+                    <p className="text-xs" style={{ color: '#9B8AAE' }}>
                       {county.recommended_acreage_min}–{county.recommended_acreage_max} ac
                     </p>
                   </div>
@@ -461,11 +461,11 @@ function Step4Comps({
 
   return (
     <div>
-      <h2 className="text-2xl font-bold mb-2" style={{ color: '#F5F5F5' }}>Upload your sold comps</h2>
-      <p className="text-sm mb-6" style={{ color: '#A0A0A0' }}>Real sales data confirms the best sub-markets. This takes 2 minutes.</p>
+      <h2 className="text-2xl font-bold mb-2" style={{ color: '#1A0A2E' }}>Upload your sold comps</h2>
+      <p className="text-sm mb-6" style={{ color: '#6B5B8A' }}>Real sales data confirms the best sub-markets. This takes 2 minutes.</p>
 
-      <div className="rounded-lg p-5 mb-6" style={{ background: '#242424', border: '1px solid #2E2E2E' }}>
-        <p className="text-sm font-bold mb-3" style={{ color: '#F5F5F5' }}>How to export from Land Portal:</p>
+      <div className="rounded-lg p-5 mb-6" style={{ background: '#F7F3FC', border: '1px solid #E8E0F0' }}>
+        <p className="text-sm font-bold mb-3" style={{ color: '#1A0A2E' }}>How to export from Land Portal:</p>
         <ol className="space-y-2.5">
           {([
             { text: 'Go to landportal.com and click Solds in the top menu' },
@@ -480,12 +480,12 @@ function Step4Comps({
             { text: 'Set Date Range: Last 12 months' },
             { text: 'Click Export CSV and upload the file below' },
           ] as { text: string; note?: string }[]).map((step, i) => (
-            <li key={i} className="flex gap-2 text-xs" style={{ color: '#A0A0A0' }}>
-              <span className="font-bold flex-shrink-0" style={{ color: '#7C3AED' }}>{i + 1}.</span>
+            <li key={i} className="flex gap-2 text-xs" style={{ color: '#6B5B8A' }}>
+              <span className="font-bold flex-shrink-0" style={{ color: '#5C2977' }}>{i + 1}.</span>
               <span className="flex flex-col gap-1">
                 <span>{step.text}</span>
                 {step.note && (
-                  <span className="text-[11px] px-2 py-1 rounded-lg" style={{ background: '#2E2E2E', color: '#A0A0A0' }}>
+                  <span className="text-[11px] px-2 py-1 rounded-lg" style={{ background: '#E8E0F0', color: '#6B5B8A' }}>
                     💡 {step.note}
                   </span>
                 )}
@@ -493,7 +493,7 @@ function Step4Comps({
             </li>
           ))}
         </ol>
-        <p className="mt-4 text-[11px] rounded-lg px-3 py-2" style={{ background: '#F59E0B15', border: '1px solid #F59E0B40', color: '#F59E0B' }}>
+        <p className="mt-4 text-[11px] rounded-lg px-3 py-2" style={{ background: '#FEF3C7', border: '1px solid rgba(217,119,6,0.25)', color: '#D97706' }}>
           <strong>Include both Individual AND LLC buyer sales</strong> — builders buy as LLCs so you need their sales to know your real exit price.
         </p>
       </div>
@@ -501,7 +501,7 @@ function Step4Comps({
       {!stats ? (
         <div
           className="rounded-lg border-2 border-dashed p-10 text-center cursor-pointer transition-all"
-          style={{ borderColor: uploading ? '#7C3AED' : '#2E2E2E', background: uploading ? '#242424' : '#1A1A1A' }}
+          style={{ borderColor: uploading ? '#5C2977' : '#E8E0F0', background: uploading ? '#F7F3FC' : '#FFFFFF' }}
           onClick={() => !uploading && inputRef.current?.click()}
           onDragOver={e => e.preventDefault()}
           onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f) }}
@@ -510,26 +510,26 @@ function Step4Comps({
           {uploading ? (
             <>
               <div className="w-8 h-8 border-2 border-purple-800 border-t-purple-400 rounded-full animate-spin mx-auto mb-3" />
-              <p className="text-sm" style={{ color: '#A78BFA' }}>Uploading…</p>
+              <p className="text-sm" style={{ color: '#5C2977' }}>Uploading…</p>
             </>
           ) : (
             <>
-              <svg className="mx-auto mb-3" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#6B6B6B" strokeWidth="1.5">
+              <svg className="mx-auto mb-3" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#9B8AAE" strokeWidth="1.5">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
               </svg>
-              <p className="text-sm font-medium" style={{ color: '#F5F5F5' }}>Drop your comps CSV here or click to browse</p>
-              <p className="text-xs mt-1" style={{ color: '#6B6B6B' }}>Land Portal export · CSV format</p>
+              <p className="text-sm font-medium" style={{ color: '#1A0A2E' }}>Drop your comps CSV here or click to browse</p>
+              <p className="text-xs mt-1" style={{ color: '#9B8AAE' }}>Land Portal export · CSV format</p>
             </>
           )}
         </div>
       ) : (
-        <div className="rounded-lg p-5" style={{ background: '#10B98120', border: '1px solid #10B98140' }}>
-          <p className="font-bold text-sm mb-1" style={{ color: '#10B981' }}>✓ Upload complete</p>
-          <p className="text-sm" style={{ color: '#F5F5F5' }}>Analyzed {stats.valid_rows.toLocaleString()} sales across your market</p>
+        <div className="rounded-lg p-5" style={{ background: '#D1FAE5', border: '1px solid rgba(5,150,105,0.25)' }}>
+          <p className="font-bold text-sm mb-1" style={{ color: '#059669' }}>✓ Upload complete</p>
+          <p className="text-sm" style={{ color: '#1A0A2E' }}>Analyzed {stats.valid_rows.toLocaleString()} sales across your market</p>
         </div>
       )}
 
-      {error && <p className="text-xs mt-2" style={{ color: '#EF4444' }}>{error}</p>}
+      {error && <p className="text-xs mt-2" style={{ color: '#DC2626' }}>{error}</p>}
 
       <div className="flex justify-between mt-6">
         <button className="btn-secondary" onClick={onBack}>← Back</button>
@@ -586,14 +586,14 @@ function Step5Market({
 
   return (
     <div>
-      <h2 className="text-2xl font-bold mb-2" style={{ color: '#F5F5F5' }}>Your recommended market</h2>
-      <p className="text-sm mb-6" style={{ color: '#A0A0A0' }}>Based on your strategy and AI research, here's where to start.</p>
+      <h2 className="text-2xl font-bold mb-2" style={{ color: '#1A0A2E' }}>Your recommended market</h2>
+      <p className="text-sm mb-6" style={{ color: '#6B5B8A' }}>Based on your strategy and AI research, here's where to start.</p>
 
-      <div className="rounded-lg p-6 mb-6" style={{ background: '#242424', border: '2px solid #7C3AED' }}>
+      <div className="rounded-lg p-6 mb-6" style={{ background: '#F7F3FC', border: '2px solid #5C2977' }}>
         <div className="flex items-start justify-between mb-4">
           <div>
-            <p className="text-xl font-bold" style={{ color: '#F5F5F5' }}>{county.county} County, {state}</p>
-            <p className="text-sm mt-1" style={{ color: '#A0A0A0' }}>{county.why_good}</p>
+            <p className="text-xl font-bold" style={{ color: '#1A0A2E' }}>{county.county} County, {state}</p>
+            <p className="text-sm mt-1" style={{ color: '#6B5B8A' }}>{county.why_good}</p>
           </div>
           <DemandBadge level={county.builder_demand} />
         </div>
@@ -603,9 +603,9 @@ function Step5Market({
             { label: 'Target Acreage', value: `${acreageMin} – ${acreageMax} ac` },
             { label: 'Avg Days on Market', value: `${county.dom_estimate || '—'} days` },
           ].map(({ label, value }) => (
-            <div key={label} className="rounded-lg p-3" style={{ background: '#1A1A1A' }}>
-              <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#6B6B6B' }}>{label}</p>
-              <p className="font-bold mt-1" style={{ color: '#F5F5F5' }}>{value}</p>
+            <div key={label} className="rounded-lg p-3" style={{ background: '#FFFFFF' }}>
+              <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#9B8AAE' }}>{label}</p>
+              <p className="font-bold mt-1" style={{ color: '#1A0A2E' }}>{value}</p>
             </div>
           ))}
         </div>
@@ -613,8 +613,8 @@ function Step5Market({
 
       {!campaignCreated ? (
         <>
-          <div className="rounded-lg p-5 mb-6" style={{ background: '#242424', border: '1px solid #2E2E2E' }}>
-            <p className="text-sm font-bold mb-3" style={{ color: '#F5F5F5' }}>How to pull your mail list from Land Portal:</p>
+          <div className="rounded-lg p-5 mb-6" style={{ background: '#F7F3FC', border: '1px solid #E8E0F0' }}>
+            <p className="text-sm font-bold mb-3" style={{ color: '#1A0A2E' }}>How to pull your mail list from Land Portal:</p>
             <ol className="space-y-2">
               {[
                 'Go to Land Portal → click Lists',
@@ -625,14 +625,14 @@ function Step5Market({
                 'Set Owner Type: Individual',
                 'Export and upload the file on the next step',
               ].map((step, i) => (
-                <li key={i} className="flex gap-2 text-xs" style={{ color: '#A0A0A0' }}>
-                  <span className="font-bold" style={{ color: '#7C3AED' }}>{i + 1}.</span>
+                <li key={i} className="flex gap-2 text-xs" style={{ color: '#6B5B8A' }}>
+                  <span className="font-bold" style={{ color: '#5C2977' }}>{i + 1}.</span>
                   <span>{step}</span>
                 </li>
               ))}
             </ol>
           </div>
-          {error && <p className="text-xs mb-3" style={{ color: '#EF4444' }}>{error}</p>}
+          {error && <p className="text-xs mb-3" style={{ color: '#DC2626' }}>{error}</p>}
           <div className="flex justify-between">
             <button className="btn-secondary" onClick={onBack}>← Back</button>
             <button className="btn-primary px-8 py-3 text-sm" onClick={buildCampaign} disabled={creating}>
@@ -642,9 +642,9 @@ function Step5Market({
         </>
       ) : (
         <>
-          <div className="rounded-lg p-4 mb-6" style={{ background: '#10B98120', border: '1px solid #10B98140' }}>
-            <p className="font-bold text-sm" style={{ color: '#10B981' }}>✓ Campaign "{campaignName}" created</p>
-            <p className="text-xs mt-1" style={{ color: '#F5F5F5' }}>Buy box saved. Now let's set your mail budget and schedule your first send.</p>
+          <div className="rounded-lg p-4 mb-6" style={{ background: '#D1FAE5', border: '1px solid rgba(5,150,105,0.25)' }}>
+            <p className="font-bold text-sm" style={{ color: '#059669' }}>✓ Campaign "{campaignName}" created</p>
+            <p className="text-xs mt-1" style={{ color: '#1A0A2E' }}>Buy box saved. Now let's set your mail budget and schedule your first send.</p>
           </div>
           <div className="flex justify-between">
             <button className="btn-secondary" onClick={onBack}>← Back</button>
@@ -720,9 +720,9 @@ function Step6Launch({
       <div className="text-center py-8">
         {showConfetti && <Confetti />}
         <div className="text-5xl mb-4">🎉</div>
-        <h2 className="text-2xl font-bold mb-2" style={{ color: '#F5F5F5' }}>You're all set!</h2>
-        <p className="text-sm mb-2" style={{ color: '#A0A0A0' }}>Your first mail campaign is live. Sellers will start calling within days of your first send.</p>
-        <p className="text-xs mb-8" style={{ color: '#6B6B6B' }}>Check your Mail Calendar to track drops and your Seller Inbox for incoming calls.</p>
+        <h2 className="text-2xl font-bold mb-2" style={{ color: '#1A0A2E' }}>You're all set!</h2>
+        <p className="text-sm mb-2" style={{ color: '#6B5B8A' }}>Your first mail campaign is live. Sellers will start calling within days of your first send.</p>
+        <p className="text-xs mb-8" style={{ color: '#9B8AAE' }}>Check your Mail Calendar to track drops and your Seller Inbox for incoming calls.</p>
         <button className="btn-primary px-10 py-3 text-base" onClick={onComplete}>
           Go to Dashboard →
         </button>
@@ -732,51 +732,51 @@ function Step6Launch({
 
   return (
     <div>
-      <h2 className="text-2xl font-bold mb-2" style={{ color: '#F5F5F5' }}>Set your mail budget</h2>
-      <p className="text-sm mb-6" style={{ color: '#A0A0A0' }}>How much do you want to mail each week?</p>
+      <h2 className="text-2xl font-bold mb-2" style={{ color: '#1A0A2E' }}>Set your mail budget</h2>
+      <p className="text-sm mb-6" style={{ color: '#6B5B8A' }}>How much do you want to mail each week?</p>
 
       <div className="grid grid-cols-2 gap-4 mb-6">
         <div>
-          <label className="block text-xs font-semibold mb-1" style={{ color: '#A0A0A0' }}>Weekly Budget ($)</label>
+          <label className="block text-xs font-semibold mb-1" style={{ color: '#6B5B8A' }}>Weekly Budget ($)</label>
           <input type="number" className="input-base w-full" value={weeklyBudget}
             onChange={e => setWeeklyBudget(Number(e.target.value))} min={50} step={50} />
         </div>
         <div>
-          <label className="block text-xs font-semibold mb-1" style={{ color: '#A0A0A0' }}>Cost Per Piece ($)</label>
+          <label className="block text-xs font-semibold mb-1" style={{ color: '#6B5B8A' }}>Cost Per Piece ($)</label>
           <input type="number" className="input-base w-full" value={costPerPiece}
             onChange={e => setCostPerPiece(Number(e.target.value))} min={0.1} step={0.05} />
         </div>
       </div>
 
-      <div className="rounded-lg p-4 mb-6" style={{ background: '#242424', border: '1px solid #2E2E2E' }}>
+      <div className="rounded-lg p-4 mb-6" style={{ background: '#F7F3FC', border: '1px solid #E8E0F0' }}>
         <div className="grid grid-cols-3 gap-4 text-center">
           <div>
-            <p className="text-2xl font-bold" style={{ color: '#A78BFA' }}>{piecesPerWeek.toLocaleString()}</p>
-            <p className="text-xs" style={{ color: '#6B6B6B' }}>pieces per week</p>
+            <p className="text-2xl font-bold" style={{ color: '#5C2977' }}>{piecesPerWeek.toLocaleString()}</p>
+            <p className="text-xs" style={{ color: '#9B8AAE' }}>pieces per week</p>
           </div>
           <div>
-            <p className="text-2xl font-bold" style={{ color: '#A78BFA' }}>${weeklyBudget}</p>
-            <p className="text-xs" style={{ color: '#6B6B6B' }}>weekly cost</p>
+            <p className="text-2xl font-bold" style={{ color: '#5C2977' }}>${weeklyBudget}</p>
+            <p className="text-xs" style={{ color: '#9B8AAE' }}>weekly cost</p>
           </div>
           <div>
-            <p className="text-2xl font-bold" style={{ color: '#A78BFA' }}>
+            <p className="text-2xl font-bold" style={{ color: '#5C2977' }}>
               {nextMonday}
             </p>
-            <p className="text-xs" style={{ color: '#6B6B6B' }}>first send date</p>
+            <p className="text-xs" style={{ color: '#9B8AAE' }}>first send date</p>
           </div>
         </div>
       </div>
 
       <div className="mb-6">
-        <label className="block text-xs font-semibold mb-1" style={{ color: '#A0A0A0' }}>Mail House Email</label>
+        <label className="block text-xs font-semibold mb-1" style={{ color: '#6B5B8A' }}>Mail House Email</label>
         <input type="email" className="input-base w-full" placeholder="mailhouse@example.com"
           value={mailHouseEmail} onChange={e => setMailHouseEmail(e.target.value)} />
-        <p className="text-xs mt-1" style={{ color: '#6B6B6B' }}>CSV + PDF will be emailed here when you send each drop</p>
+        <p className="text-xs mt-1" style={{ color: '#9B8AAE' }}>CSV + PDF will be emailed here when you send each drop</p>
       </div>
 
       {!mailDrop ? (
         <>
-          {error && <p className="text-xs mb-3" style={{ color: '#EF4444' }}>{error}</p>}
+          {error && <p className="text-xs mb-3" style={{ color: '#DC2626' }}>{error}</p>}
           <div className="flex justify-between">
             <button className="btn-secondary" onClick={onBack}>← Back</button>
             <button className="btn-primary px-8 py-3 text-sm" onClick={scheduleDrop} disabled={scheduling}>
@@ -786,9 +786,9 @@ function Step6Launch({
         </>
       ) : (
         <>
-          <div className="rounded-lg p-5 mb-6" style={{ background: '#10B98120', border: '1px solid #10B98140' }}>
-            <p className="font-bold text-sm mb-2" style={{ color: '#10B981' }}>✓ Mail drop scheduled</p>
-            <p className="text-sm" style={{ color: '#F5F5F5' }}>
+          <div className="rounded-lg p-5 mb-6" style={{ background: '#D1FAE5', border: '1px solid rgba(5,150,105,0.25)' }}>
+            <p className="font-bold text-sm mb-2" style={{ color: '#059669' }}>✓ Mail drop scheduled</p>
+            <p className="text-sm" style={{ color: '#1A0A2E' }}>
               First send: <strong>{mailDrop.scheduled_date || nextMonday}</strong>
               {mailDrop.pieces_count ? ` · ${mailDrop.pieces_count.toLocaleString()} pieces` : ''}
               {mailDrop.estimated_cost ? ` · Est. $${mailDrop.estimated_cost.toLocaleString()}` : ''}
@@ -829,18 +829,18 @@ export default function OnboardingWizard({ onComplete, startAtStep = 1 }: Wizard
   }
 
   return (
-    <div className="fixed inset-0 z-50 overflow-auto" style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}>
+    <div className="fixed inset-0 z-50 overflow-auto" style={{ background: 'rgba(26,10,46,0.6)', backdropFilter: 'blur(4px)' }}>
       <div className="min-h-full flex items-center justify-center p-4 py-12">
-        <div className="w-full max-w-2xl rounded-lg" style={{ background: '#1A1A1A', border: '1px solid #2E2E2E' }}>
+        <div className="w-full max-w-2xl rounded-lg" style={{ background: '#FFFFFF', border: '1px solid #E8E0F0', boxShadow: '0 4px 24px rgba(92,41,119,0.12)', borderRadius: 12 }}>
           {/* Header */}
-          <div className="px-8 pt-8 pb-4" style={{ borderBottom: '1px solid #2E2E2E' }}>
+          <div className="px-8 pt-8 pb-4" style={{ borderBottom: '1px solid #E8E0F0' }}>
             <div className="flex items-center gap-3 mb-6">
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: '#7C3AED' }}>
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: '#5C2977' }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2">
                   <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
                 </svg>
               </div>
-              <span className="font-bold text-sm" style={{ color: '#A78BFA' }}>Land Dominator Setup</span>
+              <span className="font-bold text-sm" style={{ color: '#5C2977' }}>Land Dominator Setup</span>
             </div>
             <ProgressBar step={step} />
           </div>
@@ -893,7 +893,7 @@ export default function OnboardingWizard({ onComplete, startAtStep = 1 }: Wizard
           {/* Skip link at bottom */}
           {step < 6 && (
             <div className="px-8 pb-6 text-center">
-              <button className="text-xs underline" style={{ color: '#6B6B6B' }} onClick={finish}>
+              <button className="text-xs underline" style={{ color: '#9B8AAE' }} onClick={finish}>
                 Skip setup — go straight to dashboard
               </button>
             </div>
