@@ -1120,7 +1120,7 @@ async def send_campaign_mail_drop(campaign_id: str, body: dict = Body(default={}
                 raise HTTPException(status_code=502, detail=f"SendGrid error {sg_r.status_code}: {sg_r.text[:200]}")
 
         # Update campaign: amount_spent, last_mailed_at
-        cost_per_piece = float(campaign.get("cost_per_piece") or 0)
+        cost_per_piece = float(campaign.get("cost_per_piece") or 0.55)
         amount_spent_prev = float(campaign.get("amount_spent") or 0)
         amount_spent_new = amount_spent_prev + cost_per_piece * record_count
         sb.table("crm_campaigns").update({
@@ -1138,6 +1138,39 @@ async def send_campaign_mail_drop(campaign_id: str, body: dict = Body(default={}
         raise
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ── Recalculate amount_spent ───────────────────────────────────────────
+
+@router.post("/campaigns/{campaign_id}/recalculate-spend")
+async def recalculate_campaign_spend(campaign_id: str) -> dict:
+    """Recount mailed properties and recalculate amount_spent = count * cost_per_piece."""
+    from services.supabase_client import get_supabase
+    sb = get_supabase()
+    try:
+        camp_res = sb.table("crm_campaigns").select("cost_per_piece,amount_spent,total_budget").eq("id", campaign_id).single().execute()
+        camp_data = camp_res.data or {}
+        cpp = float(camp_data.get("cost_per_piece") or 0.55)
+
+        # Count all properties in this campaign (mailed = total added, since each record costs one piece)
+        count_res = sb.table("crm_properties").select("id", count="exact").eq("campaign_id", campaign_id).execute()
+        total_count = count_res.count or 0
+
+        new_spent = total_count * cpp
+        sb.table("crm_campaigns").update({"amount_spent": new_spent, "updated_at": _now()}).eq("id", campaign_id).execute()
+
+        total_budget = float(camp_data.get("total_budget") or 0)
+        return {
+            "amount_spent": new_spent,
+            "record_count": total_count,
+            "cost_per_piece": cpp,
+            "total_budget": total_budget,
+            "budget_remaining": max(0.0, total_budget - new_spent) if total_budget else None,
+        }
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
@@ -1389,6 +1422,19 @@ async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)
             print(f"[add-match-results] post-insert name fix error (non-fatal): {ne}", flush=True)
 
         print(f"[add-match-results] Post-insert name fix: {names_fixed} names corrected", flush=True)
+
+        # Update amount_spent based on newly inserted records
+        if imported > 0:
+            try:
+                camp_res = sb.table("crm_campaigns").select("cost_per_piece,amount_spent").eq("id", campaign_id).single().execute()
+                camp_data = camp_res.data or {}
+                cpp = float(camp_data.get("cost_per_piece") or 0.55)
+                prev_spent = float(camp_data.get("amount_spent") or 0)
+                new_spent = prev_spent + cpp * imported
+                sb.table("crm_campaigns").update({"amount_spent": new_spent, "updated_at": _now()}).eq("id", campaign_id).execute()
+                print(f"[add-match-results] amount_spent updated: {prev_spent:.2f} → {new_spent:.2f} ({imported} records × ${cpp}/piece)", flush=True)
+            except Exception as spend_err:
+                print(f"[add-match-results] amount_spent update error (non-fatal): {spend_err}", flush=True)
 
         return {
             "imported": imported,

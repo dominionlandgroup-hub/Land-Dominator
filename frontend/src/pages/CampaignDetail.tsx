@@ -4,7 +4,7 @@ import type { CRMProperty, CRMCampaign, PropertyStatus } from '../types/crm'
 import {
   listProperties, updateProperty, deleteProperties, bulkInsertRows, getCrmCampaign,
   exportPropertiesCsv, startCampaignLpPull, getCampaignLpPullStatus,
-  sendCampaignMailDrop, updateCrmCampaign, getPropertyTags,
+  sendCampaignMailDrop, updateCrmCampaign, getPropertyTags, recalculateAmountSpent,
 } from '../api/crm'
 import PropertyDetail from './PropertyDetail'
 
@@ -82,6 +82,9 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
   const [mailSuccess, setMailSuccess] = useState<string | null>(null)
   const [mailError, setMailError] = useState<string | null>(null)
 
+  // Recalculate spend
+  const [recalculating, setRecalculating] = useState(false)
+
   // LP pull
   const [lpJobId, setLpJobId] = useState<string | null>(null)
   const [lpDone, setLpDone] = useState(0)
@@ -123,6 +126,15 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
       setStats(data)
       onCampaignUpdated(data)
     } catch {}
+  }
+
+  async function handleRecalculate() {
+    setRecalculating(true)
+    try {
+      await recalculateAmountSpent(campaign.id)
+      await refreshStats()
+    } catch {}
+    finally { setRecalculating(false) }
   }
 
   async function loadProperties(
@@ -536,7 +548,6 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
         <div className="flex items-center gap-8 flex-wrap">
           {[
             { label: 'Total Records', value: (stats.property_count ?? 0).toLocaleString(), accent: '#4F46E5' },
-            { label: 'Amount Spent', value: '$0', accent: '#9CA3AF' },
             { label: 'Deals', value: ((bs.offer_sent ?? 0) + (bs.under_contract ?? 0) + (bs.closed_won ?? 0)).toLocaleString(), accent: '#3B82F6' },
             { label: 'Response Rate', value: '0%', accent: '#9CA3AF' },
             { label: 'Offers', value: (bs.offer_sent ?? 0).toLocaleString(), accent: '#C084FC' },
@@ -548,6 +559,38 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
               <div className="text-[10px] font-semibold uppercase tracking-wide mt-0.5" style={{ color: '#6B7280' }}>{s.label}</div>
             </div>
           ))}
+
+          {/* Amount Spent + Budget */}
+          <div className="flex flex-col gap-1 ml-auto">
+            <div className="flex items-center gap-2">
+              <div>
+                <div className="text-xl font-bold" style={{ color: (stats.amount_spent ?? 0) > 0 ? '#1A0A2E' : '#9CA3AF' }}>
+                  ${(stats.amount_spent ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
+                <div className="text-[10px] font-semibold uppercase tracking-wide mt-0.5" style={{ color: '#6B7280' }}>
+                  Amount Spent
+                  {(stats.amount_spent ?? 0) > 0 && stats.property_count
+                    ? ` · ${stats.property_count.toLocaleString()} × $${(stats.cost_per_piece ?? 0.55).toFixed(2)}`
+                    : ''}
+                </div>
+              </div>
+              <button
+                onClick={handleRecalculate}
+                disabled={recalculating}
+                className="text-[10px] px-2 py-0.5 rounded font-medium border disabled:opacity-50"
+                style={{ color: '#4F46E5', borderColor: '#C7D2FE', background: '#EEF2FF' }}
+                title="Recount all records and recalculate amount spent"
+              >
+                {recalculating ? '…' : 'Recalc'}
+              </button>
+            </div>
+            <div className="text-[11px]" style={{ color: '#6B7280' }}>
+              {stats.total_budget
+                ? <>Budget remaining: <span style={{ color: '#1A0A2E', fontWeight: 600 }}>${Math.max(0, (stats.total_budget ?? 0) - (stats.amount_spent ?? 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span> of ${(stats.total_budget ?? 0).toLocaleString()}</>
+                : <span style={{ color: '#9CA3AF' }}>No budget set — go to campaign settings</span>
+              }
+            </div>
+          </div>
         </div>
       </div>
 

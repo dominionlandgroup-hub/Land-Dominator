@@ -151,6 +151,17 @@ export async function sendCampaignMailDrop(
   return data
 }
 
+export async function recalculateAmountSpent(campaignId: string): Promise<{
+  amount_spent: number
+  record_count: number
+  cost_per_piece: number
+  total_budget: number
+  budget_remaining: number | null
+}> {
+  const { data } = await api.post(`/crm/campaigns/${campaignId}/recalculate-spend`)
+  return data
+}
+
 export async function addMatchResultsToCampaign(
   campaignId: string,
   matchId: string,
