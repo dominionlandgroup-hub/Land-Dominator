@@ -1312,7 +1312,7 @@ async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)
                 "property_city": r.get("parcel_city") or None,
                 "property_zip": r.get("parcel_zip") or None,
                 "state": r.get("parcel_state") or None,
-                "county": r.get("parcel_county") or None,
+                "county": (lambda v: v.lower().strip().replace(" county", "").replace("county", "").strip() or None)(str(r.get("parcel_county") or "")),
                 "acreage": r.get("lot_acres"),
                 # LP IDs
                 "property_id": prop_id,

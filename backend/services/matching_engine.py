@@ -1952,7 +1952,7 @@ def run_matching(
             "parcel_city": _s(row.get("Parcel City")),
             "parcel_address": parcel_street_address,
             "parcel_state": _s(row.get("Parcel State") or row.get("Parcel Address State") or ""),
-            "parcel_county": _s(row.get("Parcel County") or row.get("Parcel Address County") or ""),
+            "parcel_county": normalize_county(_s(row.get("Parcel County") or row.get("Parcel Address County") or "")),
             "lot_acres": float(target_acres) if has_acres else None,
             "match_score": score,
             "matched_comp_count": pricing['clean_comp_count'],
