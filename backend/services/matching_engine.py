@@ -1462,6 +1462,24 @@ def run_matching(
                         radius_label = label
                     # n == 0: continue without updating
 
+                # Rural-only 3mi step — only for lots > 0.5 acres
+                # Urban/micro lots (≤0.5ac) hard cap at 2mi; rural properties are more spread out
+                if matched_mask.sum() == 0 and has_acres and float(target_acres) > 0.5:
+                    trial_3mi = band_mask & (row_distances <= 3.0)
+                    n3 = int(trial_3mi.sum())
+                    if adj_bands and n3 < _MIN_COMPS_TO_STOP:
+                        for adj_label in adj_bands:
+                            adj_mask = band_masks_dict.get(adj_label, np.zeros(len(vc), dtype=bool))
+                            trial_3mi = trial_3mi | (adj_mask & (row_distances <= 3.0))
+                            n3 = int(trial_3mi.sum())
+                            if n3 >= _MIN_COMPS_TO_STOP:
+                                break
+                    if n3 >= 1:
+                        matched_mask = trial_3mi
+                        radius_label = '3mi'
+                        if debug:
+                            print(f"[DEBUG {target_apn}] RURAL 3mi: {n3} comps (acreage={target_acres:.2f}ac > 0.5)", flush=True)
+
             # County-awareness guard: if nearby comps are all from different counties,
             # treat as no local comps and avoid forced pricing.
             if matched_mask.sum() > 0 and target_county_raw:
@@ -1992,7 +2010,7 @@ def run_matching(
         print(f"[match] Uncovered counties: {uncovered_counties}", flush=True)
 
     # ── Pricing method breakdown ──────────────────────────────────────────
-    _breakdown_keys = ['0.25mi', '0.50mi', '1mi', '2mi', 'LP_FALLBACK', 'NO_DATA']
+    _breakdown_keys = ['0.25mi', '0.50mi', '1mi', '2mi', '3mi', 'LP_FALLBACK', 'NO_DATA']
     pricing_breakdown: dict = {k: 0 for k in _breakdown_keys}
     county_median_count = 0
     for _r in results:
@@ -2023,6 +2041,30 @@ def run_matching(
     unpriced_count    = sum(1 for r in results if r.get("pricing_flag") in ("NO_COMPS", None))
     mailable_count    = matched_count  # LP_FALLBACK is reference only, not mailable
 
+    # Match rate warning
+    match_rate_pct = round(matched_count / total_targets * 100) if total_targets > 0 else 0
+    if match_rate_pct < 80 and total_targets > 0:
+        unmatched_zips: dict[str, int] = {}
+        for r in results:
+            if r.get("pricing_flag") in ("NO_COMPS", None):
+                z = str(r.get("parcel_zip") or "").strip()
+                if z and z not in ("nan", "None", ""):
+                    unmatched_zips[z] = unmatched_zips.get(z, 0) + 1
+        top_zips = sorted(unmatched_zips, key=lambda z: -unmatched_zips[z])[:5]
+        match_rate_warning = {
+            "level": "warning",
+            "match_rate_pct": match_rate_pct,
+            "message": f"Match rate {match_rate_pct}% — below 80%. Consider uploading more comps from: {', '.join(top_zips) if top_zips else 'these ZIPs'}",
+            "top_unmatched_zips": top_zips,
+        }
+    else:
+        match_rate_warning = {
+            "level": "ok",
+            "match_rate_pct": match_rate_pct,
+            "message": f"✓ {match_rate_pct}% match rate — strong comp coverage",
+            "top_unmatched_zips": [],
+        }
+
     # Smart floor: 10th percentile of all priced offer_mid values
     _priced_offers = sorted([
         float(r['suggested_offer_mid']) for r in results
@@ -2051,4 +2093,5 @@ def run_matching(
         "filter_counts": filter_counts,
         "county_diagnostics": county_diagnostics,
         "pricing_breakdown": pricing_breakdown,
+        "match_rate_warning": match_rate_warning,
     }

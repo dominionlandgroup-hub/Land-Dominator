@@ -543,6 +543,28 @@ export default function MatchTargets() {
               <ResultCard label="No Data" value={(matchResult.unpriced_count ?? 0).toLocaleString()} accent="#9B8AAE" sub="Skip these" />
             </div>
 
+            {/* Match rate warning / success banner */}
+            {(matchResult as any).match_rate_warning && (() => {
+              const mrw = (matchResult as any).match_rate_warning as { level: string; match_rate_pct: number; message: string; top_unmatched_zips: string[] }
+              const isWarn = mrw.level === 'warning'
+              return (
+                <div className="mb-4 px-4 py-3 rounded-xl flex items-start gap-3" style={{
+                  background: isWarn ? '#FEF3C7' : '#D1FAE5',
+                  border: `1px solid ${isWarn ? 'rgba(217,119,6,0.3)' : 'rgba(5,150,105,0.3)'}`,
+                }}>
+                  <span style={{ fontSize: 16, lineHeight: 1.4 }}>{isWarn ? '⚠️' : '✓'}</span>
+                  <div>
+                    <p className="text-sm font-semibold" style={{ color: isWarn ? '#D97706' : '#059669' }}>{mrw.message}</p>
+                    {isWarn && mrw.top_unmatched_zips.length > 0 && (
+                      <p className="text-xs mt-0.5" style={{ color: '#92400E' }}>
+                        Top unmatched ZIPs: {mrw.top_unmatched_zips.join(', ')}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )
+            })()}
+
             {/* Pricing method breakdown */}
             {(matchResult as any).pricing_breakdown && (() => {
               const pb = (matchResult as any).pricing_breakdown as Record<string, number>
@@ -551,11 +573,7 @@ export default function MatchTargets() {
                 { label: 'Within 0.50mi', key: '0.50mi', color: '#059669' },
                 { label: 'Within 1 mile', key: '1mi', color: '#059669' },
                 { label: 'Within 2 miles', key: '2mi', color: '#16A34A' },
-                { label: 'Within 3 miles', key: '3mi', color: '#D97706' },
-                { label: 'Within 5 miles', key: '5mi', color: '#EA580C' },
-                { label: 'Within 10 miles', key: '10mi', color: '#DC2626' },
-                { label: 'Same ZIP (any size)', key: 'ZIP', color: '#7C3AED' },
-                { label: 'County median', key: 'COUNTY_MEDIAN', color: '#0891B2' },
+                { label: 'Within 3 miles (rural)', key: '3mi', color: '#D97706' },
                 { label: 'LP fallback', key: 'LP_FALLBACK', color: '#5C2977' },
                 { label: 'No data', key: 'NO_DATA', color: '#9B8AAE' },
               ].filter(r => pb[r.key] > 0)

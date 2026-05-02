@@ -115,6 +115,7 @@ async def run_match(filters: MatchFilters) -> Response:
             "smart_floor_recommendation": result.get("smart_floor_recommendation"),
             "county_diagnostics": result.get("county_diagnostics"),
             "pricing_breakdown": result.get("pricing_breakdown"),
+            "match_rate_warning": result.get("match_rate_warning"),
             "results": result["results"],
             "warnings": result.get("warnings", []),
         }, ignore_nan=True, default=str)
@@ -156,6 +157,7 @@ async def run_match(filters: MatchFilters) -> Response:
             "smart_floor_recommendation": result.get("smart_floor_recommendation"),
             "county_diagnostics": result.get("county_diagnostics"),
             "pricing_breakdown": result.get("pricing_breakdown"),
+            "match_rate_warning": result.get("match_rate_warning"),
             "results": result["results"],
             "warnings": result.get("warnings", []),
         })
