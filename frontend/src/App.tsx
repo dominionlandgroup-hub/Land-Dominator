@@ -109,16 +109,16 @@ function AppShell() {
 
   if (!checked) {
     return (
-      <div className="flex min-h-screen items-center justify-center" style={{ background: '#111827' }}>
-        <div className="w-8 h-8 border-2 rounded-full animate-spin" style={{ borderColor: '#2D3748', borderTopColor: '#D5A940' }} />
+      <div className="flex min-h-screen items-center justify-center" style={{ background: '#F9FAFB' }}>
+        <div className="w-8 h-8 border-2 rounded-full animate-spin" style={{ borderColor: '#E5E7EB', borderTopColor: '#4F46E5' }} />
       </div>
     )
   }
 
   return (
-    <div className="flex min-h-screen" style={{ background: '#111827' }}>
+    <div className="flex min-h-screen" style={{ background: '#F9FAFB' }}>
       <Sidebar />
-      <main className="flex-1 overflow-auto" style={{ background: '#111827' }}>
+      <main className="flex-1 overflow-auto" style={{ background: '#F9FAFB' }}>
         <ErrorBoundary>
           <PageContent />
         </ErrorBoundary>

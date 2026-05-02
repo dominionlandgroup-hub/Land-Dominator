@@ -38,7 +38,7 @@ export default function UploadComps() {
       val == null ? (
         <span style={{ color: '#6B7280' }}>—</span>
       ) : (
-        <span className="max-w-[180px] block truncate text-xs" title={String(val)} style={{ color: '#E5E7EB' }}>
+        <span className="max-w-[180px] block truncate text-xs" title={String(val)} style={{ color: '#374151' }}>
           {String(val)}
         </span>
       ),
@@ -49,7 +49,7 @@ export default function UploadComps() {
       {/* Page header */}
       <div className="page-header">
         <div>
-          <h1 className="text-lg font-semibold" style={{ color: '#F9FAFB', fontWeight: 700 }}>Upload Sold Comps</h1>
+          <h1 className="text-lg font-semibold" style={{ color: '#111827', fontWeight: 700 }}>Upload Sold Comps</h1>
           <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>Step 1 of 5 — Import your Land Portal sold comps export</p>
         </div>
         {compsStats && (
@@ -63,7 +63,7 @@ export default function UploadComps() {
 
         {/* Land Portal Export Instructions */}
         <div className="card mb-6">
-          <h2 className="font-semibold mb-1" style={{ color: '#F9FAFB' }}>How to Export Sold Comps from Land Portal</h2>
+          <h2 className="font-semibold mb-1" style={{ color: '#111827' }}>How to Export Sold Comps from Land Portal</h2>
           <p className="text-xs mb-4" style={{ color: '#9CA3AF' }}>Follow these steps exactly — LLC/Corporate buyer sales give the most accurate pricing data</p>
 
           <div className="space-y-2 mb-5">
@@ -81,15 +81,15 @@ export default function UploadComps() {
               <div key={step.n} className="flex items-start gap-3">
                 <span
                   className="w-5 h-5 rounded-full flex items-center justify-center flex-none text-[10px] font-bold mt-0.5"
-                  style={{ background: '#D5A940', color: '#111827' }}
+                  style={{ background: '#4F46E5', color: '#FFFFFF' }}
                 >{step.n}</span>
-                <p className="text-sm" style={{ color: '#E5E7EB' }}>{step.text}</p>
+                <p className="text-sm" style={{ color: '#374151' }}>{step.text}</p>
               </div>
             ))}
           </div>
 
-          <div className="rounded-lg px-4 py-3" style={{ background: 'rgba(213,169,64,0.06)', border: '1px solid rgba(213,169,64,0.15)' }}>
-            <p className="text-xs font-semibold mb-1" style={{ color: '#D5A940' }}>Why LLC/Corporate buyers only?</p>
+          <div className="rounded-lg px-4 py-3" style={{ background: 'rgba(79,70,229,0.04)', border: '1px solid rgba(79,70,229,0.12)' }}>
+            <p className="text-xs font-semibold mb-1" style={{ color: '#4F46E5' }}>Why LLC/Corporate buyers only?</p>
             <p className="text-xs" style={{ color: '#9CA3AF' }}>
               Individual buyers often overpay or underpay due to emotion. LLC and corporate buyers are professional investors
               who consistently pay fair market retail prices — making them the most reliable benchmark for setting your acquisition offers.
@@ -125,7 +125,7 @@ export default function UploadComps() {
               </div>
               <div>
                 <p className="font-semibold text-sm" style={{ color: '#10B981' }}>File uploaded successfully</p>
-                <p className="text-sm mt-0.5" style={{ color: '#E5E7EB' }}>
+                <p className="text-sm mt-0.5" style={{ color: '#374151' }}>
                   <strong>{compsStats.total_rows.toLocaleString()}</strong> total rows —{' '}
                   <strong>{compsStats.valid_rows.toLocaleString()}</strong> have a valid sale price and will be used for analysis.
                 </p>
@@ -167,7 +167,7 @@ export default function UploadComps() {
             {/* Data preview */}
             <div className="card">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="font-semibold" style={{ color: '#F9FAFB' }}>
+                <h2 className="font-semibold" style={{ color: '#111827' }}>
                   Data Preview
                 </h2>
                 <span className="text-xs" style={{ color: '#9CA3AF' }}>First 20 rows · 12 columns shown</span>
@@ -193,9 +193,9 @@ export default function UploadComps() {
 }
 
 function StatCard({ label, value, accent }: { label: string; value: string; accent: string }) {
-  const mappedAccent = accent === '#5C2977' ? '#D5A940' : accent === '#6B5B8A' ? '#9CA3AF' : accent
+  const mappedAccent = accent === '#5C2977' ? '#4F46E5' : accent === '#6B5B8A' ? '#9CA3AF' : accent
   return (
-    <div className="rounded-xl p-5" style={{ background: '#1F2937', border: '1px solid #2D3748', borderRadius: 8 }}>
+    <div className="rounded-xl p-5" style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8 }}>
       <p className="text-xs uppercase tracking-wider mb-2" style={{ color: '#6B7280', letterSpacing: '0.8px' }}>{label}</p>
       <p className="text-2xl font-bold" style={{ color: mappedAccent }}>{value}</p>
     </div>

@@ -94,7 +94,7 @@ function Confetti() {
       y: Math.random() * -cv.height,
       w: 8 + Math.random() * 8,
       h: 5 + Math.random() * 5,
-      color: ['#5C2977','#D5A940','#059669','#4A90D9','#E65100'][Math.floor(Math.random() * 5)],
+      color: ['#5C2977','#4F46E5','#059669','#4A90D9','#E65100'][Math.floor(Math.random() * 5)],
       angle: Math.random() * Math.PI * 2,
       vx: (Math.random() - 0.5) * 3,
       vy: 2 + Math.random() * 3,
@@ -192,7 +192,7 @@ function Step1Strategy({ onNext }: { onNext: (s: Strategy) => void }) {
           >
             {s.badge && (
               <span className="inline-block text-xs font-bold px-2 py-0.5 rounded-full mb-3"
-                style={{ background: '#D5A94020', color: '#D5A940' }}>{s.badge}</span>
+                style={{ background: 'rgba(79,70,229,0.08)', color: '#4F46E5' }}>{s.badge}</span>
             )}
             <div className="mb-3" style={{ color: s.color }}>{s.icon}</div>
             <h3 className="font-bold text-base mb-2" style={{ color: '#1A0A2E' }}>{s.title}</h3>
@@ -266,7 +266,7 @@ function Step2Learn({ strategy, onNext, onBack }: { strategy: Strategy; onNext: 
           <p className="font-bold" style={{ color: '#1A0A2E' }}>{info.timeline}</p>
         </div>
         <div className="rounded-lg p-4" style={{ background: '#F7F3FC', border: '1px solid #E8E0F0' }}>
-          <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: '#D5A940' }}>Average Profit</p>
+          <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: '#4F46E5' }}>Average Profit</p>
           <p className="font-bold" style={{ color: '#1A0A2E' }}>{info.profit}</p>
         </div>
       </div>

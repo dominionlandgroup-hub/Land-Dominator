@@ -145,7 +145,7 @@ export default function CRMDashboard() {
 
   const STAT_CARDS: StatCardProps[] = [
     { label: 'Deals Added',           value: stats.dealsAdded,           sub: 'total in pipeline',       accentColor: '#5C2977', icon: <IconDeals /> },
-    { label: 'Offers Made',           value: stats.offersMade,           sub: 'across all properties',   accentColor: '#D5A940', icon: <IconOffer /> },
+    { label: 'Offers Made',           value: stats.offersMade,           sub: 'across all properties',   accentColor: '#4F46E5', icon: <IconOffer /> },
     { label: 'Properties Purchased',  value: stats.propertiesPurchased,  sub: 'with purchase price set', accentColor: '#059669', icon: <IconBuy /> },
     { label: 'Properties Sold',       value: stats.propertiesSold,       sub: 'with sale price set',     accentColor: '#4A90D9', icon: <IconSell /> },
     { label: 'ROI',                   value: `${stats.roi}%`,            sub: 'sale vs purchase total',  accentColor: stats.roi >= 0 ? '#059669' : '#DC2626', icon: <IconROI /> },
@@ -351,7 +351,7 @@ export default function CRMDashboard() {
             { label: 'View Properties', page: 'crm-properties', color: '#5C2977' },
             { label: 'View Contacts',   page: 'crm-contacts',   color: '#4A90D9' },
             { label: 'Deals Pipeline',  page: 'crm-deals',      color: '#059669' },
-            { label: 'Campaigns',       page: 'campaigns',      color: '#D5A940' },
+            { label: 'Campaigns',       page: 'campaigns',      color: '#4F46E5' },
           ] as { label: string; page: AppPage; color: string }[]).map(({ label, page, color }) => (
             <button
               key={page}

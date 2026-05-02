@@ -331,7 +331,7 @@ function CampaignCard({
     <div
       className="rounded-xl bg-white transition-all"
       style={{
-        border: `1px solid ${isNew ? 'rgba(45,122,79,0.25)' : isSelectedForCompare ? '#D5A940' : '#EDE8F5'}`,
+        border: `1px solid ${isNew ? 'rgba(45,122,79,0.25)' : isSelectedForCompare ? '#4F46E5' : '#EDE8F5'}`,
         boxShadow: '0 1px 4px rgba(61,26,94,0.06)',
         borderTop: `4px solid ${isNew ? '#2D7A4F' : '#5C2977'}`,
       }}
@@ -427,7 +427,7 @@ function CampaignCard({
           <button
             className="btn-secondary text-xs"
             onClick={onToggleCompare}
-            style={isSelectedForCompare ? { borderColor: '#D5A940', color: '#D5A940' } : {}}
+            style={isSelectedForCompare ? { borderColor: '#4F46E5', color: '#4F46E5' } : {}}
           >
             {isSelectedForCompare ? 'Deselect' : 'Compare'}
           </button>

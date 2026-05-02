@@ -228,7 +228,7 @@ export default function MatchTargets() {
     },
     { key: 'comp_count', header: 'Comp Count', sortable: true, align: 'center', defaultHidden: true, render: (v) => <span className="text-xs">{String(v ?? '—')}</span> },
     { key: 'closest_comp_distance', header: 'Distance to Closest Comp', sortable: true, align: 'right', defaultHidden: true, render: (v) => (v == null ? <span style={{ color: '#6B7280' }}>—</span> : <span className="text-xs">{(v as number).toFixed(2)}</span>) },
-    { key: 'retail_estimate', header: 'Retail Est.', sortable: true, align: 'right', defaultHidden: true, render: (v) => <span className="text-xs" style={{ color: '#E5E7EB' }}>{fmtPrice(v as number)}</span> },
+    { key: 'retail_estimate', header: 'Retail Est.', sortable: true, align: 'right', defaultHidden: true, render: (v) => <span className="text-xs" style={{ color: '#374151' }}>{fmtPrice(v as number)}</span> },
     { key: 'suggested_offer_low', header: 'Offer Low', align: 'right', render: (v) => <span className="text-xs" style={{ color: '#9CA3AF' }}>{fmtPrice(v as number)}</span> },
     { key: 'suggested_offer_mid', header: 'Offer Mid', sortable: true, align: 'right', render: (v) => <span className="font-semibold" style={{ color: '#10B981' }}>{fmtPrice(v as number)}</span> },
     { key: 'suggested_offer_high', header: 'Offer High', align: 'right', render: (v) => <span className="text-xs" style={{ color: '#9CA3AF' }}>{fmtPrice(v as number)}</span> },
@@ -260,7 +260,7 @@ export default function MatchTargets() {
             ← Market Analysis
           </button>
           <div>
-            <h1 className="text-lg font-semibold" style={{ color: '#F9FAFB' }}>Match Targets</h1>
+            <h1 className="text-lg font-semibold" style={{ color: '#111827' }}>Match Targets</h1>
             <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>Upload target parcels and run the matching engine with smart filters</p>
           </div>
         </div>
@@ -288,7 +288,7 @@ export default function MatchTargets() {
 
         {/* ── Target upload ─────────────────────────────────────── */}
         <div className="card mb-6">
-          <h2 className="font-semibold mb-4" style={{ color: '#F9FAFB' }}>Target Parcels CSV</h2>
+          <h2 className="font-semibold mb-4" style={{ color: '#111827' }}>Target Parcels CSV</h2>
           {targetStats ? (
             <div className="rounded-lg px-4 py-3 flex items-center justify-between" style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)' }}>
               <div>
@@ -311,7 +311,7 @@ export default function MatchTargets() {
 
         {/* ── Filters ─────────────────────────────────────────── */}
         <div className="card mb-6">
-          <h2 className="font-semibold mb-5" style={{ color: '#F9FAFB' }}>Filters</h2>
+          <h2 className="font-semibold mb-5" style={{ color: '#111827' }}>Filters</h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
@@ -352,10 +352,10 @@ export default function MatchTargets() {
             {/* 2. Flood Zone */}
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>Flood Zone</p>
-              <div className="inline-flex rounded-lg overflow-hidden" style={{ border: '1px solid #2D3748' }}>
-                <button className="px-4 py-2 text-xs transition-all" style={floodZoneFilter === 'exclude' ? { background: '#D5A940', color: '#111827' } : { background: '#1F2937', color: '#9CA3AF' }} onClick={() => setFloodZoneFilter('exclude')}>Exclude</button>
-                <button className="px-4 py-2 text-xs transition-all" style={floodZoneFilter === 'all' ? { background: '#D5A940', color: '#111827' } : { background: '#1F2937', color: '#9CA3AF' }} onClick={() => setFloodZoneFilter('all')}>Include All</button>
-                <button className="px-4 py-2 text-xs transition-all" style={floodZoneFilter === 'only' ? { background: '#D5A940', color: '#111827' } : { background: '#1F2937', color: '#9CA3AF' }} onClick={() => setFloodZoneFilter('only')}>Only Flood</button>
+              <div className="inline-flex rounded-lg overflow-hidden" style={{ border: '1px solid #E5E7EB' }}>
+                <button className="px-4 py-2 text-xs transition-all" style={floodZoneFilter === 'exclude' ? { background: '#4F46E5', color: '#FFFFFF' } : { background: '#FFFFFF', color: '#6B7280' }} onClick={() => setFloodZoneFilter('exclude')}>Exclude</button>
+                <button className="px-4 py-2 text-xs transition-all" style={floodZoneFilter === 'all' ? { background: '#4F46E5', color: '#FFFFFF' } : { background: '#FFFFFF', color: '#6B7280' }} onClick={() => setFloodZoneFilter('all')}>Include All</button>
+                <button className="px-4 py-2 text-xs transition-all" style={floodZoneFilter === 'only' ? { background: '#4F46E5', color: '#FFFFFF' } : { background: '#FFFFFF', color: '#6B7280' }} onClick={() => setFloodZoneFilter('only')}>Only Flood</button>
               </div>
               <p className="text-[10px] mt-1.5" style={{ color: '#6B7280' }}>Exclude = no FEMA flood zones (recommended)</p>
             </div>
@@ -383,13 +383,13 @@ export default function MatchTargets() {
           </div>
 
           {/* 5. ZIP Filter */}
-          <div className="mt-5 pt-5" style={{ borderTop: '1px solid #2D3748' }}>
+          <div className="mt-5 pt-5" style={{ borderTop: '1px solid #E5E7EB' }}>
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#6B7280' }}>ZIP Filter</p>
               <div className="flex gap-2">
                 {top10Zips.length > 0 && (
                   <button className="text-xs px-3 py-1 rounded-lg border transition-colors"
-                    style={{ borderColor: '#2D3748', color: '#D5A940', background: 'transparent' }}
+                    style={{ borderColor: '#E5E7EB', color: '#4F46E5', background: 'transparent' }}
                     onClick={useBuyBoxZips}>
                     Use Buy Box ZIPs
                   </button>
@@ -415,7 +415,7 @@ export default function MatchTargets() {
         </div>
 
         {/* ── Active Filters Summary ──────────────────────────── */}
-        <div className="mb-5 px-4 py-3 rounded-xl text-xs" style={{ background: 'rgba(213,169,64,0.06)', border: '1px solid rgba(213,169,64,0.15)', color: '#D5A940' }}>
+        <div className="mb-5 px-4 py-3 rounded-xl text-xs" style={{ background: 'rgba(79,70,229,0.04)', border: '1px solid rgba(79,70,229,0.12)', color: '#4F46E5' }}>
           {filterSummary}
         </div>
 
@@ -428,12 +428,12 @@ export default function MatchTargets() {
               width: '100%', padding: '18px 32px', fontSize: 18, fontWeight: 700, letterSpacing: '0.5px',
               borderRadius: 8, border: 'none', cursor: !targetStats || matchLoading ? 'not-allowed' : 'pointer',
               opacity: !targetStats || matchLoading ? 0.5 : 1,
-              background: '#D5A940',
-              color: '#111827', boxShadow: '0 1px 3px rgba(213,169,64,0.15)', transition: 'all 0.3s ease',
+              background: '#4F46E5',
+              color: '#FFFFFF', boxShadow: '0 1px 3px rgba(79,70,229,0.15)', transition: 'all 0.3s ease',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
             }}
-            onMouseEnter={e => { if (!matchLoading && targetStats) { (e.currentTarget as HTMLButtonElement).style.background = '#E8BB4A'; (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-2px)' } }}
-            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = '#D5A940'; (e.currentTarget as HTMLButtonElement).style.transform = 'none' }}
+            onMouseEnter={e => { if (!matchLoading && targetStats) { (e.currentTarget as HTMLButtonElement).style.background = '#4338CA'; (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-2px)' } }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = '#4F46E5'; (e.currentTarget as HTMLButtonElement).style.transform = 'none' }}
           >
             {matchLoading ? (
               <><LoadingSpinner size="sm" />Running…</>
@@ -585,12 +585,12 @@ export default function MatchTargets() {
               if (rows.length === 0) return null
               return (
                 <div className="card mb-6">
-                  <h2 className="font-semibold mb-3" style={{ color: '#F9FAFB' }}>Pricing Method Breakdown</h2>
+                  <h2 className="font-semibold mb-3" style={{ color: '#111827' }}>Pricing Method Breakdown</h2>
                   <div className="flex flex-col gap-1.5">
                     {rows.map(r => (
                       <div key={r.key} className="flex items-center gap-3">
-                        <span className="text-xs w-36 shrink-0" style={{ color: '#9CA3AF' }}>{r.label}</span>
-                        <div className="flex-1 rounded-full h-2 overflow-hidden" style={{ background: '#2D3748' }}>
+                        <span className="text-xs w-36 shrink-0" style={{ color: '#6B7280' }}>{r.label}</span>
+                        <div className="flex-1 rounded-full h-2 overflow-hidden" style={{ background: '#E5E7EB' }}>
                           <div className="h-full rounded-full" style={{
                             width: `${Math.round(pb[r.key] / matchResult.total_targets * 100)}%`,
                             background: r.color,
@@ -622,7 +622,7 @@ export default function MatchTargets() {
               }).length
               return (
                 <div className="card mb-6">
-                  <h2 className="font-semibold mb-3" style={{ color: '#F9FAFB' }}>Assignment Fee Calculator</h2>
+                  <h2 className="font-semibold mb-3" style={{ color: '#111827' }}>Assignment Fee Calculator</h2>
                   <div className="flex items-end gap-4 flex-wrap">
                     <div>
                       <label className="text-xs block mb-1" style={{ color: '#9CA3AF' }}>Target Assignment Fee</label>
@@ -680,7 +680,7 @@ export default function MatchTargets() {
                     style={{ marginBottom: showUnmatched ? 12 : 0 }}
                     onClick={() => setShowUnmatched(v => !v)}
                   >
-                    <h2 className="font-semibold" style={{ color: '#F9FAFB' }}>
+                    <h2 className="font-semibold" style={{ color: '#111827' }}>
                       Unmatched Records
                       <span className="text-sm font-normal ml-2" style={{ color: '#9CA3AF' }}>({noCompRecords.length.toLocaleString()} records couldn't be comp-matched)</span>
                     </h2>
@@ -697,11 +697,11 @@ export default function MatchTargets() {
                     const pct = cd.coverage_pct
                     const color = pct >= 80 ? '#059669' : pct >= 50 ? '#D97706' : '#DC2626'
                     return (
-                      <div className="rounded-lg p-2.5 mt-3" style={{ background: 'rgba(213,169,64,0.06)', border: '1px solid rgba(213,169,64,0.15)' }}>
+                      <div className="rounded-lg p-2.5 mt-3" style={{ background: 'rgba(79,70,229,0.04)', border: '1px solid rgba(79,70,229,0.12)' }}>
                         <p className="text-xs font-semibold mb-1" style={{ color }}>
                           County coverage: {cd.covered_county_count} of {cd.target_county_count} counties ({pct}%)
                         </p>
-                        <p className="text-[10px] mb-1" style={{ color: '#D5A940' }}>{cd.message}</p>
+                        <p className="text-[10px] mb-1" style={{ color: '#4F46E5' }}>{cd.message}</p>
                         {cd.uncovered_counties.length > 0 && (
                           <p className="text-[10px]" style={{ color: '#EF4444' }}>
                             No comps for: <span className="font-semibold">{cd.uncovered_counties.slice(0, 8).join(', ')}{cd.uncovered_counties.length > 8 ? ` +${cd.uncovered_counties.length - 8} more` : ''}</span>
@@ -735,8 +735,8 @@ export default function MatchTargets() {
                       <p className="text-[10px] uppercase tracking-wide font-semibold mt-4 mb-2" style={{ color: '#6B7280' }}>Why records didn't match:</p>
                       <div className="flex flex-col gap-1 mb-4">
                         {Object.entries(reasonGroups).sort(([, a], [, b]) => b - a).map(([reason, count]) => (
-                          <div key={reason} className="flex justify-between items-center px-2.5 py-1.5 rounded-lg" style={{ background: '#253040' }}>
-                            <span className="text-xs" style={{ color: '#E5E7EB' }}>{reason}</span>
+                          <div key={reason} className="flex justify-between items-center px-2.5 py-1.5 rounded-lg" style={{ background: '#F3F4F6' }}>
+                            <span className="text-xs" style={{ color: '#374151' }}>{reason}</span>
                             <span className="text-xs font-semibold tabular-nums" style={{ color: '#9CA3AF' }}>{count.toLocaleString()}</span>
                           </div>
                         ))}
@@ -748,7 +748,7 @@ export default function MatchTargets() {
                       <div className="overflow-x-auto">
                         <table className="w-full text-xs">
                           <thead>
-                            <tr style={{ borderBottom: '1px solid #2D3748' }}>
+                            <tr style={{ borderBottom: '1px solid #E5E7EB' }}>
                               {['APN', 'ZIP', 'Acres', 'Band', 'Reason'].map(h => (
                                 <th key={h} className="text-left py-1.5 pr-3 last:pr-0" style={{ color: '#6B7280', fontWeight: 500 }}>{h}</th>
                               ))}
@@ -756,12 +756,12 @@ export default function MatchTargets() {
                           </thead>
                           <tbody>
                             {noCompRecords.slice(0, 20).map((r, i) => (
-                              <tr key={i} style={{ borderBottom: '1px solid #1F2937' }}>
-                                <td className="py-1 pr-3 font-mono" style={{ color: '#E5E7EB' }}>{r.apn || '—'}</td>
-                                <td className="py-1 pr-3" style={{ color: '#9CA3AF' }}>{r.parcel_zip || '—'}</td>
-                                <td className="py-1 pr-3 tabular-nums" style={{ color: '#9CA3AF' }}>{r.lot_acres != null ? Number(r.lot_acres).toFixed(2) : '—'}</td>
-                                <td className="py-1 pr-3" style={{ color: '#9CA3AF' }}>{(r.acreage_band as string) || '—'}</td>
-                                <td className="py-1" style={{ color: '#EF4444' }}>{(r.no_match_reason as string) || 'Unknown'}</td>
+                              <tr key={i} style={{ borderBottom: '1px solid #F3F4F6' }}>
+                                <td className="py-1 pr-3 font-mono" style={{ color: '#374151' }}>{r.apn || '—'}</td>
+                                <td className="py-1 pr-3" style={{ color: '#6B7280' }}>{r.parcel_zip || '—'}</td>
+                                <td className="py-1 pr-3 tabular-nums" style={{ color: '#6B7280' }}>{r.lot_acres != null ? Number(r.lot_acres).toFixed(2) : '—'}</td>
+                                <td className="py-1 pr-3" style={{ color: '#6B7280' }}>{(r.acreage_band as string) || '—'}</td>
+                                <td className="py-1" style={{ color: '#DC2626' }}>{(r.no_match_reason as string) || 'Unknown'}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -789,7 +789,7 @@ export default function MatchTargets() {
 
             <div className="card">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="font-semibold" style={{ color: '#F9FAFB' }}>
+                <h2 className="font-semibold" style={{ color: '#111827' }}>
                   Matched Parcels
                   <span className="text-sm font-normal ml-2" style={{ color: '#9CA3AF' }}>sorted by score</span>
                 </h2>
@@ -820,7 +820,7 @@ export default function MatchTargets() {
       {showMailingModal && matchResult && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }}
           onClick={e => { if (e.target === e.currentTarget) setShowMailingModal(false) }}>
-          <div className="rounded-2xl p-6 shadow-xl" style={{ background: '#1F2937', border: '1px solid #2D3748', maxWidth: '480px', width: '100%' }}>
+          <div className="rounded-2xl p-6 shadow-xl" style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', maxWidth: '480px', width: '100%', boxShadow: '0 4px 24px rgba(0,0,0,0.1)' }}>
             <h2 className="section-heading mb-1">Add to Mailing List</h2>
             <p className="text-xs mb-4" style={{ color: '#6B7280' }}>
               Insert match results into a CRM campaign as leads.
@@ -868,7 +868,7 @@ export default function MatchTargets() {
                 <p className="text-xs font-medium" style={{ color: '#10B981' }}>{mailingSuccess}</p>
                 <button
                   className="text-xs mt-1 underline"
-                  style={{ color: '#D5A940', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                  style={{ color: '#4F46E5', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
                   onClick={() => { setShowMailingModal(false); setMailingSuccess(null); setMailingError(null); setCurrentPage('crm-campaigns') }}
                 >
                   Go to Campaign →
@@ -938,7 +938,7 @@ function ScoreBadge({ score }: { score: number }) {
   return (
     <span
       className="inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold text-white"
-      style={{ background: score === 5 ? '#059669' : score === 4 ? '#D5A940' : score === 3 ? '#F59E0B' : score === 2 ? '#D97706' : '#DC2626', color: score === 4 || score === 3 ? '#111827' : '#fff' }}
+      style={{ background: score === 5 ? '#059669' : score === 4 ? '#4F46E5' : score === 3 ? '#F59E0B' : score === 2 ? '#D97706' : '#DC2626', color: '#fff' }}
     >
       {score}
     </span>
@@ -947,7 +947,7 @@ function ScoreBadge({ score }: { score: number }) {
 
 function ResultCard({ label, value, accent, sub }: { label: string; value: string; accent: string; sub?: string }) {
   return (
-    <div className="rounded-xl p-4" style={{ background: '#1F2937', border: '1px solid #2D3748' }}>
+    <div className="rounded-xl p-4" style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
       <p className="text-xs uppercase tracking-wider mb-1" style={{ color: '#6B7280' }}>{label}</p>
       <p className="text-2xl font-bold" style={{ color: accent }}>{value}</p>
       {sub && <p className="text-[10px] mt-0.5" style={{ color: '#6B7280' }}>{sub}</p>}

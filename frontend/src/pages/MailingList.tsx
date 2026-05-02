@@ -14,7 +14,7 @@ import type { MatchedParcel } from '../types'
 import { getConfidence } from '../types'
 import WelcomeScreen from './WelcomeScreen'
 
-const ZIP_COLORS = ['#5C2977','#8B4DB8','#2D7A4F','#D5A940','#7B3E99','#C05000','#4CAF7A','#B8860B','#3D1A5C']
+const ZIP_COLORS = ['#5C2977','#8B4DB8','#2D7A4F','#4F46E5','#7B3E99','#C05000','#4CAF7A','#D97706','#3D1A5C']
 
 const fmtUSD = (v: number | null | undefined): string => {
   if (v == null) return '—'
@@ -103,7 +103,7 @@ export default function MailingList() {
   const FLAG_COLORS: Record<string, string> = {
     'OK': '#2D7A4F',
     'STALE_COMPS': '#B8860B',
-    'REVIEW_LOW': '#D5A940',
+    'REVIEW_LOW': '#D97706',
     'REVIEW_LOW_STALE': '#C05000',
     'SUSPECT_COMPS': '#ef4444',
     'SUSPECT_COMPS_STALE': '#991B1B',
@@ -312,7 +312,7 @@ export default function MailingList() {
         ) : (
           <span
             className="text-xs"
-            style={{ color: (v as number) > 70 ? '#2D7A4F' : (v as number) > 40 ? '#D5A940' : '#ef4444' }}
+            style={{ color: (v as number) > 70 ? '#2D7A4F' : (v as number) > 40 ? '#D97706' : '#DC2626' }}
           >
             {(v as number).toFixed(0)}%
           </span>
@@ -426,7 +426,7 @@ export default function MailingList() {
                 href={top500Url}
                 download
                 className="btn-secondary text-sm no-underline"
-                style={{ borderColor: '#D5A940', color: '#D5A940' }}
+                style={{ borderColor: '#4F46E5', color: '#4F46E5' }}
                 title="Top 500 records by match score"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -440,7 +440,7 @@ export default function MailingList() {
                 href={highConfUrl}
                 download
                 className="btn-secondary text-sm no-underline"
-                style={{ borderColor: '#D5A940', color: '#D5A940' }}
+                style={{ borderColor: '#4F46E5', color: '#4F46E5' }}
                 title="Download parcels with 3+ matching comps"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -543,7 +543,7 @@ export default function MailingList() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
               <DedupeCard label="Before Dedup" value={mailingPreview.total_before_dedup.toLocaleString()} accent="#6B5B8A" />
               <DedupeCard label="After Dedup"value={mailingPreview.total_after_dedup.toLocaleString()} accent="#2D7A4F" highlight />
-              <DedupeCard label="Foreign Removed" value={mailingPreview.filtered_foreign.toLocaleString()} accent="#D5A940" />
+              <DedupeCard label="Foreign Removed" value={mailingPreview.filtered_foreign.toLocaleString()} accent="#D97706" />
               <DedupeCard
                 label="Total Removed"
                 value={(mailingPreview.total_before_dedup - mailingPreview.total_after_dedup).toLocaleString()}
@@ -611,7 +611,7 @@ export default function MailingList() {
                   title="Top 500 Records"
                   subtitle="Best-scored parcels, ideal for first mailer"
                   badge="TOP 500"
-                  badgeColor="#D5A940"
+                  badgeColor="#4F46E5"
                   href={top500Url}
                 />
                 <ExportOption
@@ -625,7 +625,7 @@ export default function MailingList() {
                   title="Full List"
                   subtitle={`All ${afterDedup.toLocaleString()} deduplicated records`}
                   badge="ALL"
-                  badgeColor="#D5A940"
+                  badgeColor="#4F46E5"
                   href={fullUrl}
                 />
               </div>
@@ -809,7 +809,7 @@ function ScoreBadge({ score }: { score: number }) {
   return (
     <span
       className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold text-white score-badge-${score}`}
-      style={{ background: score === 4 ? '#5C2977' : score === 3 ? '#D5A940' : score === 2 ? '#C06820' : score === 1 ? '#B03030' : '#2D7A4F' }}
+      style={{ background: score === 4 ? '#5C2977' : score === 3 ? '#D97706' : score === 2 ? '#C06820' : score === 1 ? '#B03030' : '#2D7A4F' }}
     >
       {score}
     </span>

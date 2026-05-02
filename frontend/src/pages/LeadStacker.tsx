@@ -115,9 +115,9 @@ function SourceIcon({ lead }: { lead: HillsboroughLead }) {
               fontWeight: 700,
               padding: '1px 4px',
               borderRadius: 3,
-              background: active ? '#D5A940' : '#1F2937',
-              color: active ? '#111827' : '#4B5563',
-              border: active ? '1px solid #D5A940' : '1px solid #2D3748',
+              background: active ? '#4F46E5' : '#F3F4F6',
+              color: active ? '#FFFFFF' : '#9CA3AF',
+              border: active ? '1px solid #4F46E5' : '1px solid #E5E7EB',
             }}
           >
             {f.label}
@@ -177,8 +177,8 @@ function SourceCard({
   return (
     <div
       style={{
-        background: '#1F2937',
-        border: `1px solid ${hasData ? '#D5A940' : '#2D3748'}`,
+        background: '#FFFFFF',
+        border: `1px solid ${hasData ? '#4F46E5' : '#E5E7EB'}`,
         borderRadius: 8,
         padding: 16,
         display: 'flex',
@@ -189,7 +189,7 @@ function SourceCard({
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
         <span style={{ fontSize: 20, lineHeight: 1 }}>{meta.icon}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 600, color: '#F9FAFB', fontSize: 13 }}>{meta.label}</div>
+          <div style={{ fontWeight: 600, color: '#111827', fontSize: 13 }}>{meta.label}</div>
           <div style={{ fontSize: 11, color: '#6B7280', marginTop: 2, lineHeight: 1.4 }}>
             {meta.description}
           </div>
@@ -197,9 +197,9 @@ function SourceCard({
         {hasData && (
           <span
             style={{
-              background: 'rgba(213,169,64,0.1)',
-              border: '1px solid rgba(213,169,64,0.3)',
-              color: '#D5A940',
+              background: 'rgba(79,70,229,0.08)',
+              border: '1px solid rgba(79,70,229,0.2)',
+              color: '#4F46E5',
               borderRadius: 4,
               padding: '2px 8px',
               fontSize: 11,
@@ -226,8 +226,8 @@ function SourceCard({
           style={{
             flex: 1,
             padding: '7px 12px',
-            background: loading ? '#2D3748' : '#D5A940',
-            color: loading ? '#6B7280' : '#111827',
+            background: loading ? '#F3F4F6' : '#4F46E5',
+            color: loading ? '#9CA3AF' : '#FFFFFF',
             border: 'none',
             borderRadius: 6,
             fontWeight: 600,
@@ -244,7 +244,7 @@ function SourceCard({
               padding: '7px 10px',
               background: 'transparent',
               color: '#6B7280',
-              border: '1px solid #374151',
+              border: '1px solid #E5E7EB',
               borderRadius: 6,
               fontSize: 12,
               cursor: 'pointer',
@@ -354,8 +354,8 @@ export default function LeadStacker() {
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, gap: 16 }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#D5A940' }} />
-            <h1 style={{ fontSize: 20, fontWeight: 700, color: '#F9FAFB', margin: 0 }}>
+            <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#4F46E5' }} />
+            <h1 style={{ fontSize: 20, fontWeight: 700, color: '#111827', margin: 0 }}>
               Hillsborough Lead Stacker
             </h1>
           </div>
@@ -369,8 +369,8 @@ export default function LeadStacker() {
             download
             style={{
               padding: '8px 16px',
-              background: '#D5A940',
-              color: '#111827',
+              background: '#4F46E5',
+              color: '#FFFFFF',
               borderRadius: 6,
               fontWeight: 700,
               fontSize: 13,
@@ -458,8 +458,8 @@ export default function LeadStacker() {
       {Object.values(uploadResults).length > 0 && (
         <div
           style={{
-            background: 'rgba(213,169,64,0.06)',
-            border: '1px solid rgba(213,169,64,0.2)',
+            background: 'rgba(79,70,229,0.04)',
+            border: '1px solid rgba(79,70,229,0.15)',
             borderRadius: 8,
             padding: '12px 16px',
             marginBottom: 24,
@@ -469,7 +469,7 @@ export default function LeadStacker() {
           }}
         >
           {Object.values(uploadResults).map(r => (
-            <div key={r.source} style={{ fontSize: 12, color: '#D5A940' }}>
+            <div key={r.source} style={{ fontSize: 12, color: '#4F46E5' }}>
               <strong>{r.label}:</strong> {r.inserted} new · {r.updated} updated
               {r.skipped > 0 && <span style={{ color: '#6B7280' }}> · {r.skipped} skipped (no parcel ID)</span>}
             </div>
@@ -480,14 +480,14 @@ export default function LeadStacker() {
       {/* MLS cross-reference */}
       <div
         style={{
-          background: '#1F2937',
-          border: '1px solid #2D3748',
+          background: '#FFFFFF',
+          border: '1px solid #E5E7EB',
           borderRadius: 8,
           padding: 16,
           marginBottom: 24,
         }}
       >
-        <h3 style={{ fontSize: 13, fontWeight: 700, color: '#F9FAFB', margin: '0 0 6px 0' }}>
+        <h3 style={{ fontSize: 13, fontWeight: 700, color: '#111827', margin: '0 0 6px 0' }}>
           MLS Cross-Reference
         </h3>
         <p style={{ fontSize: 12, color: '#6B7280', margin: '0 0 12px 0' }}>
@@ -506,9 +506,9 @@ export default function LeadStacker() {
             onClick={() => mlsRef.current?.click()}
             style={{
               padding: '7px 14px',
-              background: '#2D3748',
-              color: '#D1D5DB',
-              border: '1px solid #374151',
+              background: '#F3F4F6',
+              color: '#374151',
+              border: '1px solid #E5E7EB',
               borderRadius: 6,
               fontSize: 12,
               cursor: 'pointer',
@@ -566,9 +566,9 @@ export default function LeadStacker() {
               onClick={() => setMinScore(tab.value)}
               style={{
                 padding: '5px 10px',
-                background: minScore === tab.value ? 'rgba(213,169,64,0.15)' : 'transparent',
-                color: minScore === tab.value ? '#D5A940' : '#6B7280',
-                border: `1px solid ${minScore === tab.value ? '#D5A940' : '#374151'}`,
+                background: minScore === tab.value ? 'rgba(79,70,229,0.08)' : 'transparent',
+                color: minScore === tab.value ? '#4F46E5' : '#6B7280',
+                border: `1px solid ${minScore === tab.value ? '#4F46E5' : '#E5E7EB'}`,
                 borderRadius: 5,
                 fontSize: 11,
                 fontWeight: 600,
@@ -588,8 +588,8 @@ export default function LeadStacker() {
           style={{
             textAlign: 'center',
             padding: '48px 24px',
-            background: '#1F2937',
-            border: '1px solid #2D3748',
+            background: '#FFFFFF',
+            border: '1px solid #E5E7EB',
             borderRadius: 8,
             color: '#6B7280',
             fontSize: 13,
@@ -600,11 +600,11 @@ export default function LeadStacker() {
             : `No leads with score ${minScore}+. Try a lower threshold.`}
         </div>
       ) : (
-        <div style={{ background: '#1F2937', border: '1px solid #2D3748', borderRadius: 8, overflow: 'hidden' }}>
+        <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, overflow: 'hidden' }}>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
-                <tr style={{ background: '#111827' }}>
+                <tr style={{ background: '#F9FAFB', borderBottom: '1px solid #E5E7EB' }}>
                   <Th>Score</Th>
                   <Th>Parcel ID</Th>
                   <Th>Owner</Th>
@@ -619,20 +619,20 @@ export default function LeadStacker() {
                   <tr
                     key={lead.id}
                     style={{
-                      background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)',
-                      borderTop: '1px solid #2D3748',
+                      background: i % 2 === 0 ? '#FFFFFF' : '#F9FAFB',
+                      borderTop: '1px solid #F3F4F6',
                     }}
                   >
                     <Td>
                       <ScoreBadge score={lead.score} />
                     </Td>
                     <Td>
-                      <span style={{ fontFamily: 'monospace', color: '#D1D5DB', fontSize: 11 }}>
+                      <span style={{ fontFamily: 'monospace', color: '#374151', fontSize: 11 }}>
                         {lead.parcel_id || '—'}
                       </span>
                     </Td>
                     <Td>
-                      <div style={{ color: '#F9FAFB' }}>{lead.owner_name || '—'}</div>
+                      <div style={{ color: '#111827' }}>{lead.owner_name || '—'}</div>
                       {lead.mail_city && (
                         <div style={{ color: '#6B7280', fontSize: 10 }}>
                           {[lead.mail_city, lead.mail_state].filter(Boolean).join(', ')}
@@ -640,7 +640,7 @@ export default function LeadStacker() {
                       )}
                     </Td>
                     <Td>
-                      <span style={{ color: '#D1D5DB' }}>{lead.property_address || '—'}</span>
+                      <span style={{ color: '#374151' }}>{lead.property_address || '—'}</span>
                     </Td>
                     <Td>
                       <span style={{ color: '#9CA3AF' }}>{lead.property_zip || '—'}</span>
@@ -659,7 +659,7 @@ export default function LeadStacker() {
                           )}
                         </span>
                       ) : (
-                        <span style={{ color: '#374151' }}>—</span>
+                        <span style={{ color: '#9CA3AF' }}>—</span>
                       )}
                     </Td>
                   </tr>
@@ -716,17 +716,18 @@ function StatCard({
   return (
     <div
       style={{
-        background: '#1F2937',
-        border: `1px solid ${gold ? 'rgba(213,169,64,0.3)' : '#2D3748'}`,
+        background: '#FFFFFF',
+        border: `1px solid ${gold ? 'rgba(79,70,229,0.3)' : '#E5E7EB'}`,
         borderRadius: 8,
         padding: '12px 14px',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
       }}
     >
       <div
         style={{
           fontSize: 18,
           fontWeight: 700,
-          color: gold ? '#D5A940' : color ?? '#F9FAFB',
+          color: gold ? '#4F46E5' : color ?? '#111827',
           fontVariantNumeric: 'tabular-nums',
         }}
       >

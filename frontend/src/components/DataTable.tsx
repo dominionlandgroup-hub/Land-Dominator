@@ -166,7 +166,7 @@ export default function DataTable<T extends object>({
                 placeholder="Search…"
                 value={search}
                 onChange={(e) => handleSearchChange(e.target.value)}
-                style={{ background: '#111827', color: '#F9FAFB', border: '1px solid #2D3748' }}
+                style={{ background: '#FFFFFF', color: '#111827', border: '1px solid #E5E7EB' }}
               />
               {search && (
                 <button
@@ -203,7 +203,7 @@ export default function DataTable<T extends object>({
             {showColToggle && (
               <div
                 className="absolute right-0 top-full mt-1 rounded-lg p-3 z-50 shadow-xl min-w-[180px]"
-                style={{ background: '#1F2937', border: '1px solid #2D3748' }}
+                style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', boxShadow: '0 4px 16px rgba(0,0,0,0.1)' }}
               >
                 <div className="text-xs mb-2 font-medium uppercase tracking-wider" style={{ color: '#6B7280' }}>Toggle Columns</div>
                 <div className="space-y-1 max-h-64 overflow-y-auto">
@@ -214,9 +214,9 @@ export default function DataTable<T extends object>({
                         checked={!hiddenCols.has(col.key)}
                         onChange={() => toggleCol(col.key)}
                         className="w-3.5 h-3.5"
-                        style={{ accentColor: '#D5A940' }}
+                        style={{ accentColor: '#4F46E5' }}
                       />
-                      <span className="text-xs" style={{ color: '#E5E7EB' }}>
+                      <span className="text-xs" style={{ color: '#374151' }}>
                         {typeof col.header === 'string' ? col.header : col.key}
                       </span>
                     </label>
@@ -224,7 +224,7 @@ export default function DataTable<T extends object>({
                 </div>
                 <button
                   className="text-xs mt-2"
-                  style={{ color: '#9CA3AF' }}
+                  style={{ color: '#6B7280' }}
                   onClick={() => setHiddenCols(new Set())}
                 >
                   Show all
@@ -239,9 +239,9 @@ export default function DataTable<T extends object>({
         <div className="text-center py-12 text-sm" style={{ color: '#6B7280' }}>{emptyMessage}</div>
       ) : (
         <>
-          <div className="overflow-x-auto rounded-lg" style={{ border: '1px solid #2D3748' }}>
+          <div className="overflow-x-auto rounded-lg" style={{ border: '1px solid #E5E7EB' }}>
             <table className="w-full text-sm min-w-max">
-              <thead className="sticky top-0 z-10" style={{ background: '#111827', borderBottom: '2px solid #2D3748' }}>
+              <thead className="sticky top-0 z-10" style={{ background: '#F9FAFB', borderBottom: '2px solid #E5E7EB' }}>
                 <tr>
                   {/* Select-all checkbox column */}
                   {selectable && (
@@ -253,7 +253,7 @@ export default function DataTable<T extends object>({
                         onChange={() => {}}
                         onClick={toggleSelectAll}
                         className="w-3.5 h-3.5 cursor-pointer"
-                        style={{ accentColor: '#D5A940' }}
+                        style={{ accentColor: '#4F46E5' }}
                         title={allSelected ? 'Deselect all' : 'Select all'}
                       />
                     </th>
@@ -267,13 +267,13 @@ export default function DataTable<T extends object>({
                         ${col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : ''}
                         ${col.width ?? ''}
                       `}
-                      style={{ color: sortKey === col.key ? '#D5A940' : '#6B7280' }}
+                      style={{ color: sortKey === col.key ? '#4F46E5' : '#6B7280' }}
                       onClick={() => col.sortable && handleSort(String(col.key))}
                     >
                       <span className="inline-flex items-center gap-1">
                         {col.header}
                         {col.sortable && (
-                          <span style={{ color: sortKey === String(col.key) ? '#D5A940' : '#374151' }}>
+                          <span style={{ color: sortKey === String(col.key) ? '#4F46E5' : '#D1D5DB' }}>
                             {sortKey === String(col.key)
                               ? sortDir === 'asc' ? '↑' : '↓'
                               : '↕'}
@@ -294,10 +294,10 @@ export default function DataTable<T extends object>({
                       onClick={onRowClick ? () => onRowClick(row) : undefined}
                       className={`table-row-hover${onRowClick ? ' cursor-pointer' : ''}`}
                       style={{
-                        borderBottom: '1px solid #1F2937',
+                        borderBottom: '1px solid #F3F4F6',
                         background: isSelected
-                          ? 'rgba(213,169,64,0.06)'
-                          : i % 2 === 1 ? '#1A2231' : '#1F2937',
+                          ? 'rgba(79,70,229,0.06)'
+                          : i % 2 === 1 ? '#F9FAFB' : '#FFFFFF',
                       }}
                     >
                       {/* Row checkbox */}
@@ -309,7 +309,7 @@ export default function DataTable<T extends object>({
                             onChange={() => {}}
                             onClick={(e) => toggleRowKey(e, rowKey)}
                             className="w-3.5 h-3.5 cursor-pointer"
-                            style={{ accentColor: '#D5A940' }}
+                            style={{ accentColor: '#4F46E5' }}
                           />
                         </td>
                       )}
@@ -322,12 +322,12 @@ export default function DataTable<T extends object>({
                               px-4 py-2.5 whitespace-nowrap
                               ${col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : ''}
                             `}
-                            style={{ color: '#E5E7EB' }}
+                            style={{ color: '#374151' }}
                           >
                             {col.render
                               ? col.render(val as unknown, row)
                               : val == null
-                              ? <span style={{ color: '#6B7280' }}>—</span>
+                              ? <span style={{ color: '#9CA3AF' }}>—</span>
                               : String(val)}
                           </td>
                         )
@@ -343,14 +343,14 @@ export default function DataTable<T extends object>({
           <div className="flex items-center justify-between text-xs px-1" style={{ color: '#6B7280' }}>
             <span>
               Showing{' '}
-              <strong style={{ color: '#F9FAFB' }}>{(page * pageSize + 1).toLocaleString()}</strong>
+              <strong style={{ color: '#111827' }}>{(page * pageSize + 1).toLocaleString()}</strong>
               –
-              <strong style={{ color: '#F9FAFB' }}>
+              <strong style={{ color: '#111827' }}>
                 {Math.min((page + 1) * pageSize, sorted.length).toLocaleString()}
               </strong>{' '}
-              of <strong style={{ color: '#F9FAFB' }}>{sorted.length.toLocaleString()}</strong> rows
+              of <strong style={{ color: '#111827' }}>{sorted.length.toLocaleString()}</strong> rows
               {selectable && selectedKeys && selectedKeys.size > 0 && (
-                <span className="ml-3" style={{ color: '#D5A940' }}>
+                <span className="ml-3" style={{ color: '#4F46E5' }}>
                   · {selectedKeys.size.toLocaleString()} selected
                 </span>
               )}
@@ -361,36 +361,36 @@ export default function DataTable<T extends object>({
                   onClick={() => setPage(0)}
                   disabled={page === 0}
                   className="px-2 py-1 rounded disabled:opacity-30 transition-colors"
-                  style={{ color: '#9CA3AF', background: '#1F2937', border: '1px solid #2D3748' }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = '#253040')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = '#1F2937')}
+                  style={{ color: '#6B7280', background: '#FFFFFF', border: '1px solid #E5E7EB' }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = '#F9FAFB')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = '#FFFFFF')}
                 >«</button>
                 <button
                   onClick={() => setPage((p) => Math.max(0, p - 1))}
                   disabled={page === 0}
                   className="px-2.5 py-1 rounded disabled:opacity-30 transition-colors"
-                  style={{ color: '#9CA3AF', background: '#1F2937', border: '1px solid #2D3748' }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = '#253040')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = '#1F2937')}
+                  style={{ color: '#6B7280', background: '#FFFFFF', border: '1px solid #E5E7EB' }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = '#F9FAFB')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = '#FFFFFF')}
                 >‹ Prev</button>
-                <span className="px-3 py-1 rounded" style={{ background: '#253040', color: '#F9FAFB', border: '1px solid #2D3748' }}>
+                <span className="px-3 py-1 rounded" style={{ background: '#F3F4F6', color: '#111827', border: '1px solid #E5E7EB' }}>
                   {page + 1} / {totalPages}
                 </span>
                 <button
                   onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
                   disabled={page >= totalPages - 1}
                   className="px-2.5 py-1 rounded disabled:opacity-30 transition-colors"
-                  style={{ color: '#9CA3AF', background: '#1F2937', border: '1px solid #2D3748' }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = '#253040')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = '#1F2937')}
+                  style={{ color: '#6B7280', background: '#FFFFFF', border: '1px solid #E5E7EB' }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = '#F9FAFB')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = '#FFFFFF')}
                 >Next ›</button>
                 <button
                   onClick={() => setPage(totalPages - 1)}
                   disabled={page >= totalPages - 1}
                   className="px-2.5 py-1 rounded disabled:opacity-30 transition-colors"
-                  style={{ color: '#9CA3AF', background: '#1F2937', border: '1px solid #2D3748' }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = '#253040')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = '#1F2937')}
+                  style={{ color: '#6B7280', background: '#FFFFFF', border: '1px solid #E5E7EB' }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = '#F9FAFB')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = '#FFFFFF')}
                 >»</button>
               </div>
             )}

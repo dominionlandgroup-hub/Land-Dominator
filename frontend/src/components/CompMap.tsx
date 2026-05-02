@@ -4,7 +4,7 @@ import type { CompLocation } from '../types'
 
 // Color scheme: green = top 10, yellow = good, red = avoid
 const TOP_COLOR = '#2D7A4F'
-const GOOD_COLOR = '#D5A940'
+const GOOD_COLOR = '#4F46E5'
 const AVOID_COLOR = '#dc2626'
 
 interface Props {
@@ -37,8 +37,8 @@ export default function CompMap({ comps, availableZips, visibleZips, onZipToggle
       if (avoidSet.has(zip)) return AVOID_COLOR
       return GOOD_COLOR
     }
-    // fallback: no category info — use gold
-    return '#D5A940'
+    // fallback: no category info — use indigo
+    return '#4F46E5'
   }
 
   // Initialize map once
@@ -95,7 +95,7 @@ export default function CompMap({ comps, availableZips, visibleZips, onZipToggle
         })
         marker.bindPopup(
           `<div style="font-family:Montserrat,sans-serif;font-size:12px;min-width:180px">
-            <div style="font-weight:600;color:#D5A940;margin-bottom:6px">ZIP ${c.zip}</div>
+            <div style="font-weight:600;color:#4F46E5;margin-bottom:6px">ZIP ${c.zip}</div>
             ${c.apn ? `<div><span style="color:#6B5B8A">APN:</span> ${c.apn}</div>` : ''}
             <div><span style="color:#6B5B8A">Sale Price:</span> <strong>${new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2,maximumFractionDigits:2}).format(c.sale_price)}</strong></div>
             <div><span style="color:#6B5B8A">Lot Size:</span> ${c.lot_acres.toFixed(2)} acres</div>
@@ -129,7 +129,7 @@ export default function CompMap({ comps, availableZips, visibleZips, onZipToggle
     if (heatLayerRef.current) { heatLayerRef.current.remove(); heatLayerRef.current = null }
     if (showHeatmap && L.heatLayer) {
       const points = safeComps.filter(c => effectiveVisibleZips.includes(c.zip)).map(c => [c.lat, c.lng, c.sale_price / 500000] as [number, number, number])
-      heatLayerRef.current = L.heatLayer(points, { radius: 20, blur: 15, maxZoom: 17, max: 1.0, gradient: { 0.4: '#5C2977', 0.65: '#8B4DB8', 1: '#D5A940' } }).addTo(mapRef.current)
+      heatLayerRef.current = L.heatLayer(points, { radius: 20, blur: 15, maxZoom: 17, max: 1.0, gradient: { 0.4: '#5C2977', 0.65: '#8B4DB8', 1: '#4F46E5' } }).addTo(mapRef.current)
     }
   }, [showHeatmap, safeComps, effectiveVisibleZips.join(',')])
 
@@ -166,7 +166,7 @@ export default function CompMap({ comps, availableZips, visibleZips, onZipToggle
       <div style={{ position: 'relative' }}>
         <div
           ref={containerRef}
-          style={{ width: '100%', height: 500, borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(213,169,64,0.15)' }}
+          style={{ width: '100%', height: 500, borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(79,70,229,0.15)' }}
         />
       </div>
 

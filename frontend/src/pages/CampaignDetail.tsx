@@ -429,22 +429,22 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
   const bs = stats.by_status ?? {}
 
   return (
-    <div style={{ background: '#111827', minHeight: '100vh' }}>
+    <div style={{ background: '#F9FAFB', minHeight: '100vh' }}>
       {/* Top bar */}
-      <div className="page-header" style={{ borderBottom: '1px solid #2D3748' }}>
+      <div className="page-header" style={{ borderBottom: '1px solid #E5E7EB' }}>
         <div className="flex items-center gap-3">
           <button
             onClick={onBack}
             className="flex items-center gap-1.5 text-sm font-medium transition-opacity hover:opacity-70"
-            style={{ color: '#D5A940' }}
+            style={{ color: '#4F46E5' }}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polyline points="15 18 9 12 15 6"/>
             </svg>
             Campaigns
           </button>
-          <span style={{ color: '#2D3748' }}>/</span>
-          <h1 className="text-base font-semibold truncate" style={{ color: '#F9FAFB', maxWidth: '320px' }}>{campaign.name}</h1>
+          <span style={{ color: '#E5E7EB' }}>/</span>
+          <h1 className="text-base font-semibold truncate" style={{ color: '#111827', maxWidth: '320px' }}>{campaign.name}</h1>
         </div>
         <div className="flex items-center gap-2">
           {/* LP pull progress */}
@@ -462,7 +462,7 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
             </span>
           )}
           {lpStatus === 'error' && (
-            <span className="text-xs font-semibold" style={{ color: '#EF4444' }}>
+            <span className="text-xs font-semibold" style={{ color: '#DC2626' }}>
               LP pull failed: {lpError}
             </span>
           )}
@@ -532,10 +532,10 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
       </div>
 
       {/* Campaign stats */}
-      <div className="px-6 py-4" style={{ borderBottom: '1px solid #2D3748', background: '#1F2937' }}>
+      <div className="px-6 py-4" style={{ borderBottom: '1px solid #E5E7EB', background: '#FFFFFF' }}>
         <div className="flex items-center gap-8 flex-wrap">
           {[
-            { label: 'Total Records', value: (stats.property_count ?? 0).toLocaleString(), accent: '#D5A940' },
+            { label: 'Total Records', value: (stats.property_count ?? 0).toLocaleString(), accent: '#4F46E5' },
             { label: 'Amount Spent', value: '$0', accent: '#9CA3AF' },
             { label: 'Deals', value: ((bs.offer_sent ?? 0) + (bs.under_contract ?? 0) + (bs.closed_won ?? 0)).toLocaleString(), accent: '#3B82F6' },
             { label: 'Response Rate', value: '0%', accent: '#9CA3AF' },
@@ -552,7 +552,7 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
       </div>
 
       {/* Filter bar */}
-      <div className="px-6 py-3 flex items-center gap-3 flex-wrap" style={{ borderBottom: '1px solid #2D3748', background: '#1F2937' }}>
+      <div className="px-6 py-3 flex items-center gap-3 flex-wrap" style={{ borderBottom: '1px solid #E5E7EB', background: '#FFFFFF' }}>
         {/* Status filter */}
         <select
           className="input-base text-sm py-1.5"

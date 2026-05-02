@@ -170,7 +170,7 @@ export default function MatchMap({ targets, comps = [], radiusMiles = 1, onSelec
         radiusCircleRef.current?.remove()
         radiusCircleRef.current = L.circle([centLat, centLon], {
           radius: radiusMiles * 1609.34,
-          color: '#D5A940',
+          color: '#4F46E5',
           weight: 1,
           dashArray: '6 4',
           fillOpacity: 0.03,
@@ -350,7 +350,7 @@ export default function MatchMap({ targets, comps = [], radiusMiles = 1, onSelec
       <div className="flex items-center gap-6 mt-3 px-4 py-2.5 rounded-lg" style={{ background: '#F0EBF8', border: '1px solid #E8E0F0' }}>
         <div>
           <span className="text-xs" style={{ color: '#6B5B8A' }}>Parcels shown: </span>
-          <span className="text-sm font-bold" style={{ color: '#D5A940' }}>{visibleCount.toLocaleString()}</span>
+          <span className="text-sm font-bold" style={{ color: '#4F46E5' }}>{visibleCount.toLocaleString()}</span>
         </div>
         {avgOffer != null && (
           <div>

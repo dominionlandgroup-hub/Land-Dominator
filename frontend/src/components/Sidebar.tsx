@@ -108,12 +108,12 @@ const IconChevronRight = () => (
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const SIDEBAR_BG = '#0D1117'
-const ACTIVE_GOLD = '#D5A940'
-const TEXT_DEFAULT = '#9CA3AF'
-const TEXT_ACTIVE = '#D5A940'
-const HOVER_BG = '#1F2937'
-const ACTIVE_BG = 'rgba(213,169,64,0.08)'
+const SIDEBAR_BG = '#FFFFFF'
+const ACTIVE_GOLD = '#4F46E5'
+const TEXT_DEFAULT = '#6B7280'
+const TEXT_ACTIVE = '#4F46E5'
+const HOVER_BG = '#F3F4F6'
+const ACTIVE_BG = 'rgba(79,70,229,0.06)'
 
 const BOARD_SUBITEMS: { id: AppPage; label: string }[] = [
   { id: 'boards-seller', label: 'Seller Deals' },
@@ -227,13 +227,13 @@ export default function Sidebar() {
   return (
     <aside
       className="w-60 min-h-screen flex flex-col shrink-0"
-      style={{ background: SIDEBAR_BG, borderRight: '1px solid #1F2937' }}
+      style={{ background: SIDEBAR_BG, borderRight: '1px solid #E5E7EB' }}
     >
       {/* Logo */}
-      <div className="px-4 py-4" style={{ borderBottom: '1px solid #1F2937' }}>
+      <div className="px-4 py-4" style={{ borderBottom: '1px solid #E5E7EB' }}>
         <div className="flex items-center gap-2 px-2">
-          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#D5A940', flexShrink: 0 }} />
-          <span style={{ fontSize: 15, fontWeight: 700, color: '#F9FAFB', letterSpacing: '-0.02em' }}>LandIQ</span>
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#4F46E5', flexShrink: 0 }} />
+          <span style={{ fontSize: 15, fontWeight: 700, color: '#111827', letterSpacing: '-0.02em' }}>LandIQ</span>
         </div>
       </div>
 
@@ -262,7 +262,7 @@ export default function Sidebar() {
             borderLeft: boardsActive ? `2px solid ${ACTIVE_GOLD}` : '2px solid transparent',
             borderRadius: boardsActive ? '0 6px 6px 0' : '6px',
           }}
-          onMouseEnter={(e) => { if (!boardsActive) { (e.currentTarget as HTMLElement).style.background = HOVER_BG; (e.currentTarget as HTMLElement).style.color = '#F9FAFB' } }}
+          onMouseEnter={(e) => { if (!boardsActive) { (e.currentTarget as HTMLElement).style.background = HOVER_BG; (e.currentTarget as HTMLElement).style.color = '#111827' } }}
           onMouseLeave={(e) => { if (!boardsActive) { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = TEXT_DEFAULT } }}
         >
           <span className="flex-none" style={{ opacity: boardsActive ? 1 : 0.75 }}><IconBoard /></span>
@@ -283,7 +283,7 @@ export default function Sidebar() {
           />
         ))}
 
-        <div style={{ borderTop: '1px solid #1F2937', margin: '6px 4px' }} />
+        <div style={{ borderTop: '1px solid #E5E7EB', margin: '6px 4px' }} />
 
         <NavBtn id="crm-campaigns"  label="Campaigns"      icon={<IconCampaign />} active={currentPage === 'crm-campaigns'}  onClick={() => nav('crm-campaigns')} />
         <NavBtn id="mail-calendar" label="Mail Calendar"  icon={<IconCalendar />} active={currentPage === 'mail-calendar'}  onClick={() => nav('mail-calendar')} />
@@ -291,7 +291,7 @@ export default function Sidebar() {
         <NavBtn id="crm-contacts"   label="Contacts"       icon={<IconPerson />}   active={currentPage === 'crm-contacts'}   onClick={() => nav('crm-contacts')} />
         <NavBtn id="crm-deals"      label="Deals Pipeline" icon={<IconPipeline />} active={currentPage === 'crm-deals'}      onClick={() => nav('crm-deals')} />
 
-        <div style={{ borderTop: '1px solid #1F2937', margin: '6px 4px' }} />
+        <div style={{ borderTop: '1px solid #E5E7EB', margin: '6px 4px' }} />
 
         <NavBtn id="lead-stacker" label="Lead Stacker" icon={<IconStack />}    active={currentPage === 'lead-stacker'} onClick={() => nav('lead-stacker')} />
         <NavBtn id="upload-comps" label="Upload Comps" icon={<IconUpload />}   active={currentPage === 'upload-comps' || currentPage === 'dashboard' || currentPage === 'match-targets'} onClick={() => nav('upload-comps')} />
@@ -308,8 +308,8 @@ export default function Sidebar() {
 
       {/* Session status footer — shown only when workflow data is loaded */}
       {(compsStats || targetStats || matchResult) && (
-        <div className="px-3 py-3 space-y-1.5" style={{ borderTop: '1px solid #1F2937' }}>
-          <p style={{ fontSize: '9px', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#4B5563', marginBottom: '4px' }}>
+        <div className="px-3 py-3 space-y-1.5" style={{ borderTop: '1px solid #E5E7EB' }}>
+          <p style={{ fontSize: '9px', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#9CA3AF', marginBottom: '4px' }}>
             Session
           </p>
           {compsStats && (
@@ -331,7 +331,7 @@ function StatusRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between">
       <span style={{ fontSize: '10px', color: '#6B7280' }}>{label}</span>
-      <span style={{ fontSize: '10px', color: '#D5A940', background: 'rgba(213,169,64,0.1)', border: '1px solid rgba(213,169,64,0.2)', borderRadius: '4px', padding: '1px 6px' }}>
+      <span style={{ fontSize: '10px', color: '#4F46E5', background: 'rgba(79,70,229,0.08)', border: '1px solid rgba(79,70,229,0.2)', borderRadius: '4px', padding: '1px 6px' }}>
         {value}
       </span>
     </div>
