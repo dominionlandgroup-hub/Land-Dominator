@@ -14,6 +14,22 @@ class UploadResponse(BaseModel):
     preview: List[Dict[str, Any]]
     uploaded_at: Optional[str] = None
     saved_to_db: Optional[int] = None
+    detected_format: Optional[str] = None   # land_portal | mls | generic
+    deduped_count: Optional[int] = None     # APNs skipped because already in DB
+    geocoded_count: Optional[int] = None    # MLS rows that got coordinates
+
+
+class CompInventoryItem(BaseModel):
+    filename: str
+    source_format: str
+    record_count: int
+    states: List[str]
+    uploaded_at: Optional[str] = None
+
+
+class CompInventoryResponse(BaseModel):
+    items: List[CompInventoryItem]
+    total_comps: int
 
 
 class ZipStats(BaseModel):

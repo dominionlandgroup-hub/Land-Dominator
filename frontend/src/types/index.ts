@@ -9,6 +9,9 @@ export interface UploadStats {
   preview: Record<string, unknown>[]
   uploaded_at?: string
   saved_to_db?: number
+  detected_format?: string   // land_portal | mls | generic
+  deduped_count?: number
+  geocoded_count?: number
 }
 
 // ─── Dashboard ─────────────────────────────────────────────────────────────

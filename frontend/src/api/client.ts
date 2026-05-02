@@ -19,10 +19,43 @@ const api = axios.create({
 
 // ─── Upload ────────────────────────────────────────────────────────────────
 
-export async function uploadComps(file: File): Promise<UploadStats> {
+export async function uploadComps(file: File, append = true): Promise<UploadStats> {
   const form = new FormData()
   form.append('file', file)
-  const { data } = await api.post<UploadStats>('/upload/comps', form)
+  const { data } = await api.post<UploadStats>(`/upload/comps?append=${append}`, form)
+  return data
+}
+
+export interface CompInventoryItem {
+  filename: string
+  source_format: string
+  record_count: number
+  states: string[]
+  uploaded_at: string | null
+}
+
+export interface CompInventoryResponse {
+  items: CompInventoryItem[]
+  total_comps: number
+}
+
+export async function getCompsInventory(): Promise<CompInventoryResponse> {
+  const { data } = await api.get<CompInventoryResponse>('/upload/comps/inventory')
+  return data
+}
+
+export async function clearAllComps(): Promise<{ deleted: number }> {
+  const { data } = await api.delete<{ deleted: number }>('/upload/comps/all')
+  return data
+}
+
+export async function clearCompsByState(state: string): Promise<{ state: string; deleted: number }> {
+  const { data } = await api.delete<{ state: string; deleted: number }>(`/upload/comps/state/${state}`)
+  return data
+}
+
+export async function clearCompsByFile(filename: string): Promise<{ filename: string; deleted: number }> {
+  const { data } = await api.delete<{ filename: string; deleted: number }>(`/upload/comps/file/${encodeURIComponent(filename)}`)
   return data
 }
 
