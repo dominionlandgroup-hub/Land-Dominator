@@ -38,6 +38,9 @@ def _callback_phone() -> str:
 # ── In-memory call state ────────────────────────────────────────────────────────
 _call_states: dict[str, dict] = {}
 
+# Keyed by call_control_id — set when outbound call is initiated, consumed when agent answers
+pending_outbound: dict[str, dict] = {}  # call_control_id → {seller_phone, seller_name, property_id, bridge_id}
+
 # Flag set to True once warmup finishes — inbound calls wait if False
 _warmup_done: bool = False
 
@@ -150,6 +153,17 @@ async def calls_health() -> dict:
         "warmup_done": _warmup_done,
         "tts_cache": f"{cached}/{len(_PHRASES)} files ready",
         "polly_fallback": "active" if not _warmup_done else "standby",
+    }
+
+
+@router.get("/api/sms/health")
+async def sms_health() -> dict:
+    """Health check confirming the inbound SMS webhook is registered and reachable."""
+    return {
+        "status": "ok",
+        "sms_ready": True,
+        "inbound_webhook": "/api/sms/inbound",
+        "telnyx_phone": _telnyx_phone() or "NOT_CONFIGURED",
     }
 
 
@@ -1333,8 +1347,13 @@ async def inbound_sms(request: Request, background_tasks: BackgroundTasks) -> di
             message_text = _form_get(form, "Body", "text")
         except Exception:
             pass
+
+    print(f"=== INBOUND SMS RECEIVED from {from_phone}: {message_text[:200]!r}", flush=True)
+
     if from_phone:
         background_tasks.add_task(_process_inbound_sms, from_phone, message_text)
+    else:
+        print("[sms] WARNING: inbound SMS has no from_phone — ignoring", flush=True)
     return {"status": "ok"}
 
 
@@ -1670,25 +1689,22 @@ async def initiate_outbound_call(body: OutboundCallRequest) -> dict:
     callback_e164 = _e164(callback_number)
 
     bridge_id = f"bridge_{uuid.uuid4().hex[:12]}"
-    _call_states[bridge_id] = {
-        "seller_phone": seller_e164,
-        "seller_name": body.seller_name or "",
-        "property_id": body.property_id,
-        "started_at": _now(),
-    }
+    # webhook_url fires for ALL call events on the agent leg (answered, hangup, etc.)
+    outbound_webhook = f"{_base_url()}/api/calls/outbound-answered"
 
-    bridge_webhook = f"{_base_url()}/api/calls/bridge-announce/{bridge_id}"
-
-    print(f"[comms] Initiating outbound call to agent: {callback_e164}")
-    print(f"[comms] Using connection ID: {connection_id}")
-    print(f"[comms] From: {from_phone}")
+    print(f"[comms] Initiating outbound bridge call", flush=True)
+    print(f"[comms]   Step 1 — calling agent: {callback_e164}", flush=True)
+    print(f"[comms]   Will bridge to seller: {seller_e164}", flush=True)
+    print(f"[comms]   Connection ID: {connection_id}", flush=True)
+    print(f"[comms]   From: {from_phone}", flush=True)
+    print(f"[comms]   Webhook: {outbound_webhook}", flush=True)
 
     try:
         payload: dict = {
             "connection_id": connection_id,
             "from": from_phone,
             "to": callback_e164,
-            "webhook_url": bridge_webhook,
+            "webhook_url": outbound_webhook,
             "webhook_url_method": "POST",
         }
         async with httpx.AsyncClient(timeout=20) as client:
@@ -1697,21 +1713,32 @@ async def initiate_outbound_call(body: OutboundCallRequest) -> dict:
                 json=payload,
                 headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
             )
-            print(f"[comms] Telnyx outbound response: {r.status_code} {r.text[:500]}")
+            print(f"[comms] Telnyx response: {r.status_code} {r.text[:800]}", flush=True)
             if r.status_code >= 400:
-                telnyx_detail = r.json().get("errors", [{}])[0].get("detail", r.text[:300]) if r.headers.get("content-type", "").startswith("application/json") else r.text[:300]
-                raise HTTPException(
-                    status_code=r.status_code,
-                    detail=f"Telnyx error: {telnyx_detail}",
+                telnyx_detail = (
+                    r.json().get("errors", [{}])[0].get("detail", r.text[:300])
+                    if r.headers.get("content-type", "").startswith("application/json")
+                    else r.text[:300]
                 )
+                raise HTTPException(status_code=r.status_code, detail=f"Telnyx error: {telnyx_detail}")
             call_data = r.json().get("data", {})
             call_id = call_data.get("call_control_id", "")
-            print(f"[comms] Call initiated: call_control_id={call_id}")
+            print(f"[comms] Outbound call initiated — call_control_id={call_id}", flush=True)
     except HTTPException:
         raise
     except Exception as exc:
-        print(f"[comms] Outbound call exception: {exc}")
+        print(f"[comms] Outbound call exception: {exc}", flush=True)
         raise HTTPException(status_code=500, detail=str(exc))
+
+    # Store pending call info keyed by call_control_id so outbound-answered can find it
+    pending_outbound[call_id] = {
+        "seller_phone": seller_e164,
+        "seller_name": body.seller_name or "",
+        "property_id": body.property_id,
+        "bridge_id": bridge_id,
+        "started_at": _now(),
+    }
+    _call_states[bridge_id] = pending_outbound[call_id]  # keep bridge_id lookup too
 
     comm = await _log_comm(
         property_id=body.property_id,
@@ -1761,6 +1788,101 @@ async def bridge_announce(bridge_id: str, request: Request) -> Response:
         "</Response>"
     )
     return Response(xml, media_type="text/xml")
+
+
+@router.post("/api/calls/outbound-answered")
+async def outbound_answered(request: Request) -> Response:
+    """
+    Telnyx Call Control webhook for the agent-leg of an outbound bridge call.
+    Fires for all events on that call (initiated, answered, hangup, etc.).
+    When event_type == call.answered: bridge the agent to the seller via transfer action.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return Response(status_code=200)
+
+    event_type = str(body.get("data", {}).get("event_type", ""))
+    ev_payload = body.get("data", {}).get("payload", {})
+    call_control_id = ev_payload.get("call_control_id", "")
+
+    print(f"[comms] outbound-answered event: {event_type} call_control_id={call_control_id}", flush=True)
+
+    if event_type != "call.answered":
+        # Accept all other events silently (initiated, hangup, etc.)
+        return Response(status_code=200)
+
+    # Agent answered — look up which seller to bridge to
+    state = pending_outbound.get(call_control_id)
+    if not state:
+        # Fallback: scan _call_states for matching call_control_id
+        for k, v in _call_states.items():
+            if v.get("call_control_id") == call_control_id:
+                state = v
+                break
+
+    if not state:
+        print(f"[comms] WARNING: no pending_outbound entry for call_control_id={call_control_id}", flush=True)
+        return Response(status_code=200)
+
+    seller_phone = state.get("seller_phone", "")
+    seller_name = state.get("seller_name", "") or seller_phone
+    property_id = state.get("property_id")
+
+    print(f"[comms] Agent answered — bridging to seller: {seller_phone} ({seller_name})", flush=True)
+
+    api_key = _telnyx_key()
+    if not api_key or not seller_phone:
+        print(f"[comms] Cannot bridge: api_key={'set' if api_key else 'MISSING'} seller_phone={seller_phone!r}", flush=True)
+        return Response(status_code=200)
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            # Step 1: Speak a brief announcement to the agent
+            speak_r = await client.post(
+                f"https://api.telnyx.com/v2/calls/{call_control_id}/actions/speak",
+                json={
+                    "payload": f"Connecting you to {seller_name} now.",
+                    "voice": "female",
+                    "language": "en-US",
+                    "command_id": "bridge_announce",
+                },
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            )
+            print(f"[comms] Speak result: {speak_r.status_code} {speak_r.text[:200]}", flush=True)
+
+            # Step 2: Transfer / bridge to the seller
+            transfer_r = await client.post(
+                f"https://api.telnyx.com/v2/calls/{call_control_id}/actions/transfer",
+                json={"to": seller_phone},
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            )
+            print(f"[comms] Bridge result: {transfer_r.status_code} {transfer_r.text[:300]}", flush=True)
+
+            if transfer_r.status_code >= 400:
+                print(f"[comms] Transfer FAILED — {transfer_r.status_code}: {transfer_r.text[:300]}", flush=True)
+            else:
+                print(f"[comms] Bridge SUCCESS — agent connected to {seller_phone}", flush=True)
+    except Exception as exc:
+        print(f"[comms] Bridge exception: {exc}", flush=True)
+
+    # Clean up pending state
+    pending_outbound.pop(call_control_id, None)
+
+    # Log the bridge event
+    try:
+        await _log_comm(
+            property_id=property_id,
+            comm_type="call_outbound",
+            phone=seller_phone,
+            direction="outbound",
+            call_id=call_control_id,
+            summary=f"Bridge connected — agent answered, transferred to {seller_name}",
+        )
+    except Exception as log_exc:
+        print(f"[comms] Bridge log error (non-fatal): {log_exc}", flush=True)
+
+    return Response(status_code=200)
 
 
 @router.post("/api/calls/outbound-amd")
