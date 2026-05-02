@@ -154,9 +154,21 @@ async def serve_tts_audio(cache_key: str) -> Response:
     )
 
 
+@router.get("/api/calls/health")
+async def calls_health() -> dict:
+    """Health check for the voice agent system."""
+    cached = sum(1 for key in _PHRASES if _audio_path(key).exists())
+    return {
+        "status": "ok",
+        "warmup_done": _warmup_done,
+        "tts_cache": f"{cached}/{len(_PHRASES)} files ready",
+        "polly_fallback": "active" if not _warmup_done else "standby",
+    }
+
+
 async def warmup() -> None:
     """Pre-generate ALL static phrase audio at startup. Called from main.py.
-    Server should not handle live calls until this completes."""
+    Runs in background — server accepts calls immediately via Polly fallback."""
     global _warmup_done
     if not _elevenlabs_key():
         print("[comms] ElevenLabs not configured — voice cache skipped (Polly fallback active)")
@@ -696,13 +708,9 @@ def _inc_step_retries(call_sid: str, state: dict, step: str) -> int:
 
 @router.post("/api/calls/inbound")
 async def inbound_call(request: Request) -> Response:
-    """Telnyx TeXML webhook — answers inbound call, asks for offer code."""
-    if not _warmup_done:
-        for _ in range(10):
-            await asyncio.sleep(1)
-            if _warmup_done:
-                break
-
+    """Telnyx TeXML webhook — answers inbound call, asks for offer code.
+    Returns TeXML immediately. If ElevenLabs audio isn't cached yet, _phrase()
+    falls back to Polly <Say> with zero latency — call always answers within ms."""
     call_sid = f"call_{_now()}"
     caller = ""
     try:

@@ -87,10 +87,11 @@ async def start_scheduler() -> None:
 
 @app.on_event("startup")
 async def warmup_tts() -> None:
-    """Pre-generate TTS audio for all static voice agent phrases."""
+    """Pre-generate TTS audio in background — non-blocking so server accepts calls immediately."""
     try:
+        import asyncio
         from routers.communications import warmup
-        await warmup()
+        asyncio.create_task(warmup())
     except Exception as exc:
         print(f"TTS warmup warning: {exc}")
 
