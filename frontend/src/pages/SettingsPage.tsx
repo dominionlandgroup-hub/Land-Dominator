@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
-import { clearAllProperties, fixPropertyNames, getBuyBox, saveBuyBox } from '../api/crm'
+import { clearAllProperties, fixPropertyNames, getBuyBox, saveBuyBox, getAgentFaq, saveAgentFaq } from '../api/crm'
 import type { BuyBox } from '../types/crm'
+import type { FaqItem } from '../api/crm'
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
 
@@ -59,11 +60,24 @@ export default function SettingsPage() {
   const [fixNamesResult, setFixNamesResult] = useState<{ fixed: number; total: number } | null>(null)
   const [fixNamesError, setFixNamesError] = useState<string | null>(null)
 
+  // FAQ manager
+  const [faqItems, setFaqItems] = useState<FaqItem[]>([])
+  const [faqLoading, setFaqLoading] = useState(true)
+  const [faqSaving, setFaqSaving] = useState(false)
+  const [faqSaved, setFaqSaved] = useState(false)
+  const [faqError, setFaqError] = useState<string | null>(null)
+  const [editingFaq, setEditingFaq] = useState<number | null>(null)
+  const [newFaq, setNewFaq] = useState<FaqItem | null>(null)
+
   useEffect(() => {
     getBuyBox()
       .then(b => { if (b && Object.keys(b).length > 0) setBox(b) })
       .catch(() => {/* table may not exist yet, use defaults */})
       .finally(() => setBoxLoading(false))
+    getAgentFaq()
+      .then(items => setFaqItems(items))
+      .catch(() => {})
+      .finally(() => setFaqLoading(false))
   }, [])
 
   function setField<K extends keyof BuyBox>(key: K, val: BuyBox[K]) {
@@ -103,6 +117,47 @@ export default function SettingsPage() {
       const err = e as { response?: { data?: { detail?: string } } }
       setFixNamesError(err?.response?.data?.detail ?? 'Failed to fix names.')
     } finally { setFixingNames(false) }
+  }
+
+  async function handleSaveFaq(items: FaqItem[]) {
+    setFaqSaving(true); setFaqError(null); setFaqSaved(false)
+    try {
+      await saveAgentFaq(items)
+      setFaqItems(items)
+      setFaqSaved(true)
+      setTimeout(() => setFaqSaved(false), 2500)
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { detail?: string } } }
+      setFaqError(err?.response?.data?.detail ?? 'Failed to save FAQ.')
+    } finally { setFaqSaving(false) }
+  }
+
+  function updateFaqItem(index: number, field: keyof FaqItem, value: string) {
+    setFaqItems(prev => prev.map((item, i) => {
+      if (i !== index) return item
+      if (field === 'question_keywords') {
+        return { ...item, question_keywords: value.split(',').map(k => k.trim()).filter(Boolean) }
+      }
+      return { ...item, [field]: value }
+    }))
+    setFaqSaved(false)
+  }
+
+  function deleteFaqItem(index: number) {
+    const updated = faqItems.filter((_, i) => i !== index)
+    setFaqItems(updated)
+    setFaqSaved(false)
+  }
+
+  function addFaqItem() {
+    if (!newFaq || !newFaq.answer.trim()) return
+    const keywords = newFaq.question_keywords.length > 0
+      ? newFaq.question_keywords
+      : ['new question']
+    const updated = [...faqItems, { question_keywords: keywords, answer: newFaq.answer.trim() }]
+    setFaqItems(updated)
+    setNewFaq(null)
+    setFaqSaved(false)
   }
 
   return (
@@ -244,6 +299,117 @@ export default function SettingsPage() {
                 {fixingNames ? 'Fixing…' : 'Fix Names'}
               </button>
             </div>
+          </div>
+        </section>
+
+        {/* Voice Agent FAQ Manager */}
+        <section>
+          <h2 className="text-sm font-bold uppercase tracking-wider mb-3" style={{ color: '#5C2977' }}>Voice Agent FAQ</h2>
+          <div className="rounded-lg p-5" style={{ background: '#FFFFFF', border: '1px solid #E8E0F0', boxShadow: '0 1px 3px rgba(92,41,119,0.08)' }}>
+            <p className="text-xs mb-4" style={{ color: '#6B5B8A' }}>
+              When a caller asks a question, the agent answers from this list. Each entry has keywords (comma-separated) and an answer spoken aloud.
+            </p>
+            {faqLoading ? (
+              <p className="text-sm" style={{ color: '#6B5B8A' }}>Loading…</p>
+            ) : (
+              <div className="space-y-3">
+                {faqItems.map((item, i) => (
+                  <div key={i} className="rounded-lg p-3 space-y-2" style={{ background: '#F8F6FB', border: '1px solid #E8E0F0' }}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 space-y-1">
+                        {editingFaq === i ? (
+                          <>
+                            <label className="text-xs font-semibold" style={{ color: '#9B8AAE' }}>Keywords (comma-separated)</label>
+                            <input
+                              type="text"
+                              className="input-base text-xs w-full"
+                              value={item.question_keywords.join(', ')}
+                              onChange={e => updateFaqItem(i, 'question_keywords', e.target.value)}
+                            />
+                            <label className="text-xs font-semibold" style={{ color: '#9B8AAE' }}>Answer</label>
+                            <textarea
+                              className="input-base text-xs w-full"
+                              rows={3}
+                              value={item.answer}
+                              onChange={e => updateFaqItem(i, 'answer', e.target.value)}
+                            />
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-xs font-semibold" style={{ color: '#5C2977' }}>
+                              {item.question_keywords.slice(0, 3).join(' · ')}{item.question_keywords.length > 3 ? ' …' : ''}
+                            </p>
+                            <p className="text-xs leading-relaxed" style={{ color: '#1A0A2E' }}>{item.answer}</p>
+                          </>
+                        )}
+                      </div>
+                      <div className="flex gap-1 flex-none">
+                        <button
+                          className="px-2 py-1 rounded text-xs font-semibold"
+                          style={{ background: '#EDE9F5', color: '#5C2977' }}
+                          onClick={() => setEditingFaq(editingFaq === i ? null : i)}
+                        >
+                          {editingFaq === i ? 'Done' : 'Edit'}
+                        </button>
+                        <button
+                          className="px-2 py-1 rounded text-xs font-semibold"
+                          style={{ background: '#FEE2E2', color: '#DC2626' }}
+                          onClick={() => deleteFaqItem(i)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {/* Add new FAQ */}
+                {newFaq !== null ? (
+                  <div className="rounded-lg p-3 space-y-2" style={{ border: '1px dashed #A78BC4', background: '#F8F6FB' }}>
+                    <label className="text-xs font-semibold" style={{ color: '#9B8AAE' }}>Keywords (comma-separated)</label>
+                    <input
+                      type="text"
+                      className="input-base text-xs w-full"
+                      placeholder="e.g. how long, timeline, how soon"
+                      value={newFaq.question_keywords.join(', ')}
+                      onChange={e => setNewFaq(prev => ({ ...prev!, question_keywords: e.target.value.split(',').map(k => k.trim()).filter(Boolean) }))}
+                    />
+                    <label className="text-xs font-semibold" style={{ color: '#9B8AAE' }}>Answer (spoken aloud to caller)</label>
+                    <textarea
+                      className="input-base text-xs w-full"
+                      rows={3}
+                      placeholder="Type the answer the agent will speak…"
+                      value={newFaq.answer}
+                      onChange={e => setNewFaq(prev => ({ ...prev!, answer: e.target.value }))}
+                    />
+                    <div className="flex gap-2">
+                      <button className="btn-primary text-xs py-1 px-3" onClick={addFaqItem} disabled={!newFaq.answer.trim()}>Add</button>
+                      <button className="btn-secondary text-xs py-1 px-3" onClick={() => setNewFaq(null)}>Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    className="btn-secondary text-xs"
+                    onClick={() => setNewFaq({ question_keywords: [], answer: '' })}
+                  >
+                    + Add FAQ Entry
+                  </button>
+                )}
+
+                {faqError && <p className="text-sm" style={{ color: '#DC2626' }}>{faqError}</p>}
+                {faqSaved && <p className="text-sm" style={{ color: '#059669' }}>✓ FAQ saved.</p>}
+
+                <div className="pt-2 border-t" style={{ borderColor: '#E8E0F0' }}>
+                  <button
+                    className="btn-primary"
+                    onClick={() => handleSaveFaq(faqItems)}
+                    disabled={faqSaving}
+                  >
+                    {faqSaving ? 'Saving…' : 'Save FAQ'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </section>
 

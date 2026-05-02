@@ -573,3 +573,19 @@ export async function researchCounty(
   const { data } = await api.post('/market-research/county', { county, state, strategy })
   return data
 }
+
+// ── Voice Agent FAQ ────────────────────────────────────────────────────
+
+export interface FaqItem {
+  question_keywords: string[]
+  answer: string
+}
+
+export async function getAgentFaq(): Promise<FaqItem[]> {
+  const { data } = await api.get<FaqItem[]>('/api/calls/faq')
+  return data
+}
+
+export async function saveAgentFaq(items: FaqItem[]): Promise<void> {
+  await api.post('/api/calls/faq', items)
+}

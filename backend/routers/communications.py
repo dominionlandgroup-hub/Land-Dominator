@@ -81,6 +81,46 @@ _PHRASES: dict[str, str] = {
     ),
 }
 
+# ── FAQ knowledge base ────────────────────────────────────────────────────────────
+_DEFAULT_FAQ: list[dict] = [
+    {
+        "question_keywords": ["how does this work", "how does it work", "how it works", "explain the process", "walk me through"],
+        "answer": "We buy land directly from owners like you for cash. No agents, no fees, no waiting. We make a fair offer and can close in as little as two to three weeks.",
+    },
+    {
+        "question_keywords": ["are you legit", "are you legitimate", "is this legit", "is this legitimate", "real company", "really real"],
+        "answer": "Absolutely. Dominion Land Group is a licensed real estate company. We've purchased hundreds of properties across the country and you can verify us online.",
+    },
+    {
+        "question_keywords": ["what is dominion", "dominion land group", "who is dominion", "what company", "your company"],
+        "answer": "Dominion Land Group is a real estate investment company that specializes in purchasing vacant land directly from owners at fair cash prices.",
+    },
+    {
+        "question_keywords": ["how much", "what's the offer", "what is the offer", "how much are you offering", "what's your offer", "offer amount", "price"],
+        "answer": "Your specific offer amount is printed on the letter we sent you, right next to your offer code. Would you like to provide that code so I can look up your exact offer?",
+    },
+    {
+        "question_keywords": ["why do you want", "why are you buying", "why buy my land", "why do you buy", "what do you do with it"],
+        "answer": "We invest in land for future development and resale. We focus on making the process simple and fast for sellers who want a hassle-free cash sale.",
+    },
+    {
+        "question_keywords": ["is this a scam", "this a scam", "sounds like a scam", "scam", "fraud", "fake"],
+        "answer": "I completely understand that concern. We never ask for money upfront. You only receive payment at closing through a licensed title company, which protects you completely.",
+    },
+    {
+        "question_keywords": ["how long does it take", "how long to close", "how long will it", "timeline", "when would i get paid", "how soon"],
+        "answer": "We can typically close in two to three weeks once you accept the offer. The entire process goes through a licensed title company for your protection.",
+    },
+    {
+        "question_keywords": ["tell me more", "what do you do", "who are you", "what's this about", "whats this about", "what is this about", "what's going on"],
+        "answer": "We're Dominion Land Group. We buy vacant land directly from owners with fair cash offers and a fast, simple closing process. We sent you a letter about your property.",
+    },
+]
+
+_FAQ_FALLBACK_ANSWER = (
+    "That's a great question. Let me have one of our team members call you back to answer that in detail."
+)
+
 
 def _audio_path(cache_key: str) -> Path:
     return _AUDIO_DIR / f"{cache_key}.mp3"
@@ -165,6 +205,31 @@ async def sms_health() -> dict:
         "inbound_webhook": "/api/sms/inbound",
         "telnyx_phone": _telnyx_phone() or "NOT_CONFIGURED",
     }
+
+
+@router.get("/api/calls/faq")
+async def get_faq() -> list:
+    """Return the current FAQ list (DB or built-in defaults)."""
+    return await _load_faq()
+
+
+@router.post("/api/calls/faq")
+async def save_faq(request: Request) -> dict:
+    """Save FAQ list to crm_settings and clear in-memory cache."""
+    body = await request.json()
+    faq_list = body if isinstance(body, list) else body.get("faq", [])
+    try:
+        sb = get_supabase()
+        r = sb.table("crm_settings").select("id").eq("key", "agent_faq").limit(1).execute()
+        if r.data:
+            sb.table("crm_settings").update({"value": faq_list}).eq("key", "agent_faq").execute()
+        else:
+            sb.table("crm_settings").insert({"key": "agent_faq", "value": faq_list}).execute()
+        _faq_cache["data"] = faq_list
+        _faq_cache["ts"] = 0.0
+        return {"status": "ok", "count": len(faq_list)}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 async def warmup() -> None:
@@ -705,6 +770,50 @@ def _is_faq_question(speech: str) -> bool:
     return any(kw in low for kw in _FAQ_KEYWORDS)
 
 
+# FAQ cache (5-minute TTL)
+_faq_cache: dict = {"data": None, "ts": 0.0}
+_FAQ_CACHE_TTL = 300.0
+
+
+async def _load_faq() -> list[dict]:
+    import time
+    now = time.time()
+    if _faq_cache["data"] is not None and now - _faq_cache["ts"] < _FAQ_CACHE_TTL:
+        return _faq_cache["data"]
+    try:
+        sb = get_supabase()
+        r = sb.table("crm_settings").select("value").eq("key", "agent_faq").limit(1).execute()
+        if r.data:
+            raw = r.data[0]["value"]
+            faq = raw if isinstance(raw, list) else []
+            if faq:
+                _faq_cache["data"] = faq
+                _faq_cache["ts"] = now
+                return faq
+    except Exception as exc:
+        print(f"[comms] _load_faq error: {exc}")
+    _faq_cache["data"] = _DEFAULT_FAQ
+    _faq_cache["ts"] = now
+    return _DEFAULT_FAQ
+
+
+def _match_faq_answer(speech: str, faq_list: list[dict]) -> "str | None":
+    low = speech.lower()
+    for item in faq_list:
+        keywords = item.get("question_keywords", [])
+        if any(kw.lower() in low for kw in keywords):
+            return item.get("answer")
+    return None
+
+
+def _looks_like_question(speech: str) -> bool:
+    low = speech.lower().strip()
+    return bool(re.search(
+        r"^(how|what|why|who|when|where|is this|are you|do you|can you|will you|tell me|explain)",
+        low,
+    ))
+
+
 def _get_step_retries(state: dict, step: str) -> int:
     return state.get("retries", {}).get(step, 0)
 
@@ -827,9 +936,12 @@ async def call_gather(step: str, request: Request, background_tasks: BackgroundT
             # Second silence: give up on code, move to name
             return _texml_gather("name", _phrase("no_code_name"), call_sid)
 
-        # FAQ question — jump straight to name
+        # FAQ question — answer inline, then collect name
         if _is_faq_question(speech):
-            return _texml_gather("name", _phrase("faq_redirect"), call_sid)
+            faq_list = await _load_faq()
+            answer = _match_faq_answer(speech, faq_list) or _FAQ_FALLBACK_ANSWER
+            inner = _say(answer) + _say("Can I get your first and last name?")
+            return _texml_gather("name", inner, call_sid)
 
         # Caller says they don't have the code → skip to name immediately
         if _no_code_response(speech):
@@ -902,6 +1014,13 @@ async def call_gather(step: str, request: Request, background_tasks: BackgroundT
                 return _texml_hangup(_phrase("goodbye"))
             return _texml_gather("name", _phrase("still_there"), call_sid)
 
+        # If caller asks a question instead of giving their name, answer it then re-ask
+        if _is_faq_question(speech) or _looks_like_question(speech):
+            faq_list = await _load_faq()
+            answer = _match_faq_answer(speech, faq_list) or _FAQ_FALLBACK_ANSWER
+            inner = _say(answer) + _say("Now, can I get your first and last name?")
+            return _texml_gather("name", inner, call_sid)
+
         caller_name = speech.strip()
         state["caller_name"] = caller_name
         if call_sid in _call_states:
@@ -919,6 +1038,13 @@ async def call_gather(step: str, request: Request, background_tasks: BackgroundT
                 # Auto-advance after 2 silences — assume maybe
                 return _texml_gather("callback", _phrase("confirm_callback"), call_sid)
             return _texml_gather("interest", _phrase("still_there"), call_sid)
+
+        # FAQ question during interest step — answer it, then re-ask about interest
+        if _is_faq_question(speech) or _looks_like_question(speech):
+            faq_list = await _load_faq()
+            answer = _match_faq_answer(speech, faq_list) or _FAQ_FALLBACK_ANSWER
+            inner = _say(answer) + _phrase("interested")
+            return _texml_gather("interest", inner, call_sid)
 
         score = _score_interest(speech)
         if call_sid in _call_states:
