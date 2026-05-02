@@ -234,18 +234,20 @@ async def save_faq(request: Request) -> dict:
 
 async def warmup() -> None:
     """Pre-generate ALL static phrase audio at startup. Called from main.py.
-    Runs in background — server accepts calls immediately via Polly fallback."""
+    Runs in background — server accepts calls immediately via Polly fallback.
+    Generates sequentially with 500 ms delay to stay under ElevenLabs 6-concurrent limit."""
     global _warmup_done
     if not _elevenlabs_key():
         print("[comms] ElevenLabs not configured — voice cache skipped (Polly fallback active)")
         _warmup_done = True
         return
-    print(f"[comms] Warming voice cache — {len(_PHRASES)} phrases...")
-    tasks = [_tts_generate(text, key) for key, text in _PHRASES.items()]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    ok = sum(1 for r in results if r is True)
-    already = sum(1 for r in results if r is True and _audio_path(list(_PHRASES.keys())[list(results).index(r)]).exists())
-    _ = already  # suppress unused warning
+    print(f"[comms] Warming voice cache — {len(_PHRASES)} phrases (sequential, 500 ms gap)...")
+    ok = 0
+    for key, text in _PHRASES.items():
+        result = await _tts_generate(text, key)
+        if result:
+            ok += 1
+        await asyncio.sleep(0.5)
     _warmup_done = True
     print(f"[comms] Voice cache warmed up: {ok}/{len(_PHRASES)} files ready")
 

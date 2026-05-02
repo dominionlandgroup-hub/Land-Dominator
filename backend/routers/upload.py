@@ -528,6 +528,41 @@ def _validate_file(file: UploadFile) -> None:
         raise HTTPException(status_code=400, detail="Only CSV files are accepted")
 
 
+# ── Parse helpers (robust to NaN / None / numpy types) ───────────────────────
+
+def parse_price(val) -> float:
+    """Convert any price value to Python float; returns 0.0 for invalid."""
+    if val is None:
+        return 0.0
+    try:
+        s = str(val).replace('$', '').replace(',', '').strip()
+        if not s or s.lower() in ('nan', 'none', ''):
+            return 0.0
+        f = float(s)
+        return f if (f > 0 and math.isfinite(f)) else 0.0
+    except Exception:
+        return 0.0
+
+
+def parse_float(val) -> "float | None":
+    """Convert any value to Python float; returns None for invalid/NaN."""
+    if val is None:
+        return None
+    try:
+        f = float(val)
+        return f if math.isfinite(f) else None
+    except Exception:
+        return None
+
+
+def parse_date(val) -> "str | None":
+    """Convert date value to string; returns None for missing/NaN."""
+    if val is None:
+        return None
+    s = str(val).strip()
+    return s if s.lower() not in ('nan', 'none', '') else None
+
+
 # ── Upload comps (single or first-of-many) ────────────────────────────────────
 
 @router.post("/comps")
@@ -535,10 +570,8 @@ async def upload_comps(
     file: UploadFile = File(...),
     append: bool = Query(True, description="True = append to existing comps; False = replace state"),
 ):
-    """
-    Upload and parse a Sold Comps CSV (Land Portal or MLS export).
-    Auto-detects format and maps columns accordingly.
-    """
+    import traceback as _tb
+
     _validate_file(file)
     content = await file.read()
     if len(content) > MAX_SIZE_BYTES:
@@ -546,140 +579,181 @@ async def upload_comps(
 
     filename = file.filename or "comps.csv"
 
+    # Read raw CSV — bypass parse_csv/slim_to_required so no columns get dropped
     try:
-        df, stats = parse_csv(content, is_comps=True)
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        df = pd.read_csv(io.BytesIO(content), low_memory=False)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Could not parse CSV: {e}")
 
-    # Detect format and normalize MLS columns before slimming
-    detected_format = _detect_format(df)
-    if detected_format == 'mls':
-        df = _normalize_mls_df(df)
+    print(f"[comps] File read: {len(df)} rows, columns: {list(df.columns[:10])}", flush=True)
 
-    df = slim_to_required(df, COMP_COLS_REQUIRED + [
-        "Close Price", "Sold Price", "Sale Price",
-        "Approximate Acres", "Acreage", "Acres", "Lot Size Acres",
-        "Close Date", "Sold Date", "Closing Date",
-        "City", "County", "Zip", "Zip Code", "Postal Code",
-        "Parcel Number", "Tax ID", "Parcel ID",
-        "DOM", "Days on Market", "CP/Acre", "Price Per Acre", "$/Acre",
-        "MLS#", "MLS Number", "Listing ID", "Subdivision",
-        "Street Address", "Address", "Property Address",
-    ])
-    df = downcast_numerics(df)
+    rows = []
+    for _, row in df.iterrows():
+        sale_price = parse_price(
+            row.get("Current Sale Price") or
+            row.get("Close Price") or
+            row.get("Sold Price") or
+            row.get("sale_price") or 0
+        )
+        acreage = parse_float(
+            row.get("Lot Acres") or
+            row.get("Approximate Acres") or
+            row.get("Calc Acreage") or
+            row.get("Acreage") or
+            row.get("Acres") or
+            row.get("acreage") or 0
+        ) or 0.0
+        county = str(
+            row.get("Parcel County") or
+            row.get("Parcel Address County") or
+            row.get("County") or
+            row.get("county") or ""
+        ).lower().strip().replace(" county", "").replace("county", "").strip()
+        state = str(
+            row.get("Parcel State") or
+            row.get("State") or
+            row.get("state") or "TN"
+        ).upper().strip()
+        zip_code = str(
+            row.get("Parcel Zip") or
+            row.get("Zip Code") or
+            row.get("Postal Code") or
+            row.get("zip_code") or ""
+        ).strip().replace(".0", "")
+        sale_date = parse_date(
+            row.get("Current Sale Recording Date") or
+            row.get("Close Date") or
+            row.get("Sold Date") or
+            row.get("sale_date")
+        )
+        lat = parse_float(row.get("Latitude") or row.get("latitude"))
+        lon = parse_float(row.get("Longitude") or row.get("longitude"))
+        apn = str(row.get("APN") or row.get("Parcel Number") or row.get("apn") or "").strip()
+        land_use = str(row.get("Land Use") or row.get("land_use") or "").strip()
+        buyer_name = str(
+            row.get("Current Sale Buyer 1 Full Name") or
+            row.get("buyer_name") or ""
+        ).strip()
+        price_per_acre = sale_price / acreage if acreage > 0 else 0.0
 
-    all_rows = len(df)
+        if sale_price > 0 and acreage > 0:
+            rows.append({
+                "county":        county or None,
+                "state":         state or None,
+                "acreage":       float(acreage),
+                "sale_price":    float(sale_price),
+                "price_per_acre": float(price_per_acre),
+                "zip_code":      zip_code or None,
+                "sale_date":     sale_date,
+                "apn":           apn or None,
+                "land_use":      land_use or None,
+                "latitude":      lat if (lat is not None and lat != 0.0) else None,
+                "longitude":     lon if (lon is not None and lon != 0.0) else None,
+                "buyer_name":    buyer_name or None,
+                "buyer_type":    _buyer_type(buyer_name),
+                "full_address":  str(row.get("Parcel Full Address") or row.get("Address") or "").strip() or None,
+                "filename":      filename,
+                "source":        "upload",
+            })
+
+    print(f"[comps] Valid rows to save: {len(rows)} of {len(df)}", flush=True)
+
+    if not rows:
+        print(f"[comps] No valid rows. Columns present: {list(df.columns)}", flush=True)
+        session_id = str(uuid.uuid4())
+        store_comps(session_id, df)
+        return Response(
+            content=json.dumps({
+                "status": "ok",
+                "saved": 0,
+                "parsed": len(df),
+                "reason": "No valid rows after filtering — need sale_price > 0 and acreage > 0",
+                "columns_found": list(df.columns),
+                "session_id": session_id,
+                "total_rows": len(df),
+                "valid_rows": 0,
+                "missing_columns": [],
+                "preview": [],
+                "saved_to_db": 0,
+                "detected_format": _detect_format(df),
+                "deduped_count": 0,
+                "geocoded_count": 0,
+            }),
+            media_type="application/json"
+        )
+
+    # Store for matching engine session
     session_id = str(uuid.uuid4())
     store_comps(session_id, df)
     uploaded_at = datetime.now(timezone.utc).isoformat()
+    detected_format = _detect_format(df)
 
-    print(f"[comps] Parsed {all_rows} rows (format={detected_format}), building valid_rows...", flush=True)
-
-    # Build valid_rows — map LP column names to crm_sold_comps DB column names.
-    # Only include columns that are confirmed to exist in the DB schema.
-    valid_rows: list[dict] = []
-    skipped = 0
-    for _, row in df.iterrows():
-        sale_price = _safe_float(_col_value(row, ["Current Sale Price"]))
-        acreage    = _safe_float(_col_value(row, ["Lot Acres", "Calc Acreage"]))
-        sale_date  = str(_col_value(row, ["Current Sale Recording Date"]) or "").strip()
-
-        if not sale_price or sale_price <= 0:
-            skipped += 1; continue
-        if not acreage or acreage <= 0:
-            skipped += 1; continue
-        if not sale_date or sale_date.lower() in ("nan", "none", ""):
-            skipped += 1; continue
-
-        ppa = sale_price / acreage
-
-        state_v     = str(_col_value(row, ["Parcel State"]) or "").strip().upper() or None
-        _raw_county = str(_col_value(row, ["Parcel County", "Parcel Address County", "County"]) or "").strip()
-        _norm_county = _raw_county.lower().replace(" county", "").replace("county", "").strip() or None
-        buyer_name  = str(_col_value(row, ["Current Sale Buyer 1 Full Name"]) or "").strip() or None
-        zip_v       = str(_col_value(row, ["Parcel Zip"]) or "").strip().split(".")[0] or None
-        fips_v      = str(_col_value(row, ["Parcel FIPS"]) or "").strip() or None
-        if fips_v and fips_v.endswith(".0"):
-            fips_v = fips_v[:-2]
-
-        valid_rows.append({
-            "apn":               str(_col_value(row, ["APN"]) or "").strip() or None,
-            "county":            _norm_county,
-            "state":             state_v,
-            "zip_code":          zip_v,
-            "acreage":           float(acreage),
-            "sale_price":        float(sale_price),
-            "price_per_acre":    float(ppa),
-            "sale_date":         sale_date,
-            "latitude":          _safe_float(_col_value(row, ["Latitude"])),
-            "longitude":         _safe_float(_col_value(row, ["Longitude"])),
-            "slope_avg":         _safe_float(_col_value(row, ["Slope AVG", "Average Slope", "Slope"])),
-            "wetlands_coverage": _safe_float(row.get("Wetlands Coverage")),
-            "fema_coverage":     _safe_float(row.get("FEMA Flood Coverage")),
-            "buildability":      _safe_float(row.get("Buildability total (%)")),
-            "road_frontage":     _safe_float(row.get("Road Frontage")),
-            "elevation_avg":     _safe_float(row.get("Elevation AVG")),
-            "land_use":          str(row.get("Land Use") or "").strip() or None,
-            "buyer_name":        buyer_name,
-            "buyer_type":        _buyer_type(buyer_name or ""),
-            "full_address":      str(_col_value(row, ["Parcel Full Address"]) or "").strip() or None,
-            "property_id":       str(row.get("propertyID") or "").strip() or None,
-            "fips":              fips_v,
-            "source_format":     detected_format,
-            "filename":          filename,
-        })
-
-    print(f"[comps] Built {len(valid_rows)} valid_rows ({skipped} skipped — missing price/acreage/date)", flush=True)
-
+    # Save to database in chunks of 100
     saved = 0
+    errors: list[str] = []
 
-    # FORCE SAVE TO DATABASE
-    if valid_rows:
-        print(f"Attempting to save {len(valid_rows)} comps to database...", flush=True)
-        try:
-            from services.supabase_client import get_supabase
-            supabase = get_supabase()
+    try:
+        from services.supabase_client import get_supabase
+        supabase = get_supabase()
+        print(f"[comps] Supabase client ready — inserting {len(rows)} rows...", flush=True)
 
-            # Clear existing comps for this state first
-            state = (valid_rows[0].get('state') or 'UNKNOWN').upper()
-            del_result = supabase.table('crm_sold_comps').delete().eq('state', state).execute()
-            del_count = len(del_result.data) if del_result.data else 0
-            print(f"Cleared {del_count} existing comps for state: {state}", flush=True)
-
-            # Save in chunks of 100
-            for i in range(0, len(valid_rows), 100):
-                chunk = valid_rows[i:i + 100]
+        for i in range(0, len(rows), 100):
+            chunk = rows[i:i + 100]
+            try:
                 result = supabase.table('crm_sold_comps').insert(chunk).execute()
-                saved += len(chunk)
-                print(f"Saved chunk {i} to {i + len(chunk)}: {saved} total", flush=True)
+                # supabase-py v1: errors in result.error; v2: raises APIError
+                if hasattr(result, 'error') and result.error:
+                    raise Exception(str(result.error))
+                chunk_saved = len(result.data) if result.data else len(chunk)
+                saved += chunk_saved
+                print(f"[comps] Saved chunk {i}–{i + len(chunk)}: {saved} total", flush=True)
+            except Exception as chunk_exc:
+                err_msg = str(chunk_exc)
+                errors.append(err_msg)
+                print(f"[comps] CHUNK ERROR at rows {i}–{i + len(chunk)}: {err_msg}", flush=True)
+                _tb.print_exc()
 
-            print(f"TOTAL SAVED TO DATABASE: {saved}", flush=True)
-        except Exception as e:
-            print(f"SAVE FAILED WITH ERROR: {str(e)}", flush=True)
-            import traceback
-            traceback.print_exc()
-    else:
-        print(f"[comps] WARNING: valid_rows is empty — nothing to save. Check CSV column names.", flush=True)
-        print(f"[comps] DataFrame columns present: {list(df.columns)}", flush=True)
+        print(f"[comps] TOTAL SAVED TO DATABASE: {saved}", flush=True)
+        if errors:
+            print(f"[comps] {len(errors)} chunk(s) failed. First error: {errors[0]}", flush=True)
 
-    payload = _clean_for_json({
-        "status": "ok",
-        "saved": saved,
-        "parsed": all_rows,
-        # Frontend-compatible fields
-        "session_id": session_id,
-        "total_rows": stats["total_rows"],
-        "valid_rows": stats["valid_rows"],
-        "columns_found": stats["columns_found"],
-        "missing_columns": stats["missing_columns"],
-        "preview": stats["preview"],
-        "uploaded_at": uploaded_at,
-        "saved_to_db": saved,
-        "detected_format": detected_format,
-        "deduped_count": 0,
-        "geocoded_count": 0,
-    })
-    return Response(content=json.dumps(payload), media_type="application/json")
+    except Exception as outer_exc:
+        print(f"[comps] OUTER SAVE ERROR: {outer_exc}", flush=True)
+        _tb.print_exc()
+        errors.append(str(outer_exc))
+
+    # Build a safe preview (first 5 rows, string-only values)
+    preview_cols = {
+        "APN", "Parcel County", "County", "Parcel State", "State",
+        "Lot Acres", "Approximate Acres", "Current Sale Price", "Close Price",
+        "Current Sale Recording Date", "Close Date", "Parcel Zip",
+    }
+    preview = [
+        {str(k): str(v) for k, v in row.items()
+         if k in preview_cols and str(v) not in ('nan', 'None', '')}
+        for _, row in df.head(5).iterrows()
+    ]
+
+    return Response(
+        content=json.dumps({
+            "status": "ok",
+            "saved": saved,
+            "parsed": len(df),
+            "session_id": session_id,
+            "total_rows": len(df),
+            "valid_rows": len(rows),
+            "columns_found": list(df.columns),
+            "missing_columns": [],
+            "preview": preview,
+            "uploaded_at": uploaded_at,
+            "saved_to_db": saved,
+            "detected_format": detected_format,
+            "deduped_count": 0,
+            "geocoded_count": 0,
+            "errors": errors[:5],
+        }),
+        media_type="application/json"
+    )
 
 
 # ── Upload targets ─────────────────────────────────────────────────────────────
