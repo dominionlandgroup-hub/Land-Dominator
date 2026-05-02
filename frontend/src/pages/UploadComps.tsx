@@ -129,6 +129,11 @@ export default function UploadComps() {
                   <strong>{compsStats.total_rows.toLocaleString()}</strong> total rows —{' '}
                   <strong>{compsStats.valid_rows.toLocaleString()}</strong> have a valid sale price and will be used for analysis.
                 </p>
+                {compsStats.saved_to_db != null && (
+                  <p className="text-xs mt-1" style={{ color: '#059669' }}>
+                    Saving <strong>{compsStats.saved_to_db.toLocaleString()}</strong> comps to database for persistent matching across sessions.
+                  </p>
+                )}
               </div>
             </div>
 

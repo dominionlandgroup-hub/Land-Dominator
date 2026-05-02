@@ -4,6 +4,7 @@ Upload endpoints for comps and target CSVs.
 import uuid
 import threading
 from datetime import datetime, timezone
+import numpy as np
 import pandas as pd
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
@@ -13,6 +14,87 @@ from services.csv_parser import parse_csv
 from storage.session_store import store_comps, store_targets, get_comps
 
 router = APIRouter(prefix="/upload", tags=["upload"])
+
+
+def _save_comps_to_db(df: pd.DataFrame) -> int:
+    """
+    Persist comp rows to crm_sold_comps Supabase table.
+    Clears existing comps for the same state(s) before inserting fresh data.
+    Returns the count of rows inserted.
+    """
+    try:
+        from services.supabase_client import get_supabase
+        sb = get_supabase()
+
+        # Determine which states are in this upload (delete-then-insert per state)
+        states: list[str] = []
+        if "Parcel State" in df.columns:
+            states = [
+                s for s in df["Parcel State"].dropna().astype(str).str.strip().str.upper().unique()
+                if s and s not in ("NAN", "NONE", "")
+            ]
+        if states:
+            for state in states:
+                sb.table("crm_sold_comps").delete().eq("state", state).execute()
+            print(f"[comps-db] Cleared existing comps for states: {states}", flush=True)
+
+        def _sf(row, *cols):
+            for col in cols:
+                v = row.get(col)
+                if v is None:
+                    continue
+                try:
+                    fv = float(v)
+                    if not (fv != fv or fv == float("inf") or fv == float("-inf")):  # not NaN/inf
+                        return fv
+                except (TypeError, ValueError):
+                    pass
+            return None
+
+        rows = []
+        for _, row in df.iterrows():
+            price = _sf(row, "Current Sale Price")
+            acreage = _sf(row, "Lot Acres", "Calc Acreage")
+            if not price or price <= 0 or not acreage or acreage <= 0:
+                continue
+            ppa = _sf(row, "CP/Acre")
+            if ppa is None and acreage > 0:
+                ppa = price / acreage
+            rows.append({
+                "apn":               (str(row.get("APN") or "").strip() or None),
+                "county":            (str(row.get("Parcel County") or row.get("Parcel Address County") or "").strip() or None),
+                "state":             (str(row.get("Parcel State") or "").strip() or None),
+                "zip_code":          (str(row.get("Parcel Zip") or "").strip().split(".")[0] or None),
+                "acreage":           acreage,
+                "sale_price":        price,
+                "price_per_acre":    ppa,
+                "sale_date":         (str(row.get("Current Sale Recording Date") or "").strip() or None),
+                "latitude":          _sf(row, "Latitude"),
+                "longitude":         _sf(row, "Longitude"),
+                "slope_avg":         _sf(row, "Slope AVG", "Average Slope", "Slope"),
+                "wetlands_coverage": _sf(row, "Wetlands Coverage"),
+                "fema_coverage":     _sf(row, "FEMA Flood Coverage"),
+                "buildability":      _sf(row, "Buildability total (%)"),
+                "road_frontage":     _sf(row, "Road Frontage"),
+                "land_use":          (str(row.get("Land Use") or "").strip() or None),
+                "buyer_name":        (str(row.get("Current Sale Buyer 1 Full Name") or "").strip() or None),
+                "full_address":      (str(row.get("Parcel Full Address") or "").strip() or None),
+                "source":            "land_portal",
+            })
+
+        CHUNK = 500
+        inserted = 0
+        for i in range(0, len(rows), CHUNK):
+            chunk = rows[i:i + CHUNK]
+            sb.table("crm_sold_comps").insert(chunk).execute()
+            inserted += len(chunk)
+            print(f"[comps-db] Inserted chunk {i}–{i+len(chunk)}: {len(chunk)} rows", flush=True)
+
+        print(f"[comps-db] ✓ Saved {inserted}/{len(rows)} valid comps to crm_sold_comps", flush=True)
+        return inserted
+    except Exception as exc:
+        print(f"[comps-db] ERROR saving comps to DB: {exc}", flush=True)
+        return 0
 
 MAX_SIZE_BYTES = 300 * 1024 * 1024  # 300 MB
 
@@ -96,10 +178,18 @@ async def upload_comps(file: UploadFile = File(...)) -> UploadResponse:
     store_comps(session_id, df)
     uploaded_at = datetime.now(timezone.utc).isoformat()
 
-    # Persist to Supabase Storage in background (best-effort, never blocks the response)
+    # Count valid rows for DB (price > 0 AND acreage > 0 AND has coords)
+    db_row_count = int(
+        (
+            pd.to_numeric(df.get("Current Sale Price", pd.Series(dtype=float)), errors="coerce").fillna(0) > 0
+        ).sum()
+    ) if "Current Sale Price" in df.columns else stats["valid_rows"]
+
+    # Persist to Supabase Storage AND crm_sold_comps DB in background
     def _persist():
         from services.comps_persistence import persist_comps
         persist_comps(session_id, df, {**stats, "uploaded_at": uploaded_at})
+        _save_comps_to_db(df)
 
     threading.Thread(target=_persist, daemon=True).start()
 
@@ -111,6 +201,7 @@ async def upload_comps(file: UploadFile = File(...)) -> UploadResponse:
         missing_columns=stats["missing_columns"],
         preview=stats["preview"],
         uploaded_at=uploaded_at,
+        saved_to_db=db_row_count,
     )
 
 

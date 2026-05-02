@@ -29,6 +29,62 @@ router = APIRouter(prefix="/match", tags=["match"])
 _executor = ThreadPoolExecutor(max_workers=2)
 
 
+def _load_comps_from_db() -> "pd.DataFrame | None":
+    """
+    Load comps from crm_sold_comps Supabase table and convert to the LP-export
+    column names expected by the matching engine. Returns None on failure.
+    """
+    try:
+        from services.supabase_client import get_supabase
+        sb = get_supabase()
+
+        # Paginate to fetch all rows (Supabase default cap = 1000)
+        rows: list[dict] = []
+        batch_size = 1000
+        offset = 0
+        while True:
+            r = sb.table("crm_sold_comps").select("*").range(offset, offset + batch_size - 1).execute()
+            batch = r.data or []
+            rows.extend(batch)
+            if len(batch) < batch_size:
+                break
+            offset += batch_size
+
+        if not rows:
+            return None
+
+        # Map DB column names → LP export column names used by matching engine
+        mapped = []
+        for row in rows:
+            mapped.append({
+                "APN":                              row.get("apn") or "",
+                "Parcel County":                    row.get("county") or "",
+                "Parcel Address County":            row.get("county") or "",
+                "Parcel State":                     row.get("state") or "",
+                "Parcel Zip":                       str(row.get("zip_code") or ""),
+                "Lot Acres":                        row.get("acreage"),
+                "Current Sale Price":               row.get("sale_price"),
+                "Current Sale Recording Date":      row.get("sale_date") or "",
+                "Latitude":                         row.get("latitude"),
+                "Longitude":                        row.get("longitude"),
+                "Slope AVG":                        row.get("slope_avg"),
+                "Wetlands Coverage":                row.get("wetlands_coverage"),
+                "FEMA Flood Coverage":              row.get("fema_coverage"),
+                "Buildability total (%)":           row.get("buildability"),
+                "Road Frontage":                    row.get("road_frontage"),
+                "Land Use":                         row.get("land_use") or "",
+                "Current Sale Buyer 1 Full Name":   row.get("buyer_name") or "",
+                "Parcel Full Address":               row.get("full_address") or "",
+            })
+
+        df = pd.DataFrame(mapped)
+        print(f"[match] Loaded {len(df)} comps from crm_sold_comps DB", flush=True)
+        return df
+    except Exception as exc:
+        print(f"[match] Failed to load comps from DB: {exc}", flush=True)
+        return None
+
+
 @router.post("/run")
 async def run_match(filters: MatchFilters) -> Response:
     """
@@ -38,10 +94,17 @@ async def run_match(filters: MatchFilters) -> Response:
     """
     comps_df = get_comps(filters.session_id)
     if comps_df is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Comps session not found. Please re-upload your comps CSV.",
-        )
+        # Session expired — try to load comps from crm_sold_comps DB table
+        comps_df = _load_comps_from_db()
+        if comps_df is not None and len(comps_df) > 0:
+            from storage.session_store import store_comps
+            store_comps(filters.session_id, comps_df)
+            print(f"[match] Restored {len(comps_df)} comps from crm_sold_comps DB (session expired)", flush=True)
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail="Comps session not found and no comps in database. Please re-upload your comps CSV.",
+            )
 
     targets_df = get_targets(filters.target_session_id)
     if targets_df is None:

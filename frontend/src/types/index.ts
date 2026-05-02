@@ -8,6 +8,7 @@ export interface UploadStats {
   missing_columns: string[]
   preview: Record<string, unknown>[]
   uploaded_at?: string
+  saved_to_db?: number
 }
 
 // ─── Dashboard ─────────────────────────────────────────────────────────────

@@ -566,6 +566,7 @@ async def db_migrate() -> dict:
         "notes_table_sql": NOTES_MIGRATION_SQL,
         "comp_columns_sql": COMP_MIGRATION_SQL,
         "comm_columns_sql": COMM_MIGRATION_SQL,
+        "sold_comps_table_sql": SOLD_COMPS_MIGRATION_SQL,
         "errors_tried": errors_tried,
     }
 
@@ -2598,4 +2599,35 @@ ALTER TABLE crm_communications ADD COLUMN IF NOT EXISTS disposition TEXT;
 ALTER TABLE crm_communications ADD COLUMN IF NOT EXISTS callback_requested_at TEXT;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS tags JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE crm_communications ADD COLUMN IF NOT EXISTS is_read BOOLEAN DEFAULT FALSE;
+""".strip()
+
+
+SOLD_COMPS_MIGRATION_SQL = """
+CREATE TABLE IF NOT EXISTS crm_sold_comps (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at        TIMESTAMPTZ DEFAULT NOW(),
+  apn               TEXT,
+  county            TEXT,
+  state             TEXT,
+  zip_code          TEXT,
+  acreage           NUMERIC,
+  sale_price        NUMERIC,
+  price_per_acre    NUMERIC,
+  sale_date         TEXT,
+  dom               INTEGER,
+  latitude          NUMERIC,
+  longitude         NUMERIC,
+  slope_avg         NUMERIC,
+  wetlands_coverage NUMERIC,
+  fema_coverage     NUMERIC,
+  buildability      NUMERIC,
+  road_frontage     NUMERIC,
+  land_use          TEXT,
+  buyer_name        TEXT,
+  full_address      TEXT,
+  source            TEXT DEFAULT 'land_portal'
+);
+CREATE INDEX IF NOT EXISTS idx_crm_sold_comps_state_county ON crm_sold_comps (state, county);
+CREATE INDEX IF NOT EXISTS idx_crm_sold_comps_zip ON crm_sold_comps (zip_code);
+CREATE INDEX IF NOT EXISTS idx_crm_sold_comps_latlon ON crm_sold_comps (latitude, longitude);
 """.strip()
