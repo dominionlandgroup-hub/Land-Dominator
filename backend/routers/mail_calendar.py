@@ -149,7 +149,7 @@ async def _send_via_sendgrid(
     if not api_key:
         raise ValueError("SENDGRID_API_KEY environment variable is not set")
 
-    from_email = os.getenv("SENDGRID_FROM_EMAIL", "noreply@landdominator.com")
+    from_email = os.getenv("SENDGRID_FROM_EMAIL", "dominionlandgroup@gmail.com")
     payload: dict = {
         "personalizations": [{"to": [{"email": to_email}]}],
         "from": {"email": from_email, "name": "Land Dominator"},
@@ -464,7 +464,7 @@ async def send_weekly_summary_task() -> None:
 
     api_key = os.getenv("SENDGRID_API_KEY", "")
     admin_email = os.getenv("ADMIN_EMAIL", "dupeedamien@gmail.com")
-    from_email = os.getenv("SENDGRID_FROM_EMAIL", "noreply@landdominator.com")
+    from_email = os.getenv("SENDGRID_FROM_EMAIL", "dominionlandgroup@gmail.com")
 
     if not api_key:
         print("Weekly summary: SENDGRID_API_KEY not set — skipping.")

@@ -546,7 +546,7 @@ async def _notify_email(subject: str, html: str) -> None:
     if not api_key:
         return
     try:
-        from_email = os.getenv("SENDGRID_FROM_EMAIL", "noreply@landdominator.com")
+        from_email = os.getenv("SENDGRID_FROM_EMAIL", "dominionlandgroup@gmail.com")
         async with httpx.AsyncClient(timeout=15) as client:
             await client.post(
                 "https://api.sendgrid.com/v3/mail/send",

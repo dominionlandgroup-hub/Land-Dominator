@@ -1004,7 +1004,7 @@ async def send_campaign_mail_drop(campaign_id: str, body: dict = Body(default={}
 
         # Send via SendGrid
         sendgrid_key = os.environ.get("SENDGRID_API_KEY", "")
-        from_email = os.environ.get("ADMIN_EMAIL", "dupeedamien@gmail.com")
+        from_email = os.getenv("SENDGRID_FROM_EMAIL", "dominionlandgroup@gmail.com")
         if not sendgrid_key:
             raise HTTPException(status_code=503, detail="SENDGRID_API_KEY not configured. Add it to Railway environment variables.")
 
