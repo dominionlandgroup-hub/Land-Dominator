@@ -251,6 +251,7 @@ export type AppPage =
   | 'boards-buyer'
   | 'boards-inventory'
   | 'mail-calendar'
+  | 'lead-stacker'
   | 'settings'
 
 // ─── Confidence ────────────────────────────────────────────────────────────

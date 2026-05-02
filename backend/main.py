@@ -13,6 +13,7 @@ from routers import settings as settings_router
 from routers import mail_calendar as mail_cal_router
 from routers import communications as comms_router
 from routers import market_research as market_research_router
+from routers import lead_stacker as lead_stacker_router
 
 load_dotenv()
 
@@ -59,6 +60,7 @@ app.include_router(settings_router.router)
 app.include_router(mail_cal_router.router)
 app.include_router(comms_router.router)
 app.include_router(market_research_router.router)
+app.include_router(lead_stacker_router.router)
 
 
 # ── Startup migration check ───────────────────────────────────────────
@@ -164,6 +166,18 @@ async def check_crm_schema() -> None:
             "    property_id UUID REFERENCES crm_properties(id) ON DELETE CASCADE,\n"
             "    content TEXT NOT NULL\n"
             "  );\n"
+        )
+
+    # Auto-migrate hillsborough_leads table
+    try:
+        from services.supabase_client import get_supabase
+        sb = get_supabase()
+        sb.table("hillsborough_leads").select("id").limit(1).execute()
+    except Exception:
+        print(
+            "\n"
+            "NOTE: hillsborough_leads table missing. Call POST /lead-stacker/migrate to create it,\n"
+            "or run the SQL from backend/routers/lead_stacker.py MIGRATION_SQL in Supabase.\n"
         )
 
 

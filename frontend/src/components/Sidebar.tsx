@@ -79,6 +79,14 @@ const IconCalendar = () => (
   </svg>
 )
 
+const IconStack = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+    <polyline points="2 17 12 22 22 17"/>
+    <polyline points="2 12 12 17 22 12"/>
+  </svg>
+)
+
 const IconSettings = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="3"/>
@@ -285,6 +293,7 @@ export default function Sidebar() {
 
         <div style={{ borderTop: '1px solid #1F2937', margin: '6px 4px' }} />
 
+        <NavBtn id="lead-stacker" label="Lead Stacker" icon={<IconStack />}    active={currentPage === 'lead-stacker'} onClick={() => nav('lead-stacker')} />
         <NavBtn id="upload-comps" label="Upload Comps" icon={<IconUpload />}   active={currentPage === 'upload-comps' || currentPage === 'dashboard' || currentPage === 'match-targets'} onClick={() => nav('upload-comps')} />
 
         {/* Setup Guide — opens drawer, not a page */}

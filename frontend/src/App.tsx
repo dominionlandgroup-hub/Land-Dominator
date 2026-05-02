@@ -15,6 +15,7 @@ import SellerInbox from './pages/SellerInbox'
 import BuyerInbox from './pages/BuyerInbox'
 import Boards from './pages/Boards'
 import SettingsPage from './pages/SettingsPage'
+import LeadStacker from './pages/LeadStacker'
 import MailCalendar from './pages/MailCalendar'
 import OnboardingWizard from './pages/OnboardingWizard'
 import SetupGuideDrawer from './components/SetupGuideDrawer'
@@ -73,6 +74,7 @@ function PageContent() {
     case 'boards-buyer':     return <Boards view="boards-buyer" />
     case 'boards-inventory': return <Boards view="boards-inventory" />
     case 'mail-calendar':    return <MailCalendar />
+    case 'lead-stacker':     return <LeadStacker />
     case 'settings':         return <SettingsPage />
     case 'welcome':          return <WelcomeScreen />
     default:                 return <CRMDashboard />
