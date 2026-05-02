@@ -2622,12 +2622,21 @@ CREATE TABLE IF NOT EXISTS crm_sold_comps (
   fema_coverage     NUMERIC,
   buildability      NUMERIC,
   road_frontage     NUMERIC,
+  elevation_avg     NUMERIC,
   land_use          TEXT,
   buyer_name        TEXT,
+  buyer_type        TEXT,
   full_address      TEXT,
+  property_id       TEXT,
+  fips              TEXT,
   source            TEXT DEFAULT 'land_portal'
 );
+ALTER TABLE crm_sold_comps ADD COLUMN IF NOT EXISTS buyer_type TEXT;
+ALTER TABLE crm_sold_comps ADD COLUMN IF NOT EXISTS elevation_avg NUMERIC;
+ALTER TABLE crm_sold_comps ADD COLUMN IF NOT EXISTS property_id TEXT;
+ALTER TABLE crm_sold_comps ADD COLUMN IF NOT EXISTS fips TEXT;
 CREATE INDEX IF NOT EXISTS idx_crm_sold_comps_state_county ON crm_sold_comps (state, county);
 CREATE INDEX IF NOT EXISTS idx_crm_sold_comps_zip ON crm_sold_comps (zip_code);
 CREATE INDEX IF NOT EXISTS idx_crm_sold_comps_latlon ON crm_sold_comps (latitude, longitude);
+CREATE INDEX IF NOT EXISTS idx_crm_sold_comps_buyer_type ON crm_sold_comps (buyer_type);
 """.strip()

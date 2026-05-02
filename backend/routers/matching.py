@@ -29,21 +29,33 @@ router = APIRouter(prefix="/match", tags=["match"])
 _executor = ThreadPoolExecutor(max_workers=2)
 
 
-def _load_comps_from_db() -> "pd.DataFrame | None":
+def _load_comps_from_db(states: "list[str] | None" = None) -> "pd.DataFrame | None":
     """
     Load comps from crm_sold_comps Supabase table and convert to the LP-export
-    column names expected by the matching engine. Returns None on failure.
+    column names expected by the matching engine.
+
+    If `states` is provided (list of 2-letter state codes), only comps from those
+    states are loaded. Otherwise all comps are loaded.
+    Returns None on failure or if no rows found.
     """
     try:
         from services.supabase_client import get_supabase
         sb = get_supabase()
 
-        # Paginate to fetch all rows (Supabase default cap = 1000)
+        # Paginate to fetch rows (Supabase default cap = 1000)
         rows: list[dict] = []
         batch_size = 1000
         offset = 0
+
+        # Normalize state codes for filtering
+        state_filter = [s.strip().upper() for s in (states or []) if s and s.strip()]
+
         while True:
-            r = sb.table("crm_sold_comps").select("*").range(offset, offset + batch_size - 1).execute()
+            q = sb.table("crm_sold_comps").select("*")
+            if state_filter:
+                # Use Supabase .in_() filter — state column stores uppercase 2-letter codes
+                q = q.in_("state", state_filter)
+            r = q.range(offset, offset + batch_size - 1).execute()
             batch = r.data or []
             rows.extend(batch)
             if len(batch) < batch_size:
@@ -51,6 +63,8 @@ def _load_comps_from_db() -> "pd.DataFrame | None":
             offset += batch_size
 
         if not rows:
+            state_msg = f" for states {state_filter}" if state_filter else ""
+            print(f"[match] No comps found in DB{state_msg}", flush=True)
             return None
 
         # Map DB column names → LP export column names used by matching engine
@@ -72,13 +86,39 @@ def _load_comps_from_db() -> "pd.DataFrame | None":
                 "FEMA Flood Coverage":              row.get("fema_coverage"),
                 "Buildability total (%)":           row.get("buildability"),
                 "Road Frontage":                    row.get("road_frontage"),
+                "Elevation AVG":                    row.get("elevation_avg"),
                 "Land Use":                         row.get("land_use") or "",
                 "Current Sale Buyer 1 Full Name":   row.get("buyer_name") or "",
                 "Parcel Full Address":               row.get("full_address") or "",
+                # buyer_type stored in DB, exposed for LLC pricing logic
+                "_buyer_type":                      row.get("buyer_type") or "INDIVIDUAL",
             })
 
         df = pd.DataFrame(mapped)
-        print(f"[match] Loaded {len(df)} comps from crm_sold_comps DB", flush=True)
+        total = len(df)
+        state_msg = f" (states: {state_filter})" if state_filter else ""
+        print(f"Comps loaded: {total}{state_msg}", flush=True)
+
+        # Filter bad comps at load time
+        df["Lot Acres"] = pd.to_numeric(df["Lot Acres"], errors="coerce")
+        df["Current Sale Price"] = pd.to_numeric(df["Current Sale Price"], errors="coerce")
+
+        df = df[df["Lot Acres"].notna() & (df["Lot Acres"] >= 0.05)]
+        after_zero = len(df)
+        print(f"Comps after removing zero-acre (<0.05): {after_zero}", flush=True)
+
+        df = df[df["Current Sale Price"].notna() & (df["Current Sale Price"] <= 5_000_000)]
+        after_mega = len(df)
+        print(f"Comps after removing mega-sales (>$5M): {after_mega}", flush=True)
+
+        ppa_series = df["Current Sale Price"] / df["Lot Acres"].replace(0, np.nan)
+        df = df[ppa_series <= 2_000_000]
+        final_count = len(df)
+        print(f"Comps after removing outliers (ppa>$2M/acre): {final_count}", flush=True)
+
+        if final_count == 0:
+            return None
+
         return df
     except Exception as exc:
         print(f"[match] Failed to load comps from DB: {exc}", flush=True)
@@ -92,10 +132,24 @@ async def run_match(filters: MatchFilters) -> Response:
     Uses vectorized Haversine. Runs in a thread pool.
     Returns pre-serialized JSON to avoid Pydantic overhead on large result sets.
     """
+    # Load targets first so we can detect target states for DB comp filtering
+    targets_df = get_targets(filters.target_session_id)
+    if targets_df is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Target session not found. Please re-upload your targets CSV.",
+        )
+
     comps_df = get_comps(filters.session_id)
     if comps_df is None:
-        # Session expired — try to load comps from crm_sold_comps DB table
-        comps_df = _load_comps_from_db()
+        # Session expired — try to load comps from crm_sold_comps DB filtered by target state(s)
+        target_states: list[str] = []
+        if "Parcel State" in targets_df.columns:
+            target_states = [
+                s for s in targets_df["Parcel State"].dropna().astype(str).str.strip().str.upper().unique()
+                if s and s not in ("NAN", "NONE", "")
+            ]
+        comps_df = _load_comps_from_db(states=target_states if target_states else None)
         if comps_df is not None and len(comps_df) > 0:
             from storage.session_store import store_comps
             store_comps(filters.session_id, comps_df)
@@ -105,13 +159,6 @@ async def run_match(filters: MatchFilters) -> Response:
                 status_code=404,
                 detail="Comps session not found and no comps in database. Please re-upload your comps CSV.",
             )
-
-    targets_df = get_targets(filters.target_session_id)
-    if targets_df is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Target session not found. Please re-upload your targets CSV.",
-        )
 
     flood_mode = (filters.flood_zone_filter or "").strip().lower()
     exclude_flood = filters.exclude_flood

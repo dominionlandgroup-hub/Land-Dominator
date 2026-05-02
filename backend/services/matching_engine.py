@@ -1709,12 +1709,11 @@ def run_matching(
                 return ""
             return str(v)
 
-        # Read raw name from CSV and fix LP "LAST FIRST MIDDLE" format at the source
-        raw_name = str(row.get("Owner Name(s)") or row.get("Owner 1 Full Name") or "").strip()
-        print(f"RAW NAME FROM CSV: {raw_name!r}", flush=True)
-        owner_full, owner_first, owner_last = fix_name(raw_name)
-
-        # If dedicated first/last columns exist, prefer them (overrides fix_name result)
+        # Owner name resolution — priority order:
+        # 1. "Mail Names" column (LP exports this as "First Last", already correct)
+        # 2. Owner 1 First Name + Owner 1 Last Name separate columns
+        # 3. fix_name() on Owner Name(s) / Owner 1 Full Name (LP "LAST FIRST MIDDLE" format)
+        mail_names = str(row.get("Mail Names") or "").strip()
         col_first = _s(
             row.get("Owner 1 First Name") or
             row.get("Owner1FirstName") or
@@ -1727,12 +1726,22 @@ def run_matching(
             row.get("Owner Last Name") or
             row.get("Owner1 Last Name")
         )
-        if col_first and col_last:
+        raw_name = str(row.get("Owner Name(s)") or row.get("Owner 1 Full Name") or "").strip()
+
+        if mail_names and mail_names.lower() not in ("nan", "none"):
+            # Mail Names is already "First Last" — use directly
+            owner_full = mail_names
+            parts = mail_names.split(" ", 1)
+            owner_first = parts[0].strip() if parts else ""
+            owner_last = parts[1].strip() if len(parts) > 1 else ""
+        elif col_first and col_last:
             owner_first = col_first.strip().capitalize()
             owner_last = col_last.strip().capitalize()
             owner_full = f"{owner_first} {owner_last}"
+        else:
+            owner_full, owner_first, owner_last = fix_name(raw_name)
 
-        print(f"Name fixed: {raw_name!r} → {owner_full!r} (first={owner_first!r} last={owner_last!r})", flush=True)
+        print(f"Name resolved: mail_names={mail_names!r} raw={raw_name!r} → {owner_full!r}", flush=True)
 
         # Build parcel address - try dedicated columns first, then construct from available data
         parcel_street_address = _s(

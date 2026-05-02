@@ -16,11 +16,34 @@ from storage.session_store import store_comps, store_targets, get_comps
 router = APIRouter(prefix="/upload", tags=["upload"])
 
 
+_LLC_KEYWORDS = {
+    'LLC', 'CORP', 'INC', 'LTD', 'TRUST', 'PROPERTIES', 'HOLDINGS',
+    'INVESTMENT', 'DEVELOPMENT', 'VENTURES', 'REALTY', 'GROUP', 'PARTNERS',
+    'CAPITAL', 'ASSETS', 'ACQUISITIONS', 'LAND', 'REAL ESTATE',
+}
+
+
+def _buyer_type(buyer_name: str) -> str:
+    if not buyer_name:
+        return 'INDIVIDUAL'
+    upper = buyer_name.upper()
+    for kw in _LLC_KEYWORDS:
+        if kw in upper:
+            return 'LLC'
+    return 'INDIVIDUAL'
+
+
 def _save_comps_to_db(df: pd.DataFrame) -> int:
     """
     Persist comp rows to crm_sold_comps Supabase table.
     Clears existing comps for the same state(s) before inserting fresh data.
     Returns the count of rows inserted.
+
+    Filters applied:
+      - sale_price > 0
+      - acreage > 0
+      - sale_date not null/empty
+      - land_use contains "Vacant" or "Land" (case-insensitive)
     """
     try:
         from services.supabase_client import get_supabase
@@ -38,49 +61,113 @@ def _save_comps_to_db(df: pd.DataFrame) -> int:
                 sb.table("crm_sold_comps").delete().eq("state", state).execute()
             print(f"[comps-db] Cleared existing comps for states: {states}", flush=True)
 
-        def _sf(row, *cols):
-            for col in cols:
-                v = row.get(col)
-                if v is None:
-                    continue
-                try:
-                    fv = float(v)
-                    if not (fv != fv or fv == float("inf") or fv == float("-inf")):  # not NaN/inf
-                        return fv
-                except (TypeError, ValueError):
-                    pass
-            return None
+        def _sf(val) -> "float | None":
+            if val is None:
+                return None
+            try:
+                fv = float(val)
+                if fv != fv or fv == float("inf") or fv == float("-inf"):
+                    return None
+                return fv if fv != 0.0 else None
+            except (TypeError, ValueError):
+                return None
+
+        # First pass: build bulk sale key set (same buyer + same price + same date = subdivision bulk sale)
+        bulk_keys: set[tuple] = set()
+        bulk_key_counts: dict[tuple, int] = {}
+        for _, row in df.iterrows():
+            sp = _sf(row.get("Current Sale Price"))
+            sd = str(row.get("Current Sale Recording Date") or "").strip()
+            bn = str(row.get("Current Sale Buyer 1 Full Name") or "").strip().upper()
+            if sp and sp > 0 and sd and bn:
+                key = (bn, sp, sd)
+                bulk_key_counts[key] = bulk_key_counts.get(key, 0) + 1
+        # Any key with >1 occurrence is a bulk sale — exclude all rows matching it
+        bulk_keys = {k for k, cnt in bulk_key_counts.items() if cnt > 1}
+        print(f"[comps-db] Bulk sale groups detected: {len(bulk_keys)} (rows will be excluded)", flush=True)
 
         rows = []
+        skipped_filter = 0
+        skipped_bulk = 0
         for _, row in df.iterrows():
-            price = _sf(row, "Current Sale Price")
-            acreage = _sf(row, "Lot Acres", "Calc Acreage")
-            if not price or price <= 0 or not acreage or acreage <= 0:
+            # Exact LP column names
+            sale_price = _sf(row.get("Current Sale Price"))
+            acreage_raw = row.get("Lot Acres") or row.get("Calc Acreage")
+            acreage = _sf(acreage_raw)
+            sale_date = str(row.get("Current Sale Recording Date") or "").strip()
+            land_use = str(row.get("Land Use") or "").strip()
+
+            # Apply filters
+            if not sale_price or sale_price <= 0:
+                skipped_filter += 1
                 continue
-            ppa = _sf(row, "CP/Acre")
-            if ppa is None and acreage > 0:
-                ppa = price / acreage
+            if not acreage or acreage <= 0:
+                skipped_filter += 1
+                continue
+            if not sale_date or sale_date.lower() in ("nan", "none", ""):
+                skipped_filter += 1
+                continue
+            lu_lower = land_use.lower()
+            if land_use and "vacant" not in lu_lower and "land" not in lu_lower:
+                skipped_filter += 1
+                continue
+            # Zero/micro-acre records (subdivision bulk sales)
+            if acreage <= 0.05:
+                skipped_filter += 1
+                continue
+            # Mega commercial transactions
+            if sale_price > 5_000_000:
+                skipped_filter += 1
+                continue
+            # Extreme price-per-acre outliers
+            ppa_check = sale_price / acreage
+            if ppa_check > 2_000_000:
+                skipped_filter += 1
+                continue
+            # Bulk sale (same buyer + price + date = subdivision purchase)
+            bn = str(row.get("Current Sale Buyer 1 Full Name") or "").strip().upper()
+            if bulk_keys and (bn, sale_price, sale_date) in bulk_keys:
+                skipped_bulk += 1
+                continue
+
+            price_per_acre = sale_price / acreage if acreage > 0 else None
+
+            buyer_name = str(row.get("Current Sale Buyer 1 Full Name") or "").strip()
+            property_id = str(row.get("propertyID") or "").strip() or None
+            fips = str(row.get("Parcel FIPS") or "").strip() or None
+            # Normalize fips: drop trailing .0
+            if fips and fips.endswith(".0"):
+                fips = fips[:-2]
+
             rows.append({
                 "apn":               (str(row.get("APN") or "").strip() or None),
                 "county":            (str(row.get("Parcel County") or row.get("Parcel Address County") or "").strip() or None),
                 "state":             (str(row.get("Parcel State") or "").strip() or None),
                 "zip_code":          (str(row.get("Parcel Zip") or "").strip().split(".")[0] or None),
                 "acreage":           acreage,
-                "sale_price":        price,
-                "price_per_acre":    ppa,
-                "sale_date":         (str(row.get("Current Sale Recording Date") or "").strip() or None),
-                "latitude":          _sf(row, "Latitude"),
-                "longitude":         _sf(row, "Longitude"),
-                "slope_avg":         _sf(row, "Slope AVG", "Average Slope", "Slope"),
-                "wetlands_coverage": _sf(row, "Wetlands Coverage"),
-                "fema_coverage":     _sf(row, "FEMA Flood Coverage"),
-                "buildability":      _sf(row, "Buildability total (%)"),
-                "road_frontage":     _sf(row, "Road Frontage"),
-                "land_use":          (str(row.get("Land Use") or "").strip() or None),
-                "buyer_name":        (str(row.get("Current Sale Buyer 1 Full Name") or "").strip() or None),
+                "sale_price":        sale_price,
+                "price_per_acre":    price_per_acre,
+                "sale_date":         sale_date or None,
+                "latitude":          _sf(row.get("Latitude")),
+                "longitude":         _sf(row.get("Longitude")),
+                "slope_avg":         _sf(row.get("Slope AVG") or row.get("Average Slope") or row.get("Slope")),
+                "wetlands_coverage": _sf(row.get("Wetlands Coverage")),
+                "fema_coverage":     _sf(row.get("FEMA Flood Coverage")),
+                "buildability":      _sf(row.get("Buildability total (%)")),
+                "road_frontage":     _sf(row.get("Road Frontage")),
+                "elevation_avg":     _sf(row.get("Elevation AVG")),
+                "land_use":          land_use or None,
+                "buyer_name":        buyer_name or None,
+                "buyer_type":        _buyer_type(buyer_name),
                 "full_address":      (str(row.get("Parcel Full Address") or "").strip() or None),
+                "property_id":       property_id,
+                "fips":              fips,
                 "source":            "land_portal",
             })
+
+        print(f"[comps-db] Filtered out {skipped_filter} rows (no price/acreage/date/land_use/outlier)", flush=True)
+        print(f"[comps-db] Filtered out {skipped_bulk} rows (bulk sale exclusion)", flush=True)
+        print(f"[comps-db] Rows ready for DB insert: {len(rows)}", flush=True)
 
         CHUNK = 500
         inserted = 0
@@ -108,6 +195,8 @@ COMP_COLS_REQUIRED = [
     # Quality fields — preserved when present in LP comp exports
     'Road Frontage', 'Slope', 'Average Slope', 'Slope AVG',
     'Wetlands Coverage', 'FEMA Flood Coverage', 'Elevation AVG',
+    # Additional fields needed for DB persistence
+    'Land Use', 'propertyID', 'Parcel FIPS',
 ]
 
 TARGET_COLS_REQUIRED = [
