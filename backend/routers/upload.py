@@ -544,6 +544,28 @@ def parse_price(val) -> float:
         return 0.0
 
 
+def _parse_coord(row, *keys) -> "float | None":
+    """
+    Try each key in order and return the first valid non-zero coordinate.
+    Handles pandas NaN explicitly — NaN is truthy in Python so 'val or fallback'
+    silently skips fallback columns when the primary column is NaN.
+    """
+    for key in keys:
+        val = row.get(key)
+        if val is None:
+            continue
+        s = str(val).strip()
+        if s.lower() in ('', 'none', 'nan', '0', '0.0'):
+            continue
+        try:
+            f = float(s)
+            if math.isfinite(f) and f != 0.0:
+                return f
+        except Exception:
+            continue
+    return None
+
+
 def parse_float(val) -> "float | None":
     """Convert any value to Python float; returns None for invalid/NaN."""
     if val is None:
@@ -585,9 +607,16 @@ async def upload_comps(
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Could not parse CSV: {e}")
 
-    print(f"[comps] File read: {len(df)} rows, columns: {list(df.columns[:10])}", flush=True)
+    print(f"[comps] File read: {len(df)} rows, columns: {list(df.columns[:20])}", flush=True)
+    # Log coordinate column detection
+    _coord_cols = [c for c in df.columns if c.lower() in ('latitude','longitude','lat','lon','lng','x','y')]
+    print(f"[comps] Coordinate columns detected: {_coord_cols}", flush=True)
+    if _coord_cols:
+        _sample = df[_coord_cols].head(3).to_dict('records')
+        print(f"[comps] Coordinate sample (first 3 rows): {_sample}", flush=True)
 
     rows = []
+    _logged_rows = 0
     for _, row in df.iterrows():
         sale_price = parse_price(
             row.get("Current Sale Price") or
@@ -626,9 +655,12 @@ async def upload_comps(
             row.get("Sold Date") or
             row.get("sale_date")
         )
-        lat = parse_float(row.get("Latitude") or row.get("latitude"))
-        lon = parse_float(row.get("Longitude") or row.get("longitude"))
+        lat = _parse_coord(row, "Latitude", "latitude", "LAT", "lat", "Y", "y")
+        lon = _parse_coord(row, "Longitude", "longitude", "LON", "lon", "LNG", "lng", "X", "x")
         apn = str(row.get("APN") or row.get("Parcel Number") or row.get("apn") or "").strip()
+        if _logged_rows < 3:
+            print(f"Row lat/lon: raw_lat={row.get('Latitude')!r} raw_lon={row.get('Longitude')!r} → {lat} / {lon}", flush=True)
+            _logged_rows += 1
         land_use = str(row.get("Land Use") or row.get("land_use") or "").strip()
         buyer_name = str(
             row.get("Current Sale Buyer 1 Full Name") or
@@ -647,8 +679,8 @@ async def upload_comps(
                 "sale_date":     sale_date,
                 "apn":           apn or None,
                 "land_use":      land_use or None,
-                "latitude":      lat if (lat is not None and lat != 0.0) else None,
-                "longitude":     lon if (lon is not None and lon != 0.0) else None,
+                "latitude":      lat,
+                "longitude":     lon,
                 "buyer_name":    buyer_name or None,
                 "buyer_type":    _buyer_type(buyer_name),
                 "full_address":  str(row.get("Parcel Full Address") or row.get("Address") or "").strip() or None,
@@ -656,7 +688,8 @@ async def upload_comps(
                 "source":        "upload",
             })
 
-    print(f"[comps] Valid rows to save: {len(rows)} of {len(df)}", flush=True)
+    geo_count = sum(1 for r in rows if r.get("latitude") and r.get("longitude"))
+    print(f"[comps] Valid rows to save: {len(rows)} of {len(df)} | with coordinates: {geo_count}", flush=True)
 
     # APN dedup — skip rows whose APN is already in DB
     deduped_count = 0
@@ -1052,3 +1085,75 @@ async def normalize_counties_in_db():
         return {"total_checked": len(rows), "updated": updated}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/comps/fix-coordinates")
+async def fix_coordinates(file: UploadFile = File(...)):
+    """
+    Patch NULL lat/lon in crm_sold_comps by re-parsing a previously uploaded file.
+    Matches existing records by APN and updates only those with missing coordinates.
+    Does not re-insert or duplicate — updates in-place.
+    """
+    from services.supabase_client import get_supabase
+    content = await file.read()
+    try:
+        df = pd.read_csv(io.BytesIO(content), low_memory=False)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Could not parse CSV: {e}")
+
+    print(f"[fix-coords] File read: {len(df)} rows, columns: {list(df.columns[:20])}", flush=True)
+    _coord_cols = [c for c in df.columns if c.lower() in ('latitude', 'longitude', 'lat', 'lon', 'lng', 'x', 'y')]
+    print(f"[fix-coords] Coordinate columns: {_coord_cols}", flush=True)
+
+    # Build APN → (lat, lon) map from the file
+    apn_coords: dict = {}
+    for _, row in df.iterrows():
+        apn = str(row.get("APN") or row.get("Parcel Number") or row.get("apn") or "").strip()
+        if not apn:
+            continue
+        lat = _parse_coord(row, "Latitude", "latitude", "LAT", "lat", "Y", "y")
+        lon = _parse_coord(row, "Longitude", "longitude", "LON", "lon", "LNG", "lng", "X", "x")
+        if lat and lon:
+            apn_coords[apn] = (lat, lon)
+
+    print(f"[fix-coords] APNs with coordinates in file: {len(apn_coords)}", flush=True)
+    if not apn_coords:
+        return {"message": "No coordinate data found in file", "updated": 0}
+
+    sb = get_supabase()
+    # Fetch records with NULL coordinates (paginated)
+    null_rows: list = []
+    offset = 0
+    while True:
+        res = (sb.table("crm_sold_comps")
+               .select("id,apn")
+               .is_("latitude", "null")
+               .range(offset, offset + 999)
+               .execute())
+        batch = res.data or []
+        null_rows.extend(batch)
+        if len(batch) < 1000:
+            break
+        offset += 1000
+
+    print(f"[fix-coords] DB records with NULL latitude: {len(null_rows)}", flush=True)
+
+    updated = 0
+    skipped = 0
+    for rec in null_rows:
+        apn = str(rec.get("apn") or "").strip()
+        coords = apn_coords.get(apn)
+        if not coords:
+            skipped += 1
+            continue
+        lat, lon = coords
+        sb.table("crm_sold_comps").update({"latitude": lat, "longitude": lon}).eq("id", rec["id"]).execute()
+        updated += 1
+
+    print(f"[fix-coords] Updated: {updated}, Skipped (no match): {skipped}", flush=True)
+    return {
+        "file_apns_with_coords": len(apn_coords),
+        "db_null_coord_records": len(null_rows),
+        "updated": updated,
+        "skipped_no_match": skipped,
+    }
