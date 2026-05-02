@@ -249,7 +249,23 @@ export default function MatchTargets() {
     { key: 'closest_comp_distance', header: 'Distance to Closest Comp', sortable: true, align: 'right', defaultHidden: true, render: (v) => (v == null ? <span style={{ color: '#6B7280' }}>—</span> : <span className="text-xs">{(v as number).toFixed(2)}</span>) },
     { key: 'retail_estimate', header: 'Retail Est.', sortable: true, align: 'right', defaultHidden: true, render: (v) => <span className="text-xs" style={{ color: '#374151' }}>{fmtPrice(v as number)}</span> },
     { key: 'suggested_offer_low', header: 'Offer Low', align: 'right', render: (v) => <span className="text-xs" style={{ color: '#9CA3AF' }}>{fmtPrice(v as number)}</span> },
-    { key: 'suggested_offer_mid', header: 'Offer Mid', sortable: true, align: 'right', render: (v) => <span className="font-semibold" style={{ color: '#10B981' }}>{fmtPrice(v as number)}</span> },
+    {
+      key: 'suggested_offer_mid', header: 'Offer Mid', sortable: true, align: 'right',
+      render: (v, row) => {
+        const offerMid = v as number | null
+        const medianComp = row.median_comp_sale_price
+        const isLowOffer = offerMid != null && medianComp != null && medianComp > 0 && offerMid < medianComp * 0.20
+        return (
+          <span
+            className="font-semibold"
+            style={{ color: isLowOffer ? '#D97706' : '#10B981' }}
+            title={isLowOffer ? `Offer price (${fmtPrice(offerMid)}) is significantly below comp values (${fmtPrice(medianComp)} avg). Review before mailing.` : undefined}
+          >
+            {fmtPrice(offerMid)}{isLowOffer && ' ⚠️'}
+          </span>
+        )
+      },
+    },
     { key: 'suggested_offer_high', header: 'Offer High', align: 'right', render: (v) => <span className="text-xs" style={{ color: '#9CA3AF' }}>{fmtPrice(v as number)}</span> },
     { key: 'median_comp_sale_price', header: 'Med. Comp $', align: 'right', defaultHidden: true, render: (v) => <span className="text-xs">{fmtPrice(v as number)}</span> },
     { key: 'median_ppa', header: 'Med. PPA', align: 'right', defaultHidden: true, render: (v) => <span className="text-xs">{fmtPrice(v as number)}</span> },

@@ -1846,6 +1846,21 @@ def run_matching(
             else:
                 sorted_comps = matched_comps_df.reset_index(drop=True)
 
+            # Deduplicate by address — same physical property must not appear as multiple comps
+            _addr_col = 'Parcel Full Address'
+            if _addr_col in sorted_comps.columns:
+                _seen_addrs: set = set()
+                _keep: list = []
+                for _addr in sorted_comps[_addr_col].fillna('').str.strip().str.lower():
+                    if _addr == '':
+                        _keep.append(True)
+                    elif _addr in _seen_addrs:
+                        _keep.append(False)
+                    else:
+                        _seen_addrs.add(_addr)
+                        _keep.append(True)
+                sorted_comps = sorted_comps[_keep].reset_index(drop=True)
+
             num_comps_used = len(sorted_comps)
             if radius_label == 'ZIP_MATCH':
                 pricing_method = "ZIP_MATCHED"
@@ -1895,6 +1910,14 @@ def run_matching(
             if num_comps_used > 0 and comp_quality_flags and all(f in ("POOR_COMP", "STALE_COMP") for f in comp_quality_flags):
                 unique_flags.append("REVIEW_NEEDED")
             comp_quality_flags = unique_flags
+
+        # Flag if offer_mid is < 20% of median comp price (LP estimate too conservative)
+        _offer_mid_chk = pricing.get('offer_mid')
+        _median_comp_chk = pricing.get('median_comp_sale_price')
+        if (_offer_mid_chk and _median_comp_chk and _median_comp_chk > 0
+                and _offer_mid_chk < _median_comp_chk * 0.20
+                and "REVIEW_NEEDED" not in comp_quality_flags):
+            comp_quality_flags.append("REVIEW_NEEDED")
 
         # Update pricing_method for LP_FALLBACK case
         if pricing.get('pricing_flag') == 'LP_FALLBACK':
