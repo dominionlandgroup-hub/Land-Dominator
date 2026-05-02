@@ -17,6 +17,8 @@ from services.supabase_client import get_supabase
 
 router = APIRouter(tags=["communications"])
 
+print("=== Communications router loaded - ready for calls ===")
+
 # ── Config ─────────────────────────────────────────────────────────────────────
 
 def _telnyx_key() -> str:    return os.getenv("TELNYX_API_KEY", "")
@@ -1535,6 +1537,10 @@ async def initiate_outbound_call(body: OutboundCallRequest) -> dict:
 
     bridge_webhook = f"{_base_url()}/api/calls/bridge-announce/{bridge_id}"
 
+    print(f"[comms] Initiating outbound call to agent: {callback_e164}")
+    print(f"[comms] Using connection ID: {connection_id}")
+    print(f"[comms] From: {from_phone}")
+
     try:
         payload: dict = {
             "connection_id": connection_id,
@@ -1549,13 +1555,20 @@ async def initiate_outbound_call(body: OutboundCallRequest) -> dict:
                 json=payload,
                 headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
             )
+            print(f"[comms] Telnyx outbound response: {r.status_code} {r.text[:500]}")
             if r.status_code >= 400:
-                raise HTTPException(status_code=r.status_code, detail=f"Telnyx: {r.text[:300]}")
+                telnyx_detail = r.json().get("errors", [{}])[0].get("detail", r.text[:300]) if r.headers.get("content-type", "").startswith("application/json") else r.text[:300]
+                raise HTTPException(
+                    status_code=r.status_code,
+                    detail=f"Telnyx error: {telnyx_detail}",
+                )
             call_data = r.json().get("data", {})
             call_id = call_data.get("call_control_id", "")
+            print(f"[comms] Call initiated: call_control_id={call_id}")
     except HTTPException:
         raise
     except Exception as exc:
+        print(f"[comms] Outbound call exception: {exc}")
         raise HTTPException(status_code=500, detail=str(exc))
 
     comm = await _log_comm(

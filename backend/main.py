@@ -86,6 +86,31 @@ async def start_scheduler() -> None:
 
 
 @app.on_event("startup")
+async def check_env_vars() -> None:
+    """Log presence/absence of all required environment variables at startup."""
+    required_vars = [
+        "TELNYX_API_KEY",
+        "TELNYX_PHONE_NUMBER",
+        "TELNYX_CALLBACK_NUMBER",
+        "TELNYX_CONNECTION_ID",
+        "ELEVENLABS_API_KEY",
+        "ELEVENLABS_VOICE_ID",
+        "SENDGRID_API_KEY",
+        "SUPABASE_URL",
+        "SUPABASE_KEY",
+        "ANTHROPIC_API_KEY",
+    ]
+    print("=== Startup environment check ===")
+    for var in required_vars:
+        val = os.getenv(var)
+        if val:
+            print(f"  ✓ {var} is set")
+        else:
+            print(f"  ✗ {var} is MISSING")
+    print("=================================")
+
+
+@app.on_event("startup")
 async def warmup_tts() -> None:
     """Pre-generate TTS audio in background — non-blocking so server accepts calls immediately."""
     try:
