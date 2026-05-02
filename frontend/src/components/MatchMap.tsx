@@ -142,7 +142,7 @@ export default function MatchMap({ targets, comps = [], radiusMiles = 1, onSelec
             <div><span style="color:#6B5B8A">Acres:</span> ${t.lot_acres?.toFixed(2) ?? '—'}</div>
             <div><span style="color:#6B5B8A">Score:</span> <strong style="color:${color}">${t.match_score}/5</strong></div>
             <div><span style="color:#6B5B8A">Confidence:</span> <strong>${conf}</strong> (${t.matched_comp_count} comps)</div>
-            ${t.suggested_offer_mid != null ? `<div><span style="color:#6B5B8A">Offer Mid:</span> <strong style="color:#2D7A4F">$${Math.round(t.suggested_offer_mid).toLocaleString()}</strong></div>` : ''}
+            ${t.suggested_offer_mid != null ? `<div><span style="color:#6B5B8A">Offer Mid:</span> <strong style="color:#2D7A4F">${new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2,maximumFractionDigits:2}).format(t.suggested_offer_mid)}</strong></div>` : ''}
           </div>`,
           { maxWidth: 240 }
         )
@@ -355,7 +355,7 @@ export default function MatchMap({ targets, comps = [], radiusMiles = 1, onSelec
         {avgOffer != null && (
           <div>
             <span className="text-xs" style={{ color: '#6B5B8A' }}>Avg offer: </span>
-            <span className="text-sm font-bold" style={{ color: '#2D7A4F' }}>${Math.round(avgOffer).toLocaleString()}</span>
+            <span className="text-sm font-bold" style={{ color: '#2D7A4F' }}>{new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2,maximumFractionDigits:2}).format(avgOffer)}</span>
           </div>
         )}
         {highestScore > 0 && (

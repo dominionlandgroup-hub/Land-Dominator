@@ -14,6 +14,11 @@ import WelcomeScreen from './WelcomeScreen'
 
 const SQFT_PER_ACRE = 43560
 
+function fmtPrice(v: number | null | undefined): string {
+  if (v == null || isNaN(v as number)) return '—'
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v as number)
+}
+
 export default function MatchTargets() {
   const {
     compsStats,
@@ -223,16 +228,16 @@ export default function MatchTargets() {
     },
     { key: 'comp_count', header: 'Comp Count', sortable: true, align: 'center', defaultHidden: true, render: (v) => <span className="text-xs">{String(v ?? '—')}</span> },
     { key: 'closest_comp_distance', header: 'Distance to Closest Comp', sortable: true, align: 'right', defaultHidden: true, render: (v) => (v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">{(v as number).toFixed(2)}</span>) },
-    { key: 'retail_estimate', header: 'Retail Est.', sortable: true, align: 'right', defaultHidden: true, render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs" style={{ color: '#1A0A2E' }}>${Math.round(v as number).toLocaleString()}</span> },
-    { key: 'suggested_offer_low', header: 'Offer Low', align: 'right', render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs" style={{ color: '#6B5B8A' }}>${Math.round(v as number).toLocaleString()}</span> },
-    { key: 'suggested_offer_mid', header: 'Offer Mid', sortable: true, align: 'right', render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="font-semibold" style={{ color: '#059669' }}>${Math.round(v as number).toLocaleString()}</span> },
-    { key: 'suggested_offer_high', header: 'Offer High', align: 'right', render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs" style={{ color: '#6B5B8A' }}>${Math.round(v as number).toLocaleString()}</span> },
-    { key: 'median_comp_sale_price', header: 'Med. Comp $', align: 'right', defaultHidden: true, render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span> },
-    { key: 'median_ppa', header: 'Med. PPA', align: 'right', defaultHidden: true, render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span> },
-    { key: 'min_comp_price', header: 'Min Comp $', align: 'right', defaultHidden: true, render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span> },
-    { key: 'max_comp_price', header: 'Max Comp $', align: 'right', defaultHidden: true, render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs">${Math.round(v as number).toLocaleString()}</span> },
+    { key: 'retail_estimate', header: 'Retail Est.', sortable: true, align: 'right', defaultHidden: true, render: (v) => <span className="text-xs" style={{ color: '#1A0A2E' }}>{fmtPrice(v as number)}</span> },
+    { key: 'suggested_offer_low', header: 'Offer Low', align: 'right', render: (v) => <span className="text-xs" style={{ color: '#6B5B8A' }}>{fmtPrice(v as number)}</span> },
+    { key: 'suggested_offer_mid', header: 'Offer Mid', sortable: true, align: 'right', render: (v) => <span className="font-semibold" style={{ color: '#059669' }}>{fmtPrice(v as number)}</span> },
+    { key: 'suggested_offer_high', header: 'Offer High', align: 'right', render: (v) => <span className="text-xs" style={{ color: '#6B5B8A' }}>{fmtPrice(v as number)}</span> },
+    { key: 'median_comp_sale_price', header: 'Med. Comp $', align: 'right', defaultHidden: true, render: (v) => <span className="text-xs">{fmtPrice(v as number)}</span> },
+    { key: 'median_ppa', header: 'Med. PPA', align: 'right', defaultHidden: true, render: (v) => <span className="text-xs">{fmtPrice(v as number)}</span> },
+    { key: 'min_comp_price', header: 'Min Comp $', align: 'right', defaultHidden: true, render: (v) => <span className="text-xs">{fmtPrice(v as number)}</span> },
+    { key: 'max_comp_price', header: 'Max Comp $', align: 'right', defaultHidden: true, render: (v) => <span className="text-xs">{fmtPrice(v as number)}</span> },
     { key: 'outliers_removed', header: 'Outliers', align: 'center', defaultHidden: true, render: (v) => <span className="text-xs">{String(v ?? 0)}</span> },
-    { key: 'tlp_estimate', header: 'TLP Est.', align: 'right', defaultHidden: true, render: (v) => v == null ? <span style={{ color: '#9B8AAE' }}>—</span> : <span className="text-xs" style={{ color: '#6B5B8A' }}>${Math.round(v as number).toLocaleString()}</span> },
+    { key: 'tlp_estimate', header: 'TLP Est.', align: 'right', defaultHidden: true, render: (v) => <span className="text-xs" style={{ color: '#6B5B8A' }}>{fmtPrice(v as number)}</span> },
     { key: 'tlp_capped', header: 'TLP Cap', align: 'center', defaultHidden: true, render: (v) => <span className="text-xs">{v ? 'Yes' : 'No'}</span> },
     { key: 'flood_zone', header: 'Flood', defaultHidden: true, render: (v) => <span className="text-xs" style={{ color: '#6B5B8A' }}>{String(v || '—')}</span> },
     {
@@ -464,7 +469,7 @@ export default function MatchTargets() {
               <div className="mb-5 px-4 py-3 rounded-xl flex items-center justify-between" style={{ background: '#D1FAE5', border: '1px solid rgba(5,150,105,0.25)' }}>
                 <div>
                   <p className="text-sm font-medium" style={{ color: '#059669' }}>
-                    Recommended minimum: <strong>${Math.round(matchResult.smart_floor_recommendation).toLocaleString()}</strong> based on comp data
+                    Recommended minimum: <strong>{fmtPrice(matchResult.smart_floor_recommendation)}</strong> based on comp data
                   </p>
                   <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>
                     Hard floor is currently <strong>${Number(minOfferFloor || 10000).toLocaleString()}</strong> — click "Use this floor" to apply the recommendation

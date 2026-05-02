@@ -283,7 +283,7 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
   function openSmsModal() {
     const firstName = form.owner_first_name || form.owner_full_name?.split(' ')[0] || 'there'
     const addr = form.property_address || `${form.county ? form.county + ' County' : 'your area'}`
-    const offerFmt = form.offer_price ? `$${Math.round(form.offer_price).toLocaleString()}` : 'our cash offer'
+    const offerFmt = form.offer_price ? fmtCurrency(form.offer_price) : 'our cash offer'
     const telnyx = '[Your Phone Number]'
     setSmsMessage(
       `Hi ${firstName}, this is Dominion Land Group. We sent you a letter about your property at ${addr}. ` +
@@ -375,7 +375,7 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
     try {
       const updated = await pullLpData(property.id)
       setForm(updated)
-      setLpMsg(`✓ LP data pulled — LP Estimate: $${updated.lp_estimate?.toLocaleString() ?? '—'}, Offer Price: $${updated.offer_price?.toLocaleString() ?? '—'}`)
+      setLpMsg(`✓ LP data pulled — LP Estimate: ${updated.lp_estimate != null ? fmtCurrency(updated.lp_estimate) : '—'}, Offer Price: ${updated.offer_price != null ? fmtCurrency(updated.offer_price) : '—'}`)
     } catch (e: unknown) {
       const err = e as { response?: { data?: { detail?: string } } }
       setError(err?.response?.data?.detail ?? 'LP pull failed')

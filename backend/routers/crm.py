@@ -702,7 +702,7 @@ def _run_import_job(job_id: str, content: bytes) -> None:
                     continue
                 data["updated_at"] = now
                 if not data.get("offer_price") and data.get("lp_estimate"):
-                    data["offer_price"] = round(float(data["lp_estimate"]) * 0.525, 2)
+                    data["offer_price"] = float(data["lp_estimate"]) * 0.525
                 batch.append(data)
                 if len(batch) >= 500:
                     n, warns = _safe_batch_insert(sb, batch)
@@ -768,7 +768,7 @@ async def import_properties_batch(
                     continue
                 data["updated_at"] = now
                 if not data.get("offer_price") and data.get("lp_estimate"):
-                    data["offer_price"] = round(float(data["lp_estimate"]) * 0.525, 2)
+                    data["offer_price"] = float(data["lp_estimate"]) * 0.525
                 batch.append(data)
                 if len(batch) >= 50:
                     n, warns = _safe_batch_insert(sb, batch)
@@ -1197,9 +1197,9 @@ async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)
                 "property_id": prop_id,
                 "fips": fips_val,
                 # Pricing
-                "offer_price": round(float(r["suggested_offer_mid"]), 2) if r.get("suggested_offer_mid") is not None else None,
+                "offer_price": float(r["suggested_offer_mid"]) if r.get("suggested_offer_mid") is not None else None,
                 "lp_estimate": r.get("retail_estimate"),
-                "recommended_offer": round(float(r["suggested_offer_mid"]), 2) if r.get("suggested_offer_mid") is not None else None,
+                "recommended_offer": float(r["suggested_offer_mid"]) if r.get("suggested_offer_mid") is not None else None,
                 "confidence_level": r.get("confidence") or None,
                 "pricing_method_used": r.get("pricing_method") or None,
                 # Geo
@@ -1389,9 +1389,9 @@ def _run_lp_pull_job(job_id: str, campaign_id: str) -> None:
                 if price_acre_mean is not None:
                     updates["price_per_acre"] = round(price_acre_mean, 2)
                     if size:
-                        lp_estimate = round(price_acre_mean * size, 2)
+                        lp_estimate = price_acre_mean * size
                         updates["lp_estimate"] = lp_estimate
-                        updates["offer_price"] = round(lp_estimate * 0.525, 2)
+                        updates["offer_price"] = lp_estimate * 0.525
 
                 comps = data.get("list_of_rows_data", [])
                 for i, comp in enumerate(comps[:3], 1):
@@ -1478,7 +1478,7 @@ async def bulk_insert_properties(
                     record_num = starting_record + valid_index
                     data["campaign_code"] = f"{campaign_number:02d}-{record_num}"
             if not data.get("offer_price") and data.get("lp_estimate"):
-                data["offer_price"] = round(float(data["lp_estimate"]) * 0.525, 2)
+                data["offer_price"] = float(data["lp_estimate"]) * 0.525
             valid_index += 1
             mapped.append(data)
         except Exception as exc:
@@ -1893,9 +1893,9 @@ async def pull_lp_data_for_property(property_id: str) -> dict:
     if price_acre_mean is not None:
         updates["price_per_acre"] = round(price_acre_mean, 2)
         if size:
-            lp_estimate = round(price_acre_mean * size, 2)
+            lp_estimate = price_acre_mean * size
             updates["lp_estimate"] = lp_estimate
-            updates["offer_price"] = round(lp_estimate * 0.525, 2)
+            updates["offer_price"] = lp_estimate * 0.525
 
     comps = data.get("list_of_rows_data", [])
     for i, comp in enumerate(comps[:3], 1):

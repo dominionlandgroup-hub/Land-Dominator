@@ -97,9 +97,9 @@ export default function CompMap({ comps, availableZips, visibleZips, onZipToggle
           `<div style="font-family:Montserrat,sans-serif;font-size:12px;min-width:180px">
             <div style="font-weight:600;color:#D5A940;margin-bottom:6px">ZIP ${c.zip}</div>
             ${c.apn ? `<div><span style="color:#6B5B8A">APN:</span> ${c.apn}</div>` : ''}
-            <div><span style="color:#6B5B8A">Sale Price:</span> <strong>$${Math.round(c.sale_price).toLocaleString()}</strong></div>
+            <div><span style="color:#6B5B8A">Sale Price:</span> <strong>${new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2,maximumFractionDigits:2}).format(c.sale_price)}</strong></div>
             <div><span style="color:#6B5B8A">Lot Size:</span> ${c.lot_acres.toFixed(2)} acres</div>
-            <div><span style="color:#6B5B8A">Price/Acre:</span> $${Math.round(c.price_per_acre).toLocaleString()}</div>
+            <div><span style="color:#6B5B8A">Price/Acre:</span> ${new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2,maximumFractionDigits:2}).format(c.price_per_acre)}</div>
             ${c.sale_date ? `<div><span style="color:#6B5B8A">Sale Date:</span> ${c.sale_date}</div>` : ''}
           </div>`,
           { maxWidth: 220 }

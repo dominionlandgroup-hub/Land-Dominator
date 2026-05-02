@@ -783,7 +783,7 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
                         {p.campaign_code ?? <span style={{ color: '#C4B5D8' }}>—</span>}
                       </td>
                       <td style={{ padding: '10px 12px', textAlign: 'right', color: '#3D2B5E', fontWeight: 500 }}>
-                        {p.offer_price != null ? `$${p.offer_price.toLocaleString()}` : <span style={{ color: '#C4B5D8' }}>—</span>}
+                        {p.offer_price != null ? new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2,maximumFractionDigits:2}).format(p.offer_price) : <span style={{ color: '#C4B5D8' }}>—</span>}
                       </td>
                       <td style={{ padding: '10px 12px' }}>
                         <span

@@ -801,9 +801,9 @@ def calculate_offer_price(
         result['comp_count'] = int(total_before_clean)
         result['clean_comp_count'] = 0
         result['outliers_removed'] = int(outliers_removed)
-        result['median_comp_sale_price'] = round(float(np.median(prices)))
-        result['min_comp_price'] = round(float(np.min(prices)))
-        result['max_comp_price'] = round(float(np.max(prices)))
+        result['median_comp_sale_price'] = float(np.median(prices))
+        result['min_comp_price'] = float(np.min(prices))
+        result['max_comp_price'] = float(np.max(prices))
         result['radius_label'] = radius_label or '1mi'
         result['radius_used_miles'] = {'0.25mi': 0.25, '0.50mi': 0.50, '1mi': 1.0, 'same_street': 0.0}.get(radius_label)
         result['no_match_reason'] = reason
@@ -815,9 +815,9 @@ def calculate_offer_price(
         result['comp_count'] = int(total_before_clean)
         result['clean_comp_count'] = 0
         result['outliers_removed'] = int(outliers_removed)
-        result['median_comp_sale_price'] = round(float(np.median(prices)))
-        result['min_comp_price'] = round(float(np.min(prices)))
-        result['max_comp_price'] = round(float(np.max(prices)))
+        result['median_comp_sale_price'] = float(np.median(prices))
+        result['min_comp_price'] = float(np.min(prices))
+        result['max_comp_price'] = float(np.max(prices))
         result['radius_label'] = radius_label or '1mi'
         result['radius_used_miles'] = {'0.25mi': 0.25, '0.50mi': 0.50, '1mi': 1.0, 'same_street': 0.0}.get(radius_label)
         result['no_match_reason'] = 'INCONSISTENT_COMPS'
@@ -845,9 +845,9 @@ def calculate_offer_price(
     # Client-confirmed 60/65/70 percentages (updated March 2026)
     if tlp_estimate and tlp_estimate > 0 and retail_estimate > tlp_estimate * 2.0:
         retail_estimate = tlp_estimate
-    offer_low = round(retail_estimate * LOW_PCT, 2)
-    offer_mid = round(retail_estimate * MID_PCT, 2)
-    offer_high = round(retail_estimate * HIGH_PCT, 2)
+    offer_low = retail_estimate * LOW_PCT
+    offer_mid = retail_estimate * MID_PCT
+    offer_high = retail_estimate * HIGH_PCT
 
     # Confidence based on comp count
     n = len(comps)
@@ -863,17 +863,17 @@ def calculate_offer_price(
     radius_used_miles = _radius_map.get(radius_label) if radius_label else None
 
     result: Dict[str, Any] = {
-        'retail_estimate': round(retail_estimate),
+        'retail_estimate': float(retail_estimate),
         'offer_low': offer_low,
         'offer_mid': offer_mid,
         'offer_high': offer_high,
         'comp_count': int(total_before_clean),
         'clean_comp_count': int(n),
         'outliers_removed': int(outliers_removed),
-        'median_comp_sale_price': round(float(np.median(prices))),
-        'median_ppa': round(float(np.median(ppas))),
-        'min_comp_price': round(float(np.min(prices))),
-        'max_comp_price': round(float(np.max(prices))),
+        'median_comp_sale_price': float(np.median(prices)),
+        'median_ppa': float(np.median(ppas)),
+        'min_comp_price': float(np.min(prices)),
+        'max_comp_price': float(np.max(prices)),
         'acreage_band': acreage_band_label or 'unknown',
         'confidence': confidence,
         'tlp_estimate': tlp_estimate,
@@ -1624,10 +1624,10 @@ def run_matching(
             pricing.update({
                 'pricing_flag': 'LP_FALLBACK',
                 'pricing_source': 'LP_FALLBACK',
-                'retail_estimate': round(lp_retail),
-                'offer_low': round(lp_retail * LOW_PCT, 2),
-                'offer_mid': round(lp_retail * MID_PCT, 2),
-                'offer_high': round(lp_retail * HIGH_PCT, 2),
+                'retail_estimate': float(lp_retail),
+                'offer_low': lp_retail * LOW_PCT,
+                'offer_mid': lp_retail * MID_PCT,
+                'offer_high': lp_retail * HIGH_PCT,
                 'confidence': 'EST',
                 'no_match_reason': _lp_reason,
                 'radius_label': 'LP_FALLBACK',

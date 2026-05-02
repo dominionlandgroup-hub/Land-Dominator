@@ -545,5 +545,6 @@ function buildOfferSummary(stats: Record<string, unknown>): string {
   if (!min && !max && !med) {
     return 'Offers ranging N/A, median N/A'
   }
-  return `Offers ranging $${Math.round(min).toLocaleString()}-$${Math.round(max).toLocaleString()}, median $${Math.round(med).toLocaleString()}`
+  const fmt = (v: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)
+  return `Offers ranging ${fmt(min)}-${fmt(max)}, median ${fmt(med)}`
 }

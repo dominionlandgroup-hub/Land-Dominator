@@ -523,7 +523,7 @@ export default function MailingList() {
                 <div>
                   <p style={{ color: '#6B5B8A' }}>Offer price range</p>
                   <p className="font-semibold" style={{ color: '#1A0A2E' }}>
-                    ${Math.round(offerMin).toLocaleString()} – ${Math.round(offerMax95).toLocaleString()}
+                    {new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2,maximumFractionDigits:2}).format(offerMin)} – {new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2,maximumFractionDigits:2}).format(offerMax95)}
                   </p>
                   {hasOutlier && (
                     <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>
