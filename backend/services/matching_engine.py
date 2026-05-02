@@ -2120,7 +2120,7 @@ def run_matching(
     )
     if _target_county_col:
         target_counties_set = set(
-            str(v).strip().lower()
+            normalize_county(str(v))
             for v in targets[_target_county_col].dropna()
             if str(v).strip()
         )

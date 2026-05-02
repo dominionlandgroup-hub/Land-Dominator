@@ -464,6 +464,12 @@ def _map_pebble_row(row: dict, col_to_field: dict[str, str]) -> dict:
     if extra_phones:
         result["additional_phones"] = extra_phones
 
+    # Normalize county to lowercase without " county" suffix
+    if result.get("county"):
+        _c = str(result["county"]).lower().strip()
+        _c = _c.replace(" county", "").replace("county", "").strip()
+        result["county"] = _c or None
+
     # ── Owner name post-processing ────────────────────────────────────────
     first1 = (result.get("owner_first_name") or "").strip()
     last1  = (result.get("owner_last_name")  or "").strip()

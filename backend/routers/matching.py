@@ -68,12 +68,17 @@ def _load_comps_from_db(states: "list[str] | None" = None) -> "pd.DataFrame | No
             return None
 
         # Map DB column names → LP export column names used by matching engine
+        def _norm_county(v: object) -> str:
+            s = str(v or "").lower().strip()
+            return s.replace(" county", "").replace("county", "").strip()
+
         mapped = []
         for row in rows:
+            _county = _norm_county(row.get("county") or "")
             mapped.append({
                 "APN":                              row.get("apn") or "",
-                "Parcel County":                    row.get("county") or "",
-                "Parcel Address County":            row.get("county") or "",
+                "Parcel County":                    _county,
+                "Parcel Address County":            _county,
                 "Parcel State":                     row.get("state") or "",
                 "Parcel Zip":                       str(row.get("zip_code") or ""),
                 "Lot Acres":                        row.get("acreage"),
