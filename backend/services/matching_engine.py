@@ -164,6 +164,8 @@ COMP_SEARCH_STEPS = [
     (1.00, '1mi'),
     (2.00, '2mi'),
     (3.00, '3mi'),
+    (5.00, '5mi'),
+    (10.00, '10mi'),
 ]
 
 # Minimum comps before stopping radius expansion; accept 1 at final step
@@ -1011,6 +1013,17 @@ def run_matching(
     )
     comp_band_labels = _acreage_band_label_vec(comp_acres)
 
+    # Pre-compute county median PPA for county-level fallback
+    county_ppa_medians: dict = {}
+    if len(vc) > 0 and 'ppa' in vc.columns:
+        for _county_key in set(comp_counties):
+            if _county_key:
+                _cmask = comp_counties == _county_key
+                _ppas = comp_ppa[_cmask]
+                if len(_ppas) >= 3:
+                    county_ppa_medians[_county_key] = float(np.median(_ppas))
+    print(f"[match] County PPA medians: {len(county_ppa_medians)} counties — {sorted(county_ppa_medians.keys())[:10]}", flush=True)
+
     # Extract street names from comp addresses for same-street matching
     comp_streets = np.array([""] * len(vc), dtype=object)
     if "Parcel Full Address" in vc.columns:
@@ -1277,6 +1290,12 @@ def run_matching(
         target_apn = str(row.get("APN", "")).strip()
         debug = target_apn in DEBUG_APNS
         is_premium = False  # Initialize here
+        target_county_raw = str(
+            row.get("Parcel County")
+            or row.get("Parcel Address County")
+            or row.get("County")
+            or ""
+        ).strip().lower()
 
         # Apply acreage band filter
         band_label = 'unknown'
@@ -1401,12 +1420,6 @@ def run_matching(
 
             # County-awareness guard: if nearby comps are all from different counties,
             # treat as no local comps and avoid forced pricing.
-            target_county_raw = str(
-                row.get("Parcel County")
-                or row.get("Parcel Address County")
-                or row.get("County")
-                or ""
-            ).strip().lower()
             if matched_mask.sum() > 0 and target_county_raw:
                 nearby_counties = comp_counties[matched_mask]
                 target_county_key = target_county_raw.split()[0]
@@ -1491,6 +1504,29 @@ def run_matching(
                                 flush=True,
                             )
 
+            # ── Step: Same ZIP code, any acreage band (no distance constraint) ──
+            if matched_mask.sum() == 0 and t_zip_str and t_zip_str not in ('nan', 'None', ''):
+                zip_all_mask = np.array([str(z).split('.')[0].strip() == t_zip_str for z in comp_zips])
+                if int(zip_all_mask.sum()) >= 2:
+                    matched_mask = zip_all_mask
+                    radius_label = 'ZIP'
+                    if debug:
+                        print(
+                            f"[DEBUG {target_apn}] ZIP FALLBACK: {zip_all_mask.sum()} comps in ZIP {t_zip_str}",
+                            flush=True,
+                        )
+
+            # ── Step: Same county, any acreage band (set radius label — pricing handled below) ──
+            if matched_mask.sum() == 0 and target_county_raw:
+                target_county_key = target_county_raw.split()[0]
+                county_key_match = (
+                    target_county_key if target_county_key in county_ppa_medians
+                    else (target_county_raw if target_county_raw in county_ppa_medians else None)
+                )
+                if county_key_match:
+                    # Mark so county median pricing fires below
+                    radius_label = 'COUNTY_MEDIAN'
+
         n_matched = int(matched_mask.sum())
         t_zip = t_zips[ti]
 
@@ -1556,11 +1592,36 @@ def run_matching(
         if cross_county_match and pricing.get('pricing_flag') == 'NO_COMPS':
             pricing['no_match_reason'] = 'NO_LOCAL_COMPS'
 
+        # ── COUNTY_MEDIAN: county PPA median × target acres ──
+        if pricing['pricing_flag'] == 'NO_COMPS' and radius_label == 'COUNTY_MEDIAN' and has_acres and target_acres > 0:
+            target_county_key = target_county_raw.split()[0] if target_county_raw else ''
+            _county_ppa = (
+                county_ppa_medians.get(target_county_key)
+                or county_ppa_medians.get(target_county_raw)
+            )
+            if _county_ppa and _county_ppa > 0:
+                _county_retail = _county_ppa * float(target_acres)
+                if _county_retail > 0 and (not max_retail_price or _county_retail <= max_retail_price):
+                    pricing.update({
+                        'pricing_flag': 'COUNTY_MEDIAN',
+                        'pricing_source': 'COUNTY_MEDIAN',
+                        'retail_estimate': round(_county_retail),
+                        'offer_low': round(_county_retail * LOW_PCT),
+                        'offer_mid': round(_county_retail * MID_PCT),
+                        'offer_high': round(_county_retail * HIGH_PCT),
+                        'confidence': 'EST',
+                        'no_match_reason': f'No comps within 10mi — county median used',
+                        'radius_label': 'COUNTY_MEDIAN',
+                        'comp_count': 0,
+                        'clean_comp_count': 0,
+                        'closest_comp_distance': None,
+                    })
+
         # ── LP_FALLBACK: no comps but target has a TLP/LP Estimate ──
         # Use lp_estimate × pricing percentages as fallback pricing
         if pricing['pricing_flag'] == 'NO_COMPS' and tlp_val and tlp_val > 0:
             lp_retail = float(tlp_val)
-            _lp_reason = _no_match_pre_reason or 'No comps within 3 miles'
+            _lp_reason = _no_match_pre_reason or 'No comps within 10 miles'
             pricing.update({
                 'pricing_flag': 'LP_FALLBACK',
                 'pricing_source': 'LP_FALLBACK',
@@ -1576,7 +1637,7 @@ def run_matching(
 
         # Set human-readable no_match_reason for records that remain unpriced
         if pricing.get('pricing_flag') == 'NO_COMPS' and not pricing.get('no_match_reason'):
-            pricing['no_match_reason'] = _no_match_pre_reason or 'No comps within 3 miles'
+            pricing['no_match_reason'] = _no_match_pre_reason or 'No comps within 10 miles'
 
         if debug:
             print(f"[DEBUG {target_apn}] PRICING RESULT:", flush=True)
@@ -1715,6 +1776,8 @@ def run_matching(
         # Update pricing_method for LP_FALLBACK case
         if pricing.get('pricing_flag') == 'LP_FALLBACK':
             pricing_method = 'LP_FALLBACK'
+        if pricing.get('pricing_flag') == 'COUNTY_MEDIAN':
+            pricing_method = 'COUNTY_MEDIAN'
 
         # ── Pricing sanity flag (TLP comparison) ──
         pricing_sanity_flag = "NO_TLP"
@@ -1903,6 +1966,55 @@ def run_matching(
 
     results.sort(key=lambda x: x["match_score"], reverse=True)
 
+    # ── County coverage diagnostics ───────────────────────────────────────
+    comp_counties_set = set(c for c in comp_counties if c)
+    _target_county_col = next(
+        (col for col in ('Parcel County', 'Parcel Address County', 'County') if col in targets.columns),
+        None,
+    )
+    if _target_county_col:
+        target_counties_set = set(
+            str(v).strip().lower()
+            for v in targets[_target_county_col].dropna()
+            if str(v).strip()
+        )
+    else:
+        target_counties_set = set()
+    covered_counties   = sorted(target_counties_set & comp_counties_set)
+    uncovered_counties = sorted(target_counties_set - comp_counties_set)
+    coverage_pct = round(len(covered_counties) / len(target_counties_set) * 100) if target_counties_set else 100
+    county_diagnostics = {
+        'target_county_count':  len(target_counties_set),
+        'comp_county_count':    len(comp_counties_set),
+        'covered_county_count': len(covered_counties),
+        'uncovered_counties':   uncovered_counties,
+        'coverage_pct':         coverage_pct,
+        'message': (
+            f"Your comps cover {len(covered_counties)} of {len(target_counties_set)} counties in your target list."
+            + (f" Missing: {', '.join(uncovered_counties[:5])}{'...' if len(uncovered_counties) > 5 else ''}." if uncovered_counties else "")
+        ),
+    }
+    print(f"[match] County coverage: {len(covered_counties)}/{len(target_counties_set)} ({coverage_pct}%)", flush=True)
+    if uncovered_counties:
+        print(f"[match] Uncovered counties: {uncovered_counties}", flush=True)
+
+    # ── Pricing method breakdown ──────────────────────────────────────────
+    _breakdown_keys = ['0.25mi', '0.50mi', '1mi', '2mi', '3mi', '5mi', '10mi', 'ZIP', 'COUNTY_MEDIAN', 'LP_FALLBACK', 'NO_DATA']
+    pricing_breakdown: dict = {k: 0 for k in _breakdown_keys}
+    county_median_count = 0
+    for _r in results:
+        _flag = _r.get('pricing_flag')
+        _rl   = _r.get('radius_label', '')
+        if _flag == 'MATCHED' and _rl in pricing_breakdown:
+            pricing_breakdown[_rl] += 1
+        elif _flag == 'COUNTY_MEDIAN':
+            pricing_breakdown['COUNTY_MEDIAN'] += 1
+            county_median_count += 1
+        elif _flag == 'LP_FALLBACK':
+            pricing_breakdown['LP_FALLBACK'] += 1
+        elif _flag in ('NO_COMPS', None):
+            pricing_breakdown['NO_DATA'] += 1
+
     # Debug: Verify first result in final sorted list
     if results:
         print(f"\n[DEBUG] Final result sample (before return):", flush=True)
@@ -1942,8 +2054,11 @@ def run_matching(
         "low_offer_count": low_offer_count,
         "low_value_count": low_value_count,
         "unpriced_count": unpriced_count,
+        "county_median_count": county_median_count,
         "smart_floor_recommendation": smart_floor_recommendation,
         "results": results,
         "warnings": warnings,
         "filter_counts": filter_counts,
+        "county_diagnostics": county_diagnostics,
+        "pricing_breakdown": pricing_breakdown,
     }

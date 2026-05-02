@@ -535,12 +535,54 @@ export default function MatchTargets() {
             })()}
 
             {/* Result summary cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
               <ResultCard label="Comp-Matched" value={matchResult.matched_count.toLocaleString()} accent="#059669" sub="Ready to mail" />
+              <ResultCard label="County Median" value={((matchResult as any).county_median_count ?? 0).toLocaleString()} accent="#0891B2" sub="Estimated" />
               <ResultCard label="LP Estimate Only" value={(matchResult.lp_fallback_count ?? 0).toLocaleString()} accent="#5C2977" sub="Reference only" />
               <ResultCard label="Below Floor" value={((matchResult.low_offer_count ?? 0) + (matchResult.low_value_count ?? 0)).toLocaleString()} accent="#D97706" sub="Offer too low" />
               <ResultCard label="No Data" value={(matchResult.unpriced_count ?? 0).toLocaleString()} accent="#9B8AAE" sub="Skip these" />
             </div>
+
+            {/* Pricing method breakdown */}
+            {(matchResult as any).pricing_breakdown && (() => {
+              const pb = (matchResult as any).pricing_breakdown as Record<string, number>
+              const rows = [
+                { label: 'Within 0.25mi', key: '0.25mi', color: '#059669' },
+                { label: 'Within 0.50mi', key: '0.50mi', color: '#059669' },
+                { label: 'Within 1 mile', key: '1mi', color: '#059669' },
+                { label: 'Within 2 miles', key: '2mi', color: '#16A34A' },
+                { label: 'Within 3 miles', key: '3mi', color: '#D97706' },
+                { label: 'Within 5 miles', key: '5mi', color: '#EA580C' },
+                { label: 'Within 10 miles', key: '10mi', color: '#DC2626' },
+                { label: 'Same ZIP (any size)', key: 'ZIP', color: '#7C3AED' },
+                { label: 'County median', key: 'COUNTY_MEDIAN', color: '#0891B2' },
+                { label: 'LP fallback', key: 'LP_FALLBACK', color: '#5C2977' },
+                { label: 'No data', key: 'NO_DATA', color: '#9B8AAE' },
+              ].filter(r => pb[r.key] > 0)
+              if (rows.length === 0) return null
+              return (
+                <div className="card mb-6">
+                  <h2 className="font-semibold mb-3" style={{ color: '#1A0A2E' }}>Pricing Method Breakdown</h2>
+                  <div className="flex flex-col gap-1.5">
+                    {rows.map(r => (
+                      <div key={r.key} className="flex items-center gap-3">
+                        <span className="text-xs w-36 shrink-0" style={{ color: '#6B5B8A' }}>{r.label}</span>
+                        <div className="flex-1 rounded-full h-2 overflow-hidden" style={{ background: '#F3EEF9' }}>
+                          <div className="h-full rounded-full" style={{
+                            width: `${Math.round(pb[r.key] / matchResult.total_targets * 100)}%`,
+                            background: r.color,
+                            minWidth: pb[r.key] > 0 ? 4 : 0,
+                          }} />
+                        </div>
+                        <span className="text-xs tabular-nums font-semibold w-14 text-right" style={{ color: r.color }}>
+                          {pb[r.key].toLocaleString()}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })()}
 
             {/* Assignment fee calculator */}
             {(() => {
@@ -612,10 +654,35 @@ export default function MatchTargets() {
                     <span className="text-sm" style={{ color: '#9B8AAE' }}>{showUnmatched ? '▲ Hide' : '▼ Show'}</span>
                   </div>
 
-                  {/* Comp coverage — always visible */}
-                  <div className="rounded-lg p-2.5 mt-3" style={{ background: 'rgba(92,41,119,0.08)', border: '1px solid rgba(92,41,119,0.2)' }}>
+                  {/* County diagnostics — always visible */}
+                  {(matchResult as any).county_diagnostics && (() => {
+                    const cd = (matchResult as any).county_diagnostics as {
+                      target_county_count: number; comp_county_count: number;
+                      covered_county_count: number; uncovered_counties: string[];
+                      coverage_pct: number; message: string;
+                    }
+                    const pct = cd.coverage_pct
+                    const color = pct >= 80 ? '#059669' : pct >= 50 ? '#D97706' : '#DC2626'
+                    return (
+                      <div className="rounded-lg p-2.5 mt-3" style={{ background: 'rgba(92,41,119,0.08)', border: '1px solid rgba(92,41,119,0.2)' }}>
+                        <p className="text-xs font-semibold mb-1" style={{ color }}>
+                          County coverage: {cd.covered_county_count} of {cd.target_county_count} counties ({pct}%)
+                        </p>
+                        <p className="text-[10px] mb-1" style={{ color: '#5C2977' }}>{cd.message}</p>
+                        {cd.uncovered_counties.length > 0 && (
+                          <p className="text-[10px]" style={{ color: '#DC2626' }}>
+                            No comps for: <span className="font-semibold">{cd.uncovered_counties.slice(0, 8).join(', ')}{cd.uncovered_counties.length > 8 ? ` +${cd.uncovered_counties.length - 8} more` : ''}</span>
+                            {' '}— upload comps from these counties to increase match rate
+                          </p>
+                        )}
+                      </div>
+                    )
+                  })()}
+
+                  {/* ZIP coverage */}
+                  <div className="rounded-lg p-2.5 mt-2" style={{ background: 'rgba(92,41,119,0.05)', border: '1px solid rgba(92,41,119,0.12)' }}>
                     <p className="text-xs font-semibold mb-0.5" style={{ color: '#5C2977' }}>
-                      Comp coverage: {matchedZipSet.size} of {targetZips.length} target ZIPs have comp-matched records
+                      ZIP coverage: {matchedZipSet.size} of {targetZips.length} target ZIPs have comp-matched records
                     </p>
                     {uncoveredZips.length > 0 && uncoveredZips.length <= 20 && (
                       <p className="text-[10px]" style={{ color: '#5C2977' }}>
