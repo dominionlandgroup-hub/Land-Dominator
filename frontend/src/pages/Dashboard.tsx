@@ -566,12 +566,8 @@ function BuyBoxRecipe({
     : 'Data not available in comps — recommend 30 ft minimum'
 
   const acres = comps.map(c => c.lot_acres).filter(v => Number.isFinite(v) && v > 0).sort((a, b) => a - b)
-  // 25th/75th percentile — shown as secondary "Middle 50% of sales" info only
-  const p25Acre = acres.length > 0 ? Math.max(0.1, Math.floor(percentile(acres, 25) * 10) / 10) : 0.3
-  const p75Acre = acres.length > 0 ? Math.ceil(percentile(acres, 75) * 10) / 10 : 1.0
-  const middle50Label = `${p25Acre}–${p75Acre} acres`
 
-  // Sweet spot = recommended pull range (min/max lot size for Land Portal filter)
+  // 1. Sweet spot — most common acreage bucket
   let sweetMin = 0.1
   let sweetMax = 0.5
   if (sweetSpot) {
@@ -583,8 +579,23 @@ function BuyBoxRecipe({
     else if (b === '5-10')  { sweetMin = 5.0;  sweetMax = 10.0 }
     else if (b === '10+')   { sweetMin = 10.0; sweetMax = 40.0 }
   }
+  const sweetPct = sweetSpot && sweetSpot.total_sales > 0
+    ? Math.round((sweetSpot.count / sweetSpot.total_sales) * 100) : 0
   const minSqft = Math.round(sweetMin * SQFT_PER_ACRE)
   const maxSqft = Math.round(sweetMax * SQFT_PER_ACRE)
+
+  // 2. Actual comp range — raw min/max from sold comps
+  const fmtAc = (v: number) => v < 1 ? parseFloat(v.toFixed(2)).toString() : parseFloat(v.toFixed(1)).toString()
+  const compMin = acres.length > 0 ? fmtAc(acres[0]) : '0.01'
+  const compMax = acres.length > 0 ? fmtAc(acres[acres.length - 1]) : '5.0'
+
+  // 3. Recommended pull range — p5 to p75 (captures ~70-80% of sales)
+  const pullMinRaw = acres.length > 0 ? Math.max(0.1, Math.floor(percentile(acres, 5) * 100) / 100) : 0.1
+  const pullMaxRaw = acres.length > 0 ? Math.ceil(percentile(acres, 75) * 10) / 10 : 1.0
+  const pullMin = fmtAc(pullMinRaw)
+  const pullMax = fmtAc(pullMaxRaw)
+  const pctCaptured = acres.length > 0
+    ? Math.round(acres.filter(a => a >= pullMinRaw && a <= pullMaxRaw).length / acres.length * 100) : 75
 
   const recipeText = [
     '=== LAND PORTAL BUY BOX ===',
@@ -608,9 +619,9 @@ function BuyBoxRecipe({
     '   ✗ Improved/Built lots',
     '',
     '3. LOT SIZE',
-    `   Min: ${minSqft.toLocaleString()} sq ft (${sweetMin} acres)`,
-    `   Max: ${maxSqft.toLocaleString()} sq ft (${sweetMax} acres)`,
-    `   Middle 50% of sales: ${middle50Label}`,
+    `   Sweet spot: ${sweetMin}–${sweetMax} acres (${minSqft.toLocaleString()}–${maxSqft.toLocaleString()} sq ft)${sweetPct > 0 ? ` — ${sweetPct}% of all sales` : ''}`,
+    acres.length > 0 ? `   Comp range: ${compMin}–${compMax} acres (actual min–max from your comps)` : '',
+    `   PULL RANGE (enter in Land Portal): ${pullMin}–${pullMax} acres — captures ~${pctCaptured}% of sales`,
     '',
     '4. LAND QUALITY',
     `   Buildability: ${buildabilityLabel}`,
@@ -643,7 +654,7 @@ function BuyBoxRecipe({
         `Buy Box — ${topZips.slice(0, 3).join(', ')}${topZips.length > 3 ? '…' : ''}`,
         { cost_per_piece: 0.55, weekly_budget: 500, send_day: 'Tuesday' }
       )
-      await saveBuyBox({ min_acreage: sweetMin, max_acreage: sweetMax, cost_per_piece: 0.55, weekly_budget: 500 })
+      await saveBuyBox({ min_acreage: pullMinRaw, max_acreage: pullMaxRaw, cost_per_piece: 0.55, weekly_budget: 500 })
       setBuilt(true)
       setTimeout(() => setBuilt(false), 3000)
     } catch (e) {
@@ -681,9 +692,9 @@ ${sec('2. Property Type',
   check('Mobile Home', false) + check('Improved/Built lots', false)
 )}
 ${sec('3. Lot Size',
-  row('Min lot size', `${minSqft.toLocaleString()} sq ft (${sweetMin} acres)`) +
-  row('Max lot size', `${maxSqft.toLocaleString()} sq ft (${sweetMax} acres)`) +
-  `<div style="color:#9B8AAE;font-size:11px;margin-top:6px">Middle 50% of sales: ${middle50Label}</div>`
+  `<div style="margin-bottom:10px"><div style="color:#9B8AAE;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Sweet Spot</div><div style="color:#4F46E5;font-weight:600;font-size:13px">${sweetMin}–${sweetMax} acres (${minSqft.toLocaleString()}–${maxSqft.toLocaleString()} sq ft)</div>${sweetPct > 0 ? `<div style="color:#9B8AAE;font-size:11px">${sweetPct}% of all sales</div>` : ''}</div>` +
+  `<div style="margin-bottom:10px"><div style="color:#9B8AAE;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Recommended Pull Range</div><div style="color:#059669;font-weight:600;font-size:13px">${pullMin}–${pullMax} acres</div><div style="color:#9B8AAE;font-size:11px">captures ~${pctCaptured}% of sales · enter these values in Land Portal filters</div></div>` +
+  (acres.length > 0 ? `<div style="color:#9B8AAE;font-size:11px">Comp range: ${compMin}–${compMax} acres (actual min–max from ${comps.length.toLocaleString()} sold comps)</div>` : '')
 )}
 ${sec('4. Land Quality',
   row('Buildability minimum', buildabilityLabel) + (slopeLabel ? row('Maximum slope', slopeLabel) : '') + (wetlandsLabel ? row('Wetlands coverage', wetlandsLabel) : '') +
@@ -787,18 +798,29 @@ ${sec('6. Owner',
         {/* Section 3 — Lot Size */}
         <div className="rounded-xl p-4" style={cardStyle}>
           {hdr('3 · Lot Size')}
-          <div className="space-y-2 text-xs">
-            <div className="flex justify-between">
-              <span style={{ color: '#6B7280' }}>Min lot size</span>
-              <span style={{ color: '#111827', fontWeight: 600 }}>{fmtSqft(sweetMin)}</span>
+          <div className="space-y-3 text-xs">
+            {/* Sweet spot */}
+            <div>
+              <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: '#9CA3AF' }}>Sweet Spot</p>
+              <p style={{ color: '#4F46E5', fontWeight: 600 }}>{sweetMin}–{sweetMax} acres</p>
+              <p style={{ color: '#9CA3AF', fontSize: '10px' }}>
+                {minSqft.toLocaleString()}–{maxSqft.toLocaleString()} sq ft{sweetPct > 0 ? ` · ${sweetPct}% of all sales` : ''}
+              </p>
             </div>
-            <div className="flex justify-between">
-              <span style={{ color: '#6B7280' }}>Max lot size</span>
-              <span style={{ color: '#111827', fontWeight: 600 }}>{fmtSqft(sweetMax)}</span>
+            {/* Recommended pull range */}
+            <div className="pt-2" style={{ borderTop: '1px solid #F3F4F6' }}>
+              <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: '#9CA3AF' }}>Pull Range <span style={{ color: '#059669' }}>← enter in Land Portal</span></p>
+              <p style={{ color: '#059669', fontWeight: 600 }}>{pullMin}–{pullMax} acres</p>
+              <p style={{ color: '#9CA3AF', fontSize: '10px' }}>captures ~{pctCaptured}% of sales</p>
             </div>
-            <div className="mt-2 pt-2" style={{ borderTop: '1px solid #E5E7EB' }}>
-              <span style={{ color: '#9CA3AF', fontSize: '10px' }}>Middle 50% of sales: {middle50Label}</span>
-            </div>
+            {/* Comp range */}
+            {acres.length > 0 && (
+              <div className="pt-2" style={{ borderTop: '1px solid #F3F4F6' }}>
+                <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: '#9CA3AF' }}>Comp Range</p>
+                <p style={{ color: '#6B7280', fontWeight: 500 }}>{compMin}–{compMax} acres</p>
+                <p style={{ color: '#9CA3AF', fontSize: '10px' }}>actual min–max from {acres.length.toLocaleString()} sold comps</p>
+              </div>
+            )}
           </div>
         </div>
 
