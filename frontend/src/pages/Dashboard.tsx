@@ -194,7 +194,7 @@ export default function Dashboard() {
             />
             <SummaryCard
               label="Most Active ZIP"
-              value={topZip?.zip_code ?? '—'}
+              value={topZip ? fmtZip(topZip.zip_code) : '—'}
               sub={topZip ? `${topZip.sales_count} sales` : ''}
               icon={<IconPin />}
               accent="#4F46E5"
@@ -477,8 +477,8 @@ function fmtSqft(acres: number): string {
   return `${Math.round(acres * SQFT_PER_ACRE).toLocaleString()} sq ft (${acres} ac)`
 }
 
-function fmtZip(z: string): string {
-  return z.replace(/\.0$/, '').trim()
+function fmtZip(z: any): string {
+  return String(z ?? '').replace(/\.0$/, '').trim()
 }
 
 function BuyBoxRecipe({
