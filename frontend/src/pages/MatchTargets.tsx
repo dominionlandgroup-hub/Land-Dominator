@@ -491,8 +491,10 @@ export default function MatchTargets() {
               const matchedCt = matchResult.matched_count
               const lpFallbackCt = matchResult.lp_fallback_count ?? 0
               const unpricedCt = matchResult.unpriced_count ?? 0
-              const total = matchResult.total_targets
-              const matchRate = total > 0 ? Math.round((matchedCt / total) * 100) : 0
+              const mrw = (matchResult as any).match_rate_warning as { level: string; match_rate_pct: number; message: string; top_unmatched_zips: string[] } | undefined
+              const rateColor = !mrw ? '#059669' : mrw.level === 'ok' ? '#059669' : mrw.level === 'warning' ? '#D97706' : '#DC2626'
+              const rateBg = !mrw ? '#D1FAE5' : mrw.level === 'ok' ? '#D1FAE5' : mrw.level === 'warning' ? '#FEF3C7' : '#FEE2E2'
+              const rateBorder = !mrw ? 'rgba(5,150,105,0.3)' : mrw.level === 'ok' ? 'rgba(5,150,105,0.3)' : mrw.level === 'warning' ? 'rgba(217,119,6,0.3)' : 'rgba(220,38,38,0.3)'
               return (
                 <div className="card mb-6">
                   <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
@@ -501,12 +503,31 @@ export default function MatchTargets() {
                         <span className="text-3xl font-bold" style={{ color: '#059669' }}>{matchedCt.toLocaleString()}</span>
                         <span className="text-sm font-semibold" style={{ color: '#059669' }}>Comp-Matched Records ready to mail</span>
                       </div>
-                      <p className="text-[11px]" style={{ color: '#9B8AAE' }}>{matchRate}% match rate · {total.toLocaleString()} total targets</p>
+                      <p className="text-[11px]" style={{ color: '#9B8AAE' }}>{matchResult.total_targets.toLocaleString()} total targets</p>
                     </div>
                     <button className="btn-primary text-sm" style={{ padding: '8px 16px' }} onClick={() => setShowMailingModal(true)}>
                       + Add to Mailing List
                     </button>
                   </div>
+
+                  {/* Single unified match rate banner */}
+                  {mrw && (
+                    <div className="rounded-xl px-4 py-3 mb-3 flex items-start gap-3" style={{ background: rateBg, border: `1px solid ${rateBorder}` }}>
+                      <div className="flex-1">
+                        <p className="text-sm font-bold" style={{ color: rateColor }}>{mrw.message}</p>
+                        {mrw.level !== 'ok' && mrw.top_unmatched_zips.length > 0 && (
+                          <p className="text-xs mt-0.5" style={{ color: rateColor, opacity: 0.8 }}>
+                            Top unmatched ZIPs: {mrw.top_unmatched_zips.join(', ')}
+                          </p>
+                        )}
+                        {mrw.level !== 'ok' && (
+                          <p className="text-[11px] mt-1" style={{ color: '#6B5B8A' }}>
+                            Only records priced from actual sold comps count toward match rate. LP Fallback, Low Offer, and No Data records are excluded.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="flex flex-wrap gap-2 mb-3">
                     <a href={getMatchedLeadsDownloadUrl(matchId, 'comp-matched')} download className="btn-primary text-sm no-underline" style={{ padding: '8px 16px' }}>
@@ -547,28 +568,6 @@ export default function MatchTargets() {
               <ResultCard label="Below Floor" value={((matchResult.low_offer_count ?? 0) + (matchResult.low_value_count ?? 0)).toLocaleString()} accent="#D97706" sub="Offer too low" />
               <ResultCard label="No Data" value={(matchResult.unpriced_count ?? 0).toLocaleString()} accent="#9B8AAE" sub="Skip these" />
             </div>
-
-            {/* Match rate warning / success banner */}
-            {(matchResult as any).match_rate_warning && (() => {
-              const mrw = (matchResult as any).match_rate_warning as { level: string; match_rate_pct: number; message: string; top_unmatched_zips: string[] }
-              const isWarn = mrw.level === 'warning'
-              return (
-                <div className="mb-4 px-4 py-3 rounded-xl flex items-start gap-3" style={{
-                  background: isWarn ? '#FEF3C7' : '#D1FAE5',
-                  border: `1px solid ${isWarn ? 'rgba(217,119,6,0.3)' : 'rgba(5,150,105,0.3)'}`,
-                }}>
-                  <span style={{ fontSize: 16, lineHeight: 1.4 }}>{isWarn ? '⚠️' : '✓'}</span>
-                  <div>
-                    <p className="text-sm font-semibold" style={{ color: isWarn ? '#D97706' : '#059669' }}>{mrw.message}</p>
-                    {isWarn && mrw.top_unmatched_zips.length > 0 && (
-                      <p className="text-xs mt-0.5" style={{ color: '#92400E' }}>
-                        Top unmatched ZIPs: {mrw.top_unmatched_zips.join(', ')}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              )
-            })()}
 
             {/* Pricing method breakdown */}
             {(matchResult as any).pricing_breakdown && (() => {

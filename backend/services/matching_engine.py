@@ -2090,28 +2090,37 @@ def run_matching(
     zip_matched_count = sum(1 for r in results if r.get("pricing_flag") == "MATCHED" and r.get("radius_label") == "ZIP")
     mailable_count    = matched_count + lp_fallback_count
 
-    # Match rate warning (mailable = MATCHED + LP_FALLBACK)
-    match_rate_pct = round(mailable_count / total_targets * 100) if total_targets > 0 else 0
-    if match_rate_pct < 80 and total_targets > 0:
-        unmatched_zips: dict[str, int] = {}
-        for r in results:
-            if r.get("pricing_flag") in ("NO_COMPS", None):
-                z = str(r.get("parcel_zip") or "").strip()
-                if z and z not in ("nan", "None", ""):
-                    unmatched_zips[z] = unmatched_zips.get(z, 0) + 1
-        top_zips = sorted(unmatched_zips, key=lambda z: -unmatched_zips[z])[:5]
+    # Match rate = comp-matched only / total targets (LP fallback does NOT count)
+    match_rate_pct = round(matched_count / total_targets * 100) if total_targets > 0 else 0
+
+    unmatched_zips: dict[str, int] = {}
+    for r in results:
+        if r.get("pricing_flag") in ("NO_COMPS", None):
+            z = str(r.get("parcel_zip") or "").strip()
+            if z and z not in ("nan", "None", ""):
+                unmatched_zips[z] = unmatched_zips.get(z, 0) + 1
+    top_zips = sorted(unmatched_zips, key=lambda z: -unmatched_zips[z])[:5]
+
+    if match_rate_pct >= 80:
+        match_rate_warning = {
+            "level": "ok",
+            "match_rate_pct": match_rate_pct,
+            "message": f"✓ {match_rate_pct}% match rate",
+            "top_unmatched_zips": [],
+        }
+    elif match_rate_pct >= 60:
         match_rate_warning = {
             "level": "warning",
             "match_rate_pct": match_rate_pct,
-            "message": f"Match rate {match_rate_pct}% — below 80%. Consider uploading more comps from: {', '.join(top_zips) if top_zips else 'these ZIPs'}",
+            "message": f"⚠️ {match_rate_pct}% match rate - below 80%",
             "top_unmatched_zips": top_zips,
         }
     else:
         match_rate_warning = {
-            "level": "ok",
+            "level": "critical",
             "match_rate_pct": match_rate_pct,
-            "message": f"✓ {match_rate_pct}% match rate — strong comp coverage",
-            "top_unmatched_zips": [],
+            "message": f"✗ {match_rate_pct}% match rate - upload more comps",
+            "top_unmatched_zips": top_zips,
         }
 
     # Smart floor: 10th percentile of all priced offer_mid values
