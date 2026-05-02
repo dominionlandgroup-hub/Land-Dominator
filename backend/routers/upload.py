@@ -671,11 +671,28 @@ async def upload_comps(
     rows = []
     skipped_no_price = 0
     skipped_no_acreage = 0
+    skipped_no_county = 0
+    skipped_land_use = 0
     skipped_mega_sale = 0
     _logged_rows = 0
     for _, row in df.iterrows():
-        sale_price = parse_price(_fv(row, "Current Sale Price", "Close Price", "Sold Price", "sale_price"))
-        acreage = parse_float(_fv(row, "Lot Acres", "Approximate Acres", "Calc Acreage", "Acreage", "Acres", "acreage")) or 0.0
+        # ── Sale price: Current Sale Price → MLS Price → TLP Estimate (strip $) ──
+        sale_price = parse_price(_fv(row, "Current Sale Price"))
+        if sale_price <= 0:
+            sale_price = parse_price(_fv(row, "MLS Price"))
+        if sale_price <= 0:
+            _tlp_raw = _fv(row, "TLP Estimate")
+            if _tlp_raw:
+                sale_price = parse_price(str(_tlp_raw).replace("$", "").replace(",", "").strip())
+
+        # ── Acreage: Lot Acres → Calc Acreage → MLS Parcel Acreage ──
+        acreage = parse_float(_fv(row, "Lot Acres")) or 0.0
+        if acreage <= 0:
+            acreage = parse_float(_fv(row, "Calc Acreage")) or 0.0
+        if acreage <= 0:
+            acreage = parse_float(_fv(row, "MLS Parcel Acreage")) or 0.0
+
+        # ── Core fields ──
         county = str(_fv(row, "Parcel County", "Parcel Address County", "County", "county") or "").lower().strip().replace(" county", "").replace("county", "").strip()
         state = str(_fv(row, "Parcel State", "State", "state") or "TN").upper().strip()
         zip_code = str(_fv(row, "Parcel Zip", "Zip Code", "Postal Code", "zip_code") or "").strip()
@@ -685,55 +702,83 @@ async def upload_comps(
         lat = _parse_coord(row, "Latitude", "latitude", "LAT", "lat", "Y", "y")
         lon = _parse_coord(row, "Longitude", "longitude", "LON", "lon", "LNG", "lng", "X", "x")
         apn = str(_fv(row, "APN", "Parcel Number", "apn") or "").strip()
-        if _logged_rows < 3:
-            print(f"Row lat/lon: raw_lat={row.get('Latitude')!r} raw_lon={row.get('Longitude')!r} → {lat} / {lon}", flush=True)
-            print(f"sale_price: {sale_price}, acreage: {acreage}, date: {sale_date}", flush=True)
-            _logged_rows += 1
         land_use = str(_fv(row, "Land Use", "land_use") or "").strip()
         buyer_name = str(_fv(row, "Current Sale Buyer 1 Full Name", "buyer_name") or "").strip()
+
+        # ── Extended LP fields ──
+        slope_avg       = parse_float(_fv(row, "Slope AVG", "Average Slope", "Slope", "slope_avg"))
+        buildability    = parse_float(_fv(row, "Buildability total (%)", "Buildability", "buildability"))
+        road_frontage   = parse_float(_fv(row, "Road Frontage", "road_frontage"))
+        fema_coverage   = parse_float(_fv(row, "FEMA Flood Coverage", "fema_coverage"))
+        wetlands_cov    = parse_float(_fv(row, "Wetlands Coverage", "wetlands_coverage"))
+        elevation_avg   = parse_float(_fv(row, "Elevation AVG", "elevation_avg"))
+        land_locked     = str(_fv(row, "Land Locked", "land_locked") or "").strip() or None
+        property_id     = str(_fv(row, "propertyID", "PropertyID", "property_id") or "").strip() or None
+        fips_val        = str(_fv(row, "Parcel FIPS", "FIPS", "fips") or "").strip()
+        if fips_val.endswith(".0"):
+            fips_val = fips_val[:-2]
+        fips_val = fips_val or None
+
         price_per_acre = sale_price / acreage if acreage > 0 else 0.0
 
-        # Skip rows without a valid sale price (not a sold comp)
+        if _logged_rows < 3:
+            print(f"Row {_logged_rows}: price={sale_price}, acreage={acreage}, county={county!r}, land_use={land_use!r}, date={sale_date}, lat={lat}, lon={lon}", flush=True)
+            _logged_rows += 1
+
+        # ── Filters ──
         if sale_price <= 0:
             skipped_no_price += 1
             continue
-
-        # Skip rows without valid acreage
         if acreage <= 0:
             skipped_no_acreage += 1
             continue
-
-        # Filter mega sales (commercial transactions) and extreme PPA outliers
+        if not county:
+            skipped_no_county += 1
+            continue
+        # Land use filter: if present, must contain "Vacant" or "Land"
+        if land_use and "vacant" not in land_use.lower() and "land" not in land_use.lower():
+            skipped_land_use += 1
+            continue
         if sale_price > 5_000_000:
             skipped_mega_sale += 1
             continue
-        if price_per_acre > 2_000_000:
+        if acreage > 0 and price_per_acre > 2_000_000:
             skipped_mega_sale += 1
             continue
 
         rows.append({
-                "county":        county or None,
-                "state":         state or None,
-                "acreage":       float(acreage),
-                "sale_price":    float(sale_price),
-                "price_per_acre": float(price_per_acre),
-                "zip_code":      zip_code or None,
-                "sale_date":     sale_date,
-                "apn":           apn or None,
-                "land_use":      land_use or None,
-                "latitude":      lat,
-                "longitude":     lon,
-                "buyer_name":    buyer_name or None,
-                "buyer_type":    _buyer_type(buyer_name),
-                "full_address":  str(row.get("Parcel Full Address") or row.get("Address") or "").strip() or None,
-                "filename":      filename,
-                "source":        "upload",
-            })
+            "county":            county or None,
+            "state":             state or None,
+            "acreage":           float(acreage),
+            "sale_price":        float(sale_price),
+            "price_per_acre":    float(price_per_acre),
+            "zip_code":          zip_code or None,
+            "sale_date":         sale_date,
+            "apn":               apn or None,
+            "land_use":          land_use or None,
+            "latitude":          lat,
+            "longitude":         lon,
+            "buyer_name":        buyer_name or None,
+            "buyer_type":        _buyer_type(buyer_name),
+            "full_address":      str(_fv(row, "Parcel Full Address", "Address") or "").strip() or None,
+            "slope_avg":         slope_avg,
+            "buildability":      buildability,
+            "road_frontage":     road_frontage,
+            "fema_coverage":     fema_coverage,
+            "wetlands_coverage": wetlands_cov,
+            "elevation_avg":     elevation_avg,
+            "land_locked":       land_locked,
+            "property_id":       property_id,
+            "fips":              fips_val,
+            "filename":          filename,
+            "source":            "upload",
+        })
 
     geo_count = sum(1 for r in rows if r.get("latitude") and r.get("longitude"))
     print(
         f"[comps] Valid rows: {len(rows)} of {len(df)} | coords: {geo_count} | "
-        f"Skipped: price={skipped_no_price}, acreage={skipped_no_acreage}, mega={skipped_mega_sale}",
+        f"Skipped: price={skipped_no_price}, acreage={skipped_no_acreage}, "
+        f"county={skipped_no_county}, land_use={skipped_land_use}, mega={skipped_mega_sale}",
         flush=True,
     )
 
