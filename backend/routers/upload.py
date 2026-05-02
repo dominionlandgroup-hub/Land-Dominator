@@ -509,15 +509,14 @@ def _validate_file(file: UploadFile) -> None:
 
 # ── Upload comps (single or first-of-many) ────────────────────────────────────
 
-@router.post("/comps", response_model=UploadResponse)
+@router.post("/comps")
 async def upload_comps(
     file: UploadFile = File(...),
     append: bool = Query(True, description="True = append to existing comps; False = replace state"),
-) -> UploadResponse:
+):
     """
     Upload and parse a Sold Comps CSV (Land Portal or MLS export).
     Auto-detects format and maps columns accordingly.
-    In append mode (default), existing comps are kept and APN dedup is applied.
     """
     _validate_file(file)
     content = await file.read()
@@ -548,47 +547,117 @@ async def upload_comps(
     ])
     df = downcast_numerics(df)
 
+    all_rows = len(df)
     session_id = str(uuid.uuid4())
     store_comps(session_id, df)
     uploaded_at = datetime.now(timezone.utc).isoformat()
 
-    print(f"[comps] Parsed {len(df)} rows (format={detected_format}), saving to crm_sold_comps...", flush=True)
+    print(f"[comps] Parsed {all_rows} rows (format={detected_format}), building valid_rows...", flush=True)
 
-    # Run DB save synchronously in a thread-pool executor so it completes before we respond.
-    # Using run_in_executor avoids blocking the async event loop while still waiting for the result.
-    loop = asyncio.get_running_loop()
-    try:
-        inserted, skipped_filter, deduped = await loop.run_in_executor(
-            None, _save_comps_to_db, df, filename, detected_format, append
-        )
-    except Exception as exc:
-        print(f"[comps] run_in_executor _save_comps_to_db raised: {exc}", flush=True)
-        inserted = skipped_filter = deduped = 0
+    # Build valid_rows — map LP column names to crm_sold_comps DB column names.
+    # Only include columns that are confirmed to exist in the DB schema.
+    valid_rows: list[dict] = []
+    skipped = 0
+    for _, row in df.iterrows():
+        sale_price = _safe_float(_col_value(row, ["Current Sale Price"]))
+        acreage    = _safe_float(_col_value(row, ["Lot Acres", "Calc Acreage"]))
+        sale_date  = str(_col_value(row, ["Current Sale Recording Date"]) or "").strip()
 
-    geocoded_count = 0  # geocoding happens inside _save_comps_to_db; already logged there
+        if not sale_price or sale_price <= 0:
+            skipped += 1; continue
+        if not acreage or acreage <= 0:
+            skipped += 1; continue
+        if not sale_date or sale_date.lower() in ("nan", "none", ""):
+            skipped += 1; continue
 
-    # Fire-and-forget Storage backup (non-critical, never blocks response)
-    def _backup_to_storage():
+        ppa = sale_price / acreage
+
+        state_v     = str(_col_value(row, ["Parcel State"]) or "").strip().upper() or None
+        _raw_county = str(_col_value(row, ["Parcel County", "Parcel Address County", "County"]) or "").strip()
+        _norm_county = _raw_county.lower().replace(" county", "").replace("county", "").strip() or None
+        buyer_name  = str(_col_value(row, ["Current Sale Buyer 1 Full Name"]) or "").strip() or None
+        zip_v       = str(_col_value(row, ["Parcel Zip"]) or "").strip().split(".")[0] or None
+        fips_v      = str(_col_value(row, ["Parcel FIPS"]) or "").strip() or None
+        if fips_v and fips_v.endswith(".0"):
+            fips_v = fips_v[:-2]
+
+        valid_rows.append({
+            "apn":               str(_col_value(row, ["APN"]) or "").strip() or None,
+            "county":            _norm_county,
+            "state":             state_v,
+            "zip_code":          zip_v,
+            "acreage":           float(acreage),
+            "sale_price":        float(sale_price),
+            "price_per_acre":    float(ppa),
+            "sale_date":         sale_date,
+            "latitude":          _safe_float(_col_value(row, ["Latitude"])),
+            "longitude":         _safe_float(_col_value(row, ["Longitude"])),
+            "slope_avg":         _safe_float(_col_value(row, ["Slope AVG", "Average Slope", "Slope"])),
+            "wetlands_coverage": _safe_float(row.get("Wetlands Coverage")),
+            "fema_coverage":     _safe_float(row.get("FEMA Flood Coverage")),
+            "buildability":      _safe_float(row.get("Buildability total (%)")),
+            "road_frontage":     _safe_float(row.get("Road Frontage")),
+            "elevation_avg":     _safe_float(row.get("Elevation AVG")),
+            "land_use":          str(row.get("Land Use") or "").strip() or None,
+            "buyer_name":        buyer_name,
+            "buyer_type":        _buyer_type(buyer_name or ""),
+            "full_address":      str(_col_value(row, ["Parcel Full Address"]) or "").strip() or None,
+            "property_id":       str(row.get("propertyID") or "").strip() or None,
+            "fips":              fips_v,
+            "source_format":     detected_format,
+            "filename":          filename,
+        })
+
+    print(f"[comps] Built {len(valid_rows)} valid_rows ({skipped} skipped — missing price/acreage/date)", flush=True)
+
+    saved = 0
+
+    # FORCE SAVE TO DATABASE
+    if valid_rows:
+        print(f"Attempting to save {len(valid_rows)} comps to database...", flush=True)
         try:
-            from services.comps_persistence import persist_comps
-            persist_comps(session_id, df, {**stats, "uploaded_at": uploaded_at})
-        except Exception as backup_exc:
-            print(f"[comps] Storage backup failed (non-critical): {backup_exc}", flush=True)
-    loop.run_in_executor(None, _backup_to_storage)
+            from services.supabase_client import get_supabase
+            supabase = get_supabase()
 
-    return UploadResponse(
-        session_id=session_id,
-        total_rows=stats["total_rows"],
-        valid_rows=stats["valid_rows"],
-        columns_found=stats["columns_found"],
-        missing_columns=stats["missing_columns"],
-        preview=stats["preview"],
-        uploaded_at=uploaded_at,
-        saved_to_db=inserted,
-        detected_format=detected_format,
-        deduped_count=deduped,
-        geocoded_count=geocoded_count,
-    )
+            # Clear existing comps for this state first
+            state = (valid_rows[0].get('state') or 'UNKNOWN').upper()
+            del_result = supabase.table('crm_sold_comps').delete().eq('state', state).execute()
+            del_count = len(del_result.data) if del_result.data else 0
+            print(f"Cleared {del_count} existing comps for state: {state}", flush=True)
+
+            # Save in chunks of 100
+            for i in range(0, len(valid_rows), 100):
+                chunk = valid_rows[i:i + 100]
+                result = supabase.table('crm_sold_comps').insert(chunk).execute()
+                saved += len(chunk)
+                print(f"Saved chunk {i} to {i + len(chunk)}: {saved} total", flush=True)
+
+            print(f"TOTAL SAVED TO DATABASE: {saved}", flush=True)
+        except Exception as e:
+            print(f"SAVE FAILED WITH ERROR: {str(e)}", flush=True)
+            import traceback
+            traceback.print_exc()
+    else:
+        print(f"[comps] WARNING: valid_rows is empty — nothing to save. Check CSV column names.", flush=True)
+        print(f"[comps] DataFrame columns present: {list(df.columns)}", flush=True)
+
+    return JSONResponse({
+        "status": "ok",
+        "saved": saved,
+        "parsed": all_rows,
+        # Frontend-compatible fields
+        "session_id": session_id,
+        "total_rows": stats["total_rows"],
+        "valid_rows": stats["valid_rows"],
+        "columns_found": stats["columns_found"],
+        "missing_columns": stats["missing_columns"],
+        "preview": stats["preview"],
+        "uploaded_at": uploaded_at,
+        "saved_to_db": saved,
+        "detected_format": detected_format,
+        "deduped_count": 0,
+        "geocoded_count": 0,
+    })
 
 
 # ── Upload targets ─────────────────────────────────────────────────────────────
