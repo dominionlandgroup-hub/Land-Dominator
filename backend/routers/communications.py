@@ -49,9 +49,19 @@ _warmup_done: bool = False
 _AUDIO_DIR = Path("/tmp/tts_cache")
 _AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 
-# Every phrase the agent will ever say — keyed by stable filename (no .mp3)
-# RULE: No dynamic content here. Dynamic parts use Polly <Say> at zero latency.
+# The 7 phrases pre-cached with ElevenLabs at startup.
+# Kept small so warmup finishes in ~7 seconds and never hits the rate limit.
+_WARMUP_KEYS: frozenset[str] = frozenset({
+    "greeting", "offer_code_hint", "got_it_name",
+    "interested", "confirm_callback", "close_hot", "close_cold",
+})
+
+# ALL phrase texts — used for Polly <Say> fallback when ElevenLabs cache is incomplete.
+# Non-warmup phrases (not_found, still_there, etc.) always use Polly; that's fine because
+# they play rarely and callers won't notice the voice switch within a single phrase.
+# The rule is: NEVER mix voices within the CORE flow. Core phrases are in _WARMUP_KEYS.
 _PHRASES: dict[str, str] = {
+    # ── Core (pre-cached) ───────────────────────────────────────────────────
     "greeting": (
         "Thank you for calling Dominion Land Group. I'm Myra. "
         "Do you have the offer code from your letter?"
@@ -60,16 +70,17 @@ _PHRASES: dict[str, str] = {
         "The code is just below your mailing address — "
         "two numbers, a dash, then a few more numbers. Do you see it?"
     ),
-    "not_found": "I wasn't able to find that code. Can you repeat it slowly, one number at a time?",
-    "got_it_name": "Got it. Can I get your first and last name?",
-    "no_code_name": "No problem. Can I get your first and last name?",
-    "no_code_county": "And what county is the property located in?",
-    "interested": "Are you interested in our cash offer for your property?",
+    "got_it_name":      "Got it. Can I get your first and last name?",
+    "interested":       "Are you interested in our cash offer for your property?",
     "confirm_callback": "Is that the best number to reach you?",
-    "close_hot": "Perfect. Someone will call you back shortly. Have a great day.",
-    "close_cold": "I understand. Thank you for calling. Have a great day.",
-    "still_there": "Are you still there?",
-    "goodbye": "Thank you for calling. Have a great day.",
+    "close_hot":        "Perfect. Someone will call you back shortly. Have a great day.",
+    "close_cold":       "I understand. Thank you for calling. Have a great day.",
+    # ── Auxiliary (Polly only — not pre-cached) ─────────────────────────────
+    "not_found":      "I wasn't able to find that code. Can you repeat it slowly, one number at a time?",
+    "no_code_name":   "No problem. Can I get your first and last name?",
+    "no_code_county": "And what county is the property located in?",
+    "still_there":    "Are you still there?",
+    "goodbye":        "Thank you for calling. Have a great day.",
     "voicemail": (
         "Hi, this is Dominion Land Group calling about your property. "
         "We sent you a letter with a cash offer and would love to connect. "
@@ -126,6 +137,12 @@ def _audio_path(cache_key: str) -> Path:
     return _AUDIO_DIR / f"{cache_key}.mp3"
 
 
+def _all_core_cached() -> bool:
+    """True only when every warmup phrase has a cached mp3 file on disk.
+    Used to enforce the all-ElevenLabs-or-all-Polly rule within a call."""
+    return all(_audio_path(k).exists() for k in _WARMUP_KEYS)
+
+
 def _cached_url(cache_key: str) -> Optional[str]:
     """Return URL if the file is already on disk, else None. Zero latency."""
     if _audio_path(cache_key).exists():
@@ -174,25 +191,32 @@ async def _tts_generate(text: str, cache_key: str) -> bool:
 
 @router.get("/api/calls/audio/{cache_key}")
 async def serve_tts_audio(cache_key: str) -> Response:
+    """Serve pre-cached ElevenLabs mp3 directly. No processing — pure file read."""
     path = _audio_path(cache_key)
     if not path.exists():
         raise HTTPException(status_code=404, detail="Audio not found")
     return Response(
         path.read_bytes(),
         media_type="audio/mpeg",
-        headers={"Cache-Control": "public, max-age=86400"},
+        headers={
+            "Cache-Control": "public, max-age=86400",
+            "Accept-Ranges": "bytes",
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 
 @router.get("/api/calls/health")
 async def calls_health() -> dict:
     """Health check for the voice agent system."""
-    cached = sum(1 for key in _PHRASES if _audio_path(key).exists())
+    cached_core = sum(1 for k in _WARMUP_KEYS if _audio_path(k).exists())
+    all_ready = _all_core_cached()
     return {
         "status": "ok",
         "warmup_done": _warmup_done,
-        "tts_cache": f"{cached}/{len(_PHRASES)} files ready",
-        "polly_fallback": "active" if not _warmup_done else "standby",
+        "core_cached": f"{cached_core}/{len(_WARMUP_KEYS)} core phrases ready",
+        "voice_mode": "elevenlabs" if all_ready else "polly",
+        "polly_fallback": "active" if not all_ready else "standby",
     }
 
 
@@ -233,23 +257,36 @@ async def save_faq(request: Request) -> dict:
 
 
 async def warmup() -> None:
-    """Pre-generate ALL static phrase audio at startup. Called from main.py.
-    Runs in background — server accepts calls immediately via Polly fallback.
-    Generates sequentially with 500 ms delay to stay under ElevenLabs 6-concurrent limit."""
+    """Pre-cache the 7 core ElevenLabs phrases at startup.
+    Server accepts calls immediately via Polly fallback while warmup runs.
+    Sequential with 1 s gap → never hits the 6-concurrent rate limit.
+    Once all 7 are cached the agent switches to ElevenLabs for the whole call."""
     global _warmup_done
     if not _elevenlabs_key():
-        print("[comms] ElevenLabs not configured — voice cache skipped (Polly fallback active)")
+        print("[comms] ElevenLabs not configured — Polly fallback active for all calls")
         _warmup_done = True
         return
-    print(f"[comms] Warming voice cache — {len(_PHRASES)} phrases (sequential, 500 ms gap)...")
+
+    keys_to_cache = [(k, _PHRASES[k]) for k in _WARMUP_KEYS if k in _PHRASES]
+    print(f"[comms] Warmup starting — {len(keys_to_cache)} core phrases, 1 s gap each...")
+
     ok = 0
-    for key, text in _PHRASES.items():
-        result = await _tts_generate(text, key)
-        if result:
-            ok += 1
-        await asyncio.sleep(0.5)
+    for key, text in keys_to_cache:
+        try:
+            result = await _tts_generate(text, key)
+            if result:
+                ok += 1
+                print(f"[comms] Cached: {key}", flush=True)
+            else:
+                print(f"[comms] Failed to cache: {key}", flush=True)
+        except Exception as exc:
+            print(f"[comms] Warmup error for {key}: {exc}", flush=True)
+        await asyncio.sleep(1.0)
+
     _warmup_done = True
-    print(f"[comms] Voice cache warmed up: {ok}/{len(_PHRASES)} files ready")
+    all_ready = _all_core_cached()
+    voice_mode = "ElevenLabs" if all_ready else "Polly (some phrases missing)"
+    print(f"[comms] Warmup done — {ok}/{len(keys_to_cache)} cached, voice mode: {voice_mode}", flush=True)
 
 
 # ── Dynamic TTS helpers — use static cache; fall back to Polly <Say> instantly ──
@@ -268,9 +305,13 @@ def _say(text: str, audio_url: Optional[str] = None) -> str:
 
 
 def _phrase(key: str) -> str:
-    """Return a <Play> if cached on disk, else <Say> with Polly. Always instant."""
-    url = _cached_url(key)
-    return _say(_PHRASES.get(key, key), url)
+    """Return a <Play> if ALL core phrases are cached, else Polly <Say>.
+    Never mixes voices within a call — either 100% ElevenLabs or 100% Polly."""
+    text = _PHRASES.get(key, key)
+    if _all_core_cached() and _audio_path(key).exists():
+        url = f"{_base_url()}/api/calls/audio/{key}"
+        return f'<Play>{url}</Play>'
+    return _say(text)
 
 
 def _say_dynamic(text: str, cache_key: str) -> str:
