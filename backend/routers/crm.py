@@ -32,6 +32,13 @@ router = APIRouter(prefix="/crm", tags=["crm"])
 _import_jobs: dict[str, dict] = {}
 _lp_pull_jobs: dict[str, dict] = {}
 
+# Startup diagnostic — confirms LP token presence in Railway env
+_lp_token_at_startup = os.environ.get("LAND_PORTAL_TOKEN", "")
+print(
+    f"[crm] LAND_PORTAL_TOKEN {'SET (' + str(len(_lp_token_at_startup)) + ' chars)' if _lp_token_at_startup else 'NOT SET — LP pull will fail'}",
+    flush=True,
+)
+
 # ── Helpers ───────────────────────────────────────────────────────────
 
 def _now() -> str:
@@ -1468,21 +1475,30 @@ def _run_lp_pull_job(job_id: str, campaign_id: str) -> None:
     _LP_HEADERS_BASE = {"Authorization": f"Bearer {token}"}
 
     def _lp_post(client: httpx.Client, pid: str, fips_val: str) -> dict:
-        """POST to Land Portal, falling back to form-encoded if JSON returns 404."""
-        r = client.post(
-            _LP_URL,
-            json={"propertyid": pid, "fips": fips_val},
-            headers={**_LP_HEADERS_BASE, "Content-Type": "application/json"},
-        )
-        if r.status_code == 404:
-            # Some WP REST plugins reject JSON — retry with form-encoded body
-            r = client.post(
-                _LP_URL,
-                data={"propertyid": pid, "fips": fips_val},
-                headers=_LP_HEADERS_BASE,
-            )
-        r.raise_for_status()
-        return r.json()
+        """POST to Land Portal with three fallback formats."""
+        attempts = [
+            # Attempt 1: form-encoded (most reliable for WP REST plugins)
+            dict(data={"propertyid": pid, "fips": fips_val},
+                 headers={**_LP_HEADERS_BASE, "Content-Type": "application/x-www-form-urlencoded"}),
+            # Attempt 2: JSON body
+            dict(json={"propertyid": pid, "fips": fips_val},
+                 headers={**_LP_HEADERS_BASE, "Content-Type": "application/json"}),
+            # Attempt 3: form-encoded with clusters flag
+            dict(data={"propertyid": pid, "fips": fips_val, "clusters": "true"},
+                 headers=_LP_HEADERS_BASE),
+        ]
+        last_r = None
+        for i, kwargs in enumerate(attempts, 1):
+            fmt = "form" if "data" in kwargs else "json"
+            clusters = " +clusters" if (i == 3) else ""
+            print(f"[lp-pull] Attempt {i} ({fmt}{clusters}): propertyid={pid!r} fips={fips_val!r}", flush=True)
+            r = client.post(_LP_URL, **kwargs)
+            print(f"[lp-pull] Attempt {i} response: {r.status_code} — {r.text[:200]}", flush=True)
+            last_r = r
+            if r.status_code not in (404, 405, 400):
+                break
+        last_r.raise_for_status()  # type: ignore[union-attr]
+        return last_r.json()  # type: ignore[union-attr]
 
     with httpx.Client(timeout=30.0) as client:
         for prop in eligible:
@@ -1962,24 +1978,33 @@ async def pull_lp_data_for_property(property_id: str) -> dict:
 
     _lp_url = "https://landportal.com/wp-json/lp-rest-api/v1/property-data"
     _lp_headers_base = {"Authorization": f"Bearer {token}"}
+    print(f"[lp-pull-single] propertyid={lp_pid!r} fips={fips!r} token_set={bool(token)}", flush=True)
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
-            r = await client.post(
-                _lp_url,
-                json={"propertyid": lp_pid, "fips": fips},
-                headers={**_lp_headers_base, "Content-Type": "application/json"},
-            )
-            if r.status_code == 404:
-                # Retry with form-encoded body — some WP REST plugins reject JSON
-                r = await client.post(
-                    _lp_url,
-                    data={"propertyid": lp_pid, "fips": fips},
-                    headers=_lp_headers_base,
-                )
-            r.raise_for_status()
-        data = r.json()
+            attempts = [
+                # Attempt 1: form-encoded
+                dict(data={"propertyid": lp_pid, "fips": fips},
+                     headers={**_lp_headers_base, "Content-Type": "application/x-www-form-urlencoded"}),
+                # Attempt 2: JSON body
+                dict(json={"propertyid": lp_pid, "fips": fips},
+                     headers={**_lp_headers_base, "Content-Type": "application/json"}),
+                # Attempt 3: form-encoded with clusters flag
+                dict(data={"propertyid": lp_pid, "fips": fips, "clusters": "true"},
+                     headers=_lp_headers_base),
+            ]
+            r = None
+            for i, kwargs in enumerate(attempts, 1):
+                fmt = "form" if "data" in kwargs else "json"
+                clusters = " +clusters" if i == 3 else ""
+                print(f"[lp-pull-single] Attempt {i} ({fmt}{clusters}): {_lp_url}", flush=True)
+                r = await client.post(_lp_url, **kwargs)
+                print(f"[lp-pull-single] Attempt {i} response: {r.status_code} — {r.text[:300]}", flush=True)
+                if r.status_code not in (404, 405, 400):
+                    break
+            r.raise_for_status()  # type: ignore[union-attr]
+        data = r.json()  # type: ignore[union-attr]
     except httpx.HTTPStatusError as exc:
-        raise HTTPException(status_code=502, detail=f"Land Portal error {exc.response.status_code}: {exc.response.text[:200]}")
+        raise HTTPException(status_code=502, detail=f"Land Portal error {exc.response.status_code}: {exc.response.text[:300]}")
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Land Portal request failed: {exc}")
 
