@@ -800,9 +800,9 @@ def calculate_offer_price(
     # Client-confirmed 60/65/70 percentages (updated March 2026)
     if tlp_estimate and tlp_estimate > 0 and retail_estimate > tlp_estimate * 2.0:
         retail_estimate = tlp_estimate
-    offer_low = int(round(retail_estimate * LOW_PCT / 100)) * 100
-    offer_mid = int(round(retail_estimate * MID_PCT / 100)) * 100
-    offer_high = int(round(retail_estimate * HIGH_PCT / 100)) * 100
+    offer_low = round(retail_estimate * LOW_PCT, 2)
+    offer_mid = round(retail_estimate * MID_PCT, 2)
+    offer_high = round(retail_estimate * HIGH_PCT, 2)
 
     # Confidence based on comp count
     n = len(comps)
@@ -1606,9 +1606,9 @@ def run_matching(
                         'pricing_flag': 'COUNTY_MEDIAN',
                         'pricing_source': 'COUNTY_MEDIAN',
                         'retail_estimate': round(_county_retail),
-                        'offer_low': int(round(_county_retail * LOW_PCT / 100)) * 100,
-                        'offer_mid': int(round(_county_retail * MID_PCT / 100)) * 100,
-                        'offer_high': int(round(_county_retail * HIGH_PCT / 100)) * 100,
+                        'offer_low': round(_county_retail * LOW_PCT, 2),
+                        'offer_mid': round(_county_retail * MID_PCT, 2),
+                        'offer_high': round(_county_retail * HIGH_PCT, 2),
                         'confidence': 'EST',
                         'no_match_reason': f'No comps within 10mi — county median used',
                         'radius_label': 'COUNTY_MEDIAN',
@@ -1626,9 +1626,9 @@ def run_matching(
                 'pricing_flag': 'LP_FALLBACK',
                 'pricing_source': 'LP_FALLBACK',
                 'retail_estimate': round(lp_retail),
-                'offer_low': int(round(lp_retail * LOW_PCT / 100)) * 100,
-                'offer_mid': int(round(lp_retail * MID_PCT / 100)) * 100,
-                'offer_high': int(round(lp_retail * HIGH_PCT / 100)) * 100,
+                'offer_low': round(lp_retail * LOW_PCT, 2),
+                'offer_mid': round(lp_retail * MID_PCT, 2),
+                'offer_high': round(lp_retail * HIGH_PCT, 2),
                 'confidence': 'EST',
                 'no_match_reason': _lp_reason,
                 'radius_label': 'LP_FALLBACK',
@@ -1673,13 +1673,17 @@ def run_matching(
         )
 
         # If no dedicated columns, parse from full name
+        # LP format: "Last First [Middle]" — single name or comma/& separated couples
         if not owner_first and not owner_last and owner_full:
-            name_parts = owner_full.strip().split()
-            if len(name_parts) >= 2:
-                owner_first = name_parts[0]
-                owner_last = " ".join(name_parts[1:])
-            elif len(name_parts) == 1:
-                owner_last = name_parts[0]
+            # Use first owner segment only (before comma or &)
+            first_segment = re.split(r"[,&]", owner_full)[0].strip()
+            seg_parts = first_segment.split()
+            # LP "Last First [Middle]" order: first word is last name
+            if len(seg_parts) >= 2:
+                owner_last = seg_parts[0].capitalize()
+                owner_first = seg_parts[1].capitalize()
+            elif seg_parts:
+                owner_last = seg_parts[0].capitalize()
 
             # Debug first parsed name
             if ti == 0:

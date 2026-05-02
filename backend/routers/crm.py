@@ -368,26 +368,37 @@ def _reformat_lp_name(raw: str) -> str:
 
 
 def reformat_name(name: str) -> str:
-    """Reformat LP all-caps 'LAST FIRST [MIDDLE]' to 'First [Middle] Last'. Handles '&' for couples."""
+    """Reformat LP 'Last First [Middle]' names to 'First [Middle] Last'.
+    Handles comma-separated couples ('Krantz Gary W, Krantz Anita J'),
+    '&'-separated couples ('FOSTER DAVID & SMITH MARY'), and single all-caps names."""
     if not name:
         return name
+    name = name.strip()
     institutional = ['llc', 'corp', 'inc', 'ltd', 'trust', 'county', 'city', 'state', 'bank', 'church', 'estate']
     if any(word in name.lower() for word in institutional):
         return name.title()
-    parts_by_amp = re.split(r"\s*&\s*", name)
-    if not (name.strip() == name.strip().upper() and len(name.strip()) > 3):
+
+    # Detect LP format: either all-caps words OR comma-separated (LP uses comma for couples)
+    clean = re.sub(r"[,&]", " ", name).strip()
+    is_all_caps = len(clean) > 3 and clean == clean.upper() and " " in clean
+    has_comma = "," in name
+
+    if not is_all_caps and not has_comma:
         return name
+
+    # Split on comma first, then & — whichever is present
+    if has_comma:
+        segments = [s.strip() for s in name.split(",") if s.strip()]
+    else:
+        segments = [s.strip() for s in re.split(r"\s*&\s*", name) if s.strip()]
+
     reformatted = []
-    for segment in parts_by_amp:
-        words = segment.strip().split()
+    for segment in segments:
+        words = segment.split()
         if len(words) >= 2:
             last = words[0].capitalize()
-            first = words[1].capitalize()
-            if len(words) >= 3:
-                middle = words[2].capitalize()
-                reformatted.append(f"{first} {middle} {last}")
-            else:
-                reformatted.append(f"{first} {last}")
+            rest = " ".join(w.capitalize() for w in words[1:])
+            reformatted.append(f"{rest} {last}")
         elif words:
             reformatted.append(words[0].title())
     return " & ".join(reformatted)
@@ -691,7 +702,7 @@ def _run_import_job(job_id: str, content: bytes) -> None:
                     continue
                 data["updated_at"] = now
                 if not data.get("offer_price") and data.get("lp_estimate"):
-                    data["offer_price"] = int(round(float(data["lp_estimate"]) * 0.525 / 100)) * 100
+                    data["offer_price"] = round(float(data["lp_estimate"]) * 0.525, 2)
                 batch.append(data)
                 if len(batch) >= 500:
                     n, warns = _safe_batch_insert(sb, batch)
@@ -757,7 +768,7 @@ async def import_properties_batch(
                     continue
                 data["updated_at"] = now
                 if not data.get("offer_price") and data.get("lp_estimate"):
-                    data["offer_price"] = int(round(float(data["lp_estimate"]) * 0.525 / 100)) * 100
+                    data["offer_price"] = round(float(data["lp_estimate"]) * 0.525, 2)
                 batch.append(data)
                 if len(batch) >= 50:
                     n, warns = _safe_batch_insert(sb, batch)
@@ -1186,9 +1197,9 @@ async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)
                 "property_id": prop_id,
                 "fips": fips_val,
                 # Pricing
-                "offer_price": (int(round(float(r["suggested_offer_mid"]) / 100)) * 100) if r.get("suggested_offer_mid") is not None else None,
+                "offer_price": round(float(r["suggested_offer_mid"]), 2) if r.get("suggested_offer_mid") is not None else None,
                 "lp_estimate": r.get("retail_estimate"),
-                "recommended_offer": (int(round(float(r["suggested_offer_mid"]) / 100)) * 100) if r.get("suggested_offer_mid") is not None else None,
+                "recommended_offer": round(float(r["suggested_offer_mid"]), 2) if r.get("suggested_offer_mid") is not None else None,
                 "confidence_level": r.get("confidence") or None,
                 "pricing_method_used": r.get("pricing_method") or None,
                 # Geo
@@ -1380,7 +1391,7 @@ def _run_lp_pull_job(job_id: str, campaign_id: str) -> None:
                     if size:
                         lp_estimate = round(price_acre_mean * size, 2)
                         updates["lp_estimate"] = lp_estimate
-                        updates["offer_price"] = int(round(lp_estimate * 0.525 / 100)) * 100
+                        updates["offer_price"] = round(lp_estimate * 0.525, 2)
 
                 comps = data.get("list_of_rows_data", [])
                 for i, comp in enumerate(comps[:3], 1):
@@ -1467,7 +1478,7 @@ async def bulk_insert_properties(
                     record_num = starting_record + valid_index
                     data["campaign_code"] = f"{campaign_number:02d}-{record_num}"
             if not data.get("offer_price") and data.get("lp_estimate"):
-                data["offer_price"] = int(round(float(data["lp_estimate"]) * 0.525 / 100)) * 100
+                data["offer_price"] = round(float(data["lp_estimate"]) * 0.525, 2)
             valid_index += 1
             mapped.append(data)
         except Exception as exc:
