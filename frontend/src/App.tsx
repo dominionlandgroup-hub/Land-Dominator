@@ -35,14 +35,14 @@ class ErrorBoundary extends React.Component<
     if (this.state.error) {
       return (
         <div style={{ padding: '40px', fontFamily: 'monospace', background: '#fff', minHeight: '100vh' }}>
-          <h2 style={{ color: '#B71C1C', marginBottom: '16px' }}>Runtime Error</h2>
-          <pre style={{ background: '#FFF0F0', padding: '16px', borderRadius: '8px', border: '1px solid #FFCDD2', whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: '#1A0A2E', fontSize: '13px' }}>
+          <h2 style={{ color: '#F87171', marginBottom: '16px' }}>Runtime Error</h2>
+          <pre style={{ background: '#2A1515', padding: '16px', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.3)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: '#F87171', fontSize: '13px' }}>
             {this.state.error.message}
             {'\n\n'}
             {this.state.error.stack}
           </pre>
           <button
-            style={{ marginTop: '16px', padding: '8px 16px', background: '#5C2977', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}
+            style={{ marginTop: '16px', padding: '8px 16px', background: '#7C3AED', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}
             onClick={() => this.setState({ error: null })}
           >
             Retry
@@ -107,16 +107,16 @@ function AppShell() {
 
   if (!checked) {
     return (
-      <div className="flex min-h-screen items-center justify-center" style={{ background: '#F8F6FB' }}>
+      <div className="flex min-h-screen items-center justify-center" style={{ background: '#0F0F0F' }}>
         <div className="w-8 h-8 border-2 border-purple-300 border-t-purple-700 rounded-full animate-spin" />
       </div>
     )
   }
 
   return (
-    <div className="flex min-h-screen" style={{ background: '#F8F6FB' }}>
+    <div className="flex min-h-screen" style={{ background: '#0F0F0F' }}>
       <Sidebar />
-      <main className="flex-1 overflow-auto" style={{ background: '#F8F6FB' }}>
+      <main className="flex-1 overflow-auto" style={{ background: '#0F0F0F' }}>
         <ErrorBoundary>
           <PageContent />
         </ErrorBoundary>

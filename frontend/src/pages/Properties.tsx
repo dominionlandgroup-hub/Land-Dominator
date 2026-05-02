@@ -13,14 +13,14 @@ type View = 'list' | 'detail' | 'new'
 const PAGE_SIZE = 50
 
 const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  lead:           { bg: '#FFF3E0', text: '#E65100', border: '#FFCC80' },
-  prospect:       { bg: '#E3F2FD', text: '#1565C0', border: '#90CAF9' },
-  offer_sent:     { bg: '#F3E5F5', text: '#6A1B9A', border: '#CE93D8' },
-  under_contract: { bg: '#E8F5E9', text: '#2E7D32', border: '#A5D6A7' },
-  due_diligence:  { bg: '#FFF8E1', text: '#F57F17', border: '#FFE082' },
-  closed_won:     { bg: '#E0F2F1', text: '#00695C', border: '#80CBC4' },
-  closed_lost:    { bg: '#FFEBEE', text: '#B71C1C', border: '#EF9A9A' },
-  dead:           { bg: '#F5F5F5', text: '#616161', border: '#BDBDBD' },
+  lead:           { bg: 'rgba(124,58,237,0.12)', text: '#A78BFA', border: 'rgba(124,58,237,0.25)' },
+  prospect:       { bg: 'rgba(245,158,11,0.12)', text: '#FCD34D', border: 'rgba(245,158,11,0.25)' },
+  offer_sent:     { bg: 'rgba(245,158,11,0.12)', text: '#FCD34D', border: 'rgba(245,158,11,0.25)' },
+  under_contract: { bg: 'rgba(16,185,129,0.12)', text: '#34D399', border: 'rgba(16,185,129,0.25)' },
+  due_diligence:  { bg: 'rgba(16,185,129,0.12)', text: '#34D399', border: 'rgba(16,185,129,0.25)' },
+  closed_won:     { bg: 'rgba(16,185,129,0.15)', text: '#10B981', border: 'rgba(16,185,129,0.3)' },
+  closed_lost:    { bg: 'rgba(239,68,68,0.12)', text: '#F87171', border: 'rgba(239,68,68,0.25)' },
+  dead:           { bg: 'rgba(239,68,68,0.12)', text: '#F87171', border: 'rgba(239,68,68,0.25)' },
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -232,7 +232,7 @@ export default function Properties() {
           {anySelection && (
             <button
               className="px-4 py-2 rounded-lg text-sm font-semibold text-white flex items-center gap-2"
-              style={{ background: '#B71C1C' }}
+              style={{ background: '#EF4444' }}
               onClick={() => setShowDeleteConfirm(true)}
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -263,11 +263,11 @@ export default function Properties() {
         {/* Stat cards */}
         <div className="grid gap-4 mb-6" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
           {[
-            { label: 'Total', value: counts.total, accent: '#5C2977' },
-            { label: 'Leads', value: counts.lead, accent: '#E65100' },
-            { label: 'Offer Sent', value: counts.offer_sent, accent: '#6A1B9A' },
-            { label: 'Under Contract', value: counts.under_contract, accent: '#2E7D32' },
-            { label: 'Closed Won', value: counts.closed_won, accent: '#00695C' },
+            { label: 'Total', value: counts.total, accent: '#7C3AED' },
+            { label: 'Leads', value: counts.lead, accent: '#A78BFA' },
+            { label: 'Offer Sent', value: counts.offer_sent, accent: '#FCD34D' },
+            { label: 'Under Contract', value: counts.under_contract, accent: '#34D399' },
+            { label: 'Closed Won', value: counts.closed_won, accent: '#10B981' },
           ].map(s => (
             <div key={s.label} className="stat-card" style={{ '--stat-accent': s.accent } as React.CSSProperties}>
               <span className="label-caps">{s.label}</span>
@@ -306,7 +306,7 @@ export default function Properties() {
             onChange={e => handleStateChange(e.target.value)}
           />
           <div className="relative">
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9B8AAE" strokeWidth="2">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6B6B6B" strokeWidth="2">
               <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
             </svg>
             <input
@@ -321,7 +321,7 @@ export default function Properties() {
           {hasActiveFilter && (
             <button
               className="text-xs px-2.5 py-1.5 rounded-lg"
-              style={{ color: '#5C2977', background: 'rgba(92,41,119,0.07)', border: '1px solid #D4B8E8' }}
+              style={{ color: '#A78BFA', background: 'rgba(124,58,237,0.1)', border: '1px solid rgba(124,58,237,0.25)' }}
               onClick={clearFilters}
             >
               Clear filters
@@ -337,9 +337,9 @@ export default function Properties() {
               onClick={() => handleStatusChange(s)}
               className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
               style={{
-                background: statusFilter === s ? '#5C2977' : 'rgba(92,41,119,0.06)',
-                color: statusFilter === s ? '#fff' : '#5C2977',
-                border: `1px solid ${statusFilter === s ? '#5C2977' : '#D4B8E8'}`,
+                background: statusFilter === s ? '#7C3AED' : 'rgba(124,58,237,0.08)',
+                color: statusFilter === s ? '#fff' : '#A78BFA',
+                border: `1px solid ${statusFilter === s ? '#7C3AED' : 'rgba(124,58,237,0.2)'}`,
               }}
             >
               {s === 'all' ? 'All' : STATUS_LABELS[s]}
@@ -351,14 +351,14 @@ export default function Properties() {
         </div>
 
         {error && (
-          <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: '#FFF0F0', color: '#B71C1C', border: '1px solid #FFCDD2' }}>
+          <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: 'rgba(239,68,68,0.12)', color: '#F87171', border: '1px solid rgba(239,68,68,0.25)' }}>
             {error}
           </div>
         )}
 
         {loading ? (
           <div className="flex items-center justify-center py-16">
-            <div className="text-sm" style={{ color: '#6B5B8A' }}>Loading…</div>
+            <div className="text-sm" style={{ color: '#6B6B6B' }}>Loading…</div>
           </div>
         ) : (
           <>
@@ -366,14 +366,14 @@ export default function Properties() {
             {showSelectAllBanner && (
               <div
                 className="flex items-center justify-between px-4 py-2.5 rounded-lg mb-3 text-sm"
-                style={{ background: 'rgba(92,41,119,0.07)', border: '1px solid #D4B8E8' }}
+                style={{ background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.2)' }}
               >
-                <span style={{ color: '#3D2B5E' }}>
+                <span style={{ color: '#F5F5F5' }}>
                   All {properties.length} properties on this page are selected.
                 </span>
                 <button
                   className="font-semibold text-sm ml-3"
-                  style={{ color: '#5C2977' }}
+                  style={{ color: '#A78BFA' }}
                   onClick={() => setAllPagesSelected(true)}
                 >
                   Select all {totalCount.toLocaleString()} properties →
@@ -383,14 +383,14 @@ export default function Properties() {
             {allPagesSelected && (
               <div
                 className="flex items-center justify-between px-4 py-2.5 rounded-lg mb-3 text-sm"
-                style={{ background: 'rgba(183,28,28,0.06)', border: '1px solid rgba(183,28,28,0.25)' }}
+                style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}
               >
-                <span style={{ color: '#B71C1C', fontWeight: 600 }}>
+                <span style={{ color: '#F87171', fontWeight: 600 }}>
                   All {totalCount.toLocaleString()} properties are selected.
                 </span>
                 <button
                   className="font-semibold text-sm ml-3"
-                  style={{ color: '#B71C1C' }}
+                  style={{ color: '#F87171' }}
                   onClick={clearSelection}
                 >
                   Clear selection ×
@@ -398,10 +398,10 @@ export default function Properties() {
               </div>
             )}
 
-            <div className="bg-white rounded-xl overflow-hidden" style={{ border: '1px solid #EDE8F5' }}>
+            <div style={{ background: '#1A1A1A', borderRadius: '8px', overflow: 'hidden', border: '1px solid #2E2E2E' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                 <thead>
-                  <tr style={{ background: '#F8F5FC', borderBottom: '1px solid #EDE8F5' }}>
+                  <tr style={{ background: '#242424', borderBottom: '1px solid #2E2E2E' }}>
                     <th style={{ width: '36px', padding: '10px 12px' }}>
                       <input
                         type="checkbox"
@@ -416,14 +416,14 @@ export default function Properties() {
                       />
                     </th>
                     {['OWNER', 'APN', 'COUNTY', 'STATE', 'ACRES', 'OFFER PRICE', 'CAMPAIGN', 'STATUS'].map(h => (
-                      <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', color: '#9B8AAE' }}>{h}</th>
+                      <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', color: '#6B6B6B' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {properties.length === 0 ? (
                     <tr>
-                      <td colSpan={9} style={{ padding: '48px 20px', textAlign: 'center', color: '#9B8AAE' }}>
+                      <td colSpan={9} style={{ padding: '48px 20px', textAlign: 'center', color: '#6B6B6B' }}>
                         No properties match the current filters.
                       </td>
                     </tr>
@@ -435,8 +435,8 @@ export default function Properties() {
                       <tr
                         key={p.id}
                         style={{
-                          borderBottom: i < properties.length - 1 ? '1px solid #F5F0FC' : 'none',
-                          background: isSelected ? 'rgba(92,41,119,0.04)' : 'transparent',
+                          borderBottom: i < properties.length - 1 ? '1px solid #2E2E2E' : 'none',
+                          background: isSelected ? 'rgba(124,58,237,0.08)' : 'transparent',
                           cursor: 'pointer',
                         }}
                         onClick={() => { setSelected(p); setView('detail') }}
@@ -444,26 +444,26 @@ export default function Properties() {
                         <td style={{ padding: '10px 12px' }} onClick={e => { e.stopPropagation(); if (!allPagesSelected) { setSelectedIds(prev => { const n = new Set(prev); n.has(p.id) ? n.delete(p.id) : n.add(p.id); return n }) } }}>
                           <input type="checkbox" checked={isSelected} onChange={() => {}} style={{ cursor: 'pointer' }} />
                         </td>
-                        <td style={{ padding: '10px 12px', fontWeight: 500, color: '#1A0A2E', maxWidth: '180px' }}>
-                          <div className="truncate">{p.owner_full_name ?? <span style={{ color: '#C4B5D8' }}>—</span>}</div>
+                        <td style={{ padding: '10px 12px', fontWeight: 500, color: '#F5F5F5', maxWidth: '180px' }}>
+                          <div className="truncate">{p.owner_full_name ?? <span style={{ color: '#6B6B6B' }}>—</span>}</div>
                         </td>
-                        <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '11px', color: '#5C2977', fontWeight: 600 }}>
-                          {p.apn ?? <span style={{ color: '#C4B5D8', fontFamily: 'inherit', fontWeight: 400 }}>—</span>}
+                        <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '11px', color: '#A78BFA', fontWeight: 600 }}>
+                          {p.apn ?? <span style={{ color: '#6B6B6B', fontFamily: 'inherit', fontWeight: 400 }}>—</span>}
                         </td>
-                        <td style={{ padding: '10px 12px', color: '#6B5B8A' }}>
-                          {p.county ?? <span style={{ color: '#C4B5D8' }}>—</span>}
+                        <td style={{ padding: '10px 12px', color: '#A0A0A0' }}>
+                          {p.county ?? <span style={{ color: '#6B6B6B' }}>—</span>}
                         </td>
-                        <td style={{ padding: '10px 12px', color: '#6B5B8A' }}>
-                          {p.state ?? <span style={{ color: '#C4B5D8' }}>—</span>}
+                        <td style={{ padding: '10px 12px', color: '#A0A0A0' }}>
+                          {p.state ?? <span style={{ color: '#6B6B6B' }}>—</span>}
                         </td>
-                        <td style={{ padding: '10px 12px', textAlign: 'right', color: '#6B5B8A' }}>
-                          {p.acreage != null ? p.acreage.toFixed(2) : <span style={{ color: '#C4B5D8' }}>—</span>}
+                        <td style={{ padding: '10px 12px', textAlign: 'right', color: '#A0A0A0' }}>
+                          {p.acreage != null ? p.acreage.toFixed(2) : <span style={{ color: '#6B6B6B' }}>—</span>}
                         </td>
-                        <td style={{ padding: '10px 12px', textAlign: 'right', color: '#3D2B5E', fontWeight: 500 }}>
-                          {p.offer_price != null ? `$${p.offer_price.toLocaleString()}` : <span style={{ color: '#C4B5D8' }}>—</span>}
+                        <td style={{ padding: '10px 12px', textAlign: 'right', color: '#F5F5F5', fontWeight: 500 }}>
+                          {p.offer_price != null ? `$${p.offer_price.toLocaleString()}` : <span style={{ color: '#6B6B6B' }}>—</span>}
                         </td>
-                        <td style={{ padding: '10px 12px', fontSize: '11px', color: '#9B8AAE', maxWidth: '140px' }}>
-                          <div className="truncate">{campaignName ?? <span style={{ color: '#C4B5D8' }}>—</span>}</div>
+                        <td style={{ padding: '10px 12px', fontSize: '11px', color: '#A0A0A0', maxWidth: '140px' }}>
+                          <div className="truncate">{campaignName ?? <span style={{ color: '#6B6B6B' }}>—</span>}</div>
                         </td>
                         <td style={{ padding: '10px 12px' }}>
                           <span
@@ -482,9 +482,9 @@ export default function Properties() {
               {/* Pagination */}
               <div
                 className="flex items-center justify-between px-4 py-3"
-                style={{ borderTop: '1px solid #EDE8F5', background: '#FAFAFE' }}
+                style={{ borderTop: '1px solid #2E2E2E', background: '#1A1A1A' }}
               >
-                <span className="text-xs" style={{ color: '#9B8AAE' }}>
+                <span className="text-xs" style={{ color: '#6B6B6B' }}>
                   {totalCount === 0 ? '0 results' : `${firstRow.toLocaleString()}–${lastRow.toLocaleString()} of ${totalCount.toLocaleString()} results`}
                 </span>
                 <div className="flex items-center gap-1">
@@ -492,20 +492,20 @@ export default function Properties() {
                     onClick={() => { setSelectedIds(new Set()); reload({ p: page - 1 }) }}
                     disabled={page <= 1}
                     className="p-1.5 rounded disabled:opacity-30"
-                    style={{ color: '#5C2977' }}
+                    style={{ color: '#7C3AED' }}
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                       <polyline points="15 18 9 12 15 6"/>
                     </svg>
                   </button>
-                  <span className="text-xs px-2 font-medium" style={{ color: '#3D2B5E' }}>
+                  <span className="text-xs px-2 font-medium" style={{ color: '#F5F5F5' }}>
                     {page} / {totalPages || 1}
                   </span>
                   <button
                     onClick={() => { setSelectedIds(new Set()); reload({ p: page + 1 }) }}
                     disabled={page >= totalPages}
                     className="p-1.5 rounded disabled:opacity-30"
-                    style={{ color: '#5C2977' }}
+                    style={{ color: '#7C3AED' }}
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                       <polyline points="9 18 15 12 9 6"/>
@@ -520,8 +520,8 @@ export default function Properties() {
 
       {/* Bulk delete confirm */}
       {showDeleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(26,10,46,0.55)' }}>
-          <div className="bg-white rounded-2xl p-6 shadow-xl" style={{ maxWidth: '420px', width: '100%' }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }}>
+          <div style={{ background: '#1A1A1A', borderRadius: '8px', padding: '24px', maxWidth: '420px', width: '100%', border: '1px solid #2E2E2E' }}>
             <h2 className="section-heading mb-3">
               {allPagesSelected
                 ? `Delete all ${totalCount.toLocaleString()} properties?`
@@ -529,16 +529,16 @@ export default function Properties() {
               }
             </h2>
             {allPagesSelected && (
-              <p className="text-sm mb-2" style={{ color: '#B71C1C' }}>
+              <p className="text-sm mb-2" style={{ color: '#F87171' }}>
                 This will delete every property matching the current filters.
               </p>
             )}
-            <p className="text-sm mb-6" style={{ color: '#6B5B8A' }}>This cannot be undone.</p>
+            <p className="text-sm mb-6" style={{ color: '#A0A0A0' }}>This cannot be undone.</p>
             <div className="flex gap-3">
               <button className="btn-secondary flex-1" onClick={() => setShowDeleteConfirm(false)} disabled={deleting}>Cancel</button>
               <button
                 className="flex-1 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
-                style={{ background: '#B71C1C' }}
+                style={{ background: '#EF4444' }}
                 onClick={handleBulkDelete}
                 disabled={deleting}
               >

@@ -70,7 +70,7 @@ function CurrencyInput({
         onFocus={onFocus}
         onBlur={onBlur}
         placeholder={placeholder}
-        style={bold ? { fontWeight: 700, color: '#2D7A4F', fontSize: '14px' } : undefined}
+        style={bold ? { fontWeight: 700, color: '#10B981', fontSize: '14px' } : undefined}
       />
     </div>
   )
@@ -98,8 +98,8 @@ function fmtFloodZone(v: string | null | undefined): string {
 }
 
 function buildabilityColor(v: number | null | undefined): string {
-  if (v == null) return '#9B8AAE'
-  if (v >= 80) return '#2D7A4F'
+  if (v == null) return '#A0A0A0'
+  if (v >= 80) return '#10B981'
   if (v >= 50) return '#D5A940'
   return '#dc2626'
 }
@@ -127,35 +127,35 @@ function AccordionSection({
 }) {
   const isOpen = openSections.has(sectionKey)
   return (
-    <div style={{ border: '1px solid #E0E0E0', borderRadius: '10px', overflow: 'hidden', background: '#fff' }}>
+    <div style={{ border: '1px solid #2E2E2E', borderRadius: '8px', overflow: 'hidden', background: '#1A1A1A' }}>
       <button
         type="button"
         onClick={() => toggleSection(sectionKey)}
         className="w-full flex items-center justify-between"
         style={{
           padding: '12px 16px',
-          background: isOpen ? '#EEEEEE' : '#F5F5F5',
-          borderBottom: isOpen ? '1px solid #E0E0E0' : 'none',
+          background: isOpen ? '#242424' : '#1A1A1A',
+          borderBottom: isOpen ? '1px solid #2E2E2E' : 'none',
           cursor: 'pointer',
           textAlign: 'left',
           transition: 'background 0.15s',
         }}
-        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#EBEBEB' }}
-        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = isOpen ? '#EEEEEE' : '#F5F5F5' }}
+        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#242424' }}
+        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = isOpen ? '#242424' : '#1A1A1A' }}
       >
-        <span style={{ fontSize: '14px', fontWeight: 600, color: '#1A0A2E', fontFamily: "'Montserrat', sans-serif" }}>
+        <span style={{ fontSize: '14px', fontWeight: 600, color: '#F5F5F5', fontFamily: "'Montserrat', sans-serif" }}>
           {title}
         </span>
         <svg
           width="16" height="16" viewBox="0 0 24 24" fill="none"
-          stroke="#6B5B8A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+          stroke="#A0A0A0" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
           style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease', flexShrink: 0 }}
         >
           <polyline points="6 9 12 15 18 9" />
         </svg>
       </button>
       {isOpen && (
-        <div style={{ padding: '20px 16px' }}>
+        <div style={{ padding: '20px 16px', background: '#111111' }}>
           {children}
         </div>
       )}
@@ -428,12 +428,12 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
             resize: 'vertical',
             padding: '8px 12px',
             width: '100%',
-            background: '#FFFFFF',
-            border: '1.5px solid #E0D0F0',
+            background: '#242424',
+            border: '1.5px solid #2E2E2E',
             borderRadius: '8px',
             fontSize: '13px',
             fontFamily: "'Montserrat', sans-serif",
-            color: '#1A0A2E',
+            color: '#F5F5F5',
             outline: 'none',
           }}
         />
@@ -527,17 +527,17 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
 
       <div className="p-6" style={{ maxWidth: '900px' }}>
         {error && (
-          <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: '#FFF0F0', color: '#B71C1C', border: '1px solid #FFCDD2' }}>
+          <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: '#2A1A1A', color: '#EF4444', border: '1px solid #3E2020' }}>
             {error}
           </div>
         )}
         {lpMsg && (
-          <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: '#E8F5E9', color: '#2E7D32', border: '1px solid #A5D6A7' }}>
+          <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: '#0D2418', color: '#10B981', border: '1px solid #1A3D2A' }}>
             {lpMsg}
           </div>
         )}
         {smsSuccess && (
-          <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: '#E8F5E9', color: '#2E7D32', border: '1px solid #A5D6A7' }}>
+          <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: '#0D2418', color: '#10B981', border: '1px solid #1A3D2A' }}>
             {smsSuccess}
           </div>
         )}
@@ -605,9 +605,9 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
                 <div className="flex gap-2 mt-2 flex-wrap">
                   {(form.additional_phones || []).map(p => (
                     <span key={p} className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs"
-                      style={{ background: '#F0EBF8', color: '#5C2977', border: '1px solid #D4B8E8' }}>
+                      style={{ background: '#242424', color: '#A78BFA', border: '1px solid #2E2E2E' }}>
                       {p}
-                      <button onClick={() => removePhone(p)} style={{ color: '#9B8AAE', lineHeight: 1 }}>×</button>
+                      <button onClick={() => removePhone(p)} style={{ color: '#6B6B6B', lineHeight: 1 }}>×</button>
                     </span>
                   ))}
                 </div>
@@ -641,7 +641,7 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
           {/* Land Analysis */}
           <AccordionSection title="Land Analysis" sectionKey="land" {...accordionProps}>
             {/* Read-only summary row */}
-            <div className="grid grid-cols-4 gap-3 mb-4 p-3 rounded-xl" style={{ background: '#F8F5FC', border: '1px solid #EDE8F5' }}>
+            <div className="grid grid-cols-4 gap-3 mb-4 p-3 rounded-xl" style={{ background: '#1A1A1A', border: '1px solid #2E2E2E' }}>
               <div>
                 <p className="label-caps mb-1">Buildability</p>
                 <div className="flex items-center gap-1.5">
@@ -653,43 +653,43 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
               </div>
               <div>
                 <p className="label-caps mb-1">Land Locked</p>
-                <p className="text-sm font-medium" style={{ color: fmtLandLocked(form.land_locked as string | undefined) === 'Yes' ? '#dc2626' : '#1A0A2E' }}>
+                <p className="text-sm font-medium" style={{ color: fmtLandLocked(form.land_locked as string | undefined) === 'Yes' ? '#dc2626' : '#F5F5F5' }}>
                   {fmtLandLocked(form.land_locked as string | undefined)}
                 </p>
               </div>
               <div>
                 <p className="label-caps mb-1">Flood Zone</p>
-                <p className="text-sm font-medium" style={{ color: '#1A0A2E' }}>
+                <p className="text-sm font-medium" style={{ color: '#F5F5F5' }}>
                   {fmtFloodZone(form.dd_flood_zone as string | undefined)}
                 </p>
               </div>
               <div>
                 <p className="label-caps mb-1">FEMA Coverage</p>
-                <p className="text-sm font-medium" style={{ color: '#1A0A2E' }}>
+                <p className="text-sm font-medium" style={{ color: '#F5F5F5' }}>
                   {fmtPct(form.fema_coverage as number | undefined)}
                 </p>
               </div>
               <div>
                 <p className="label-caps mb-1">Wetlands</p>
-                <p className="text-sm font-medium" style={{ color: '#1A0A2E' }}>
+                <p className="text-sm font-medium" style={{ color: '#F5F5F5' }}>
                   {fmtPct(form.wetlands_coverage as number | undefined)}
                 </p>
               </div>
               <div>
                 <p className="label-caps mb-1">Road Frontage</p>
-                <p className="text-sm font-medium" style={{ color: '#1A0A2E' }}>
+                <p className="text-sm font-medium" style={{ color: '#F5F5F5' }}>
                   {form.road_frontage != null ? `${Number(form.road_frontage).toFixed(0)} ft` : '—'}
                 </p>
               </div>
               <div>
                 <p className="label-caps mb-1">Slope AVG</p>
-                <p className="text-sm font-medium" style={{ color: '#1A0A2E' }}>
+                <p className="text-sm font-medium" style={{ color: '#F5F5F5' }}>
                   {form.slope_avg != null ? `${Number(form.slope_avg).toFixed(1)}%` : '—'}
                 </p>
               </div>
               <div>
                 <p className="label-caps mb-1">Elevation AVG</p>
-                <p className="text-sm font-medium" style={{ color: '#1A0A2E' }}>
+                <p className="text-sm font-medium" style={{ color: '#F5F5F5' }}>
                   {form.elevation_avg != null ? `${Number(form.elevation_avg).toFixed(0)} ft` : '—'}
                 </p>
               </div>
@@ -718,15 +718,15 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
                 {form.comp_quality_flags.split(',').map(f => f.trim()).filter(Boolean).map(flag => (
                   <span key={flag} className="text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider"
                     style={{
-                      background: flag === 'REVIEW_NEEDED' ? '#FFF0F0' : '#FFF9E6',
-                      color: flag === 'REVIEW_NEEDED' ? '#B71C1C' : '#B8860B',
-                      border: `1px solid ${flag === 'REVIEW_NEEDED' ? '#FFCDD2' : '#FFE082'}`,
+                      background: flag === 'REVIEW_NEEDED' ? '#2A1A1A' : '#2A2000',
+                      color: flag === 'REVIEW_NEEDED' ? '#EF4444' : '#F59E0B',
+                      border: `1px solid ${flag === 'REVIEW_NEEDED' ? '#3E2020' : '#3E2E00'}`,
                     }}>
                     {flag.replace(/_/g, ' ')}
                   </span>
                 ))}
                 {form.pricing_method_used && (
-                  <span className="text-[10px] font-medium px-2 py-1 rounded-full" style={{ background: '#EDE8F5', color: '#5C2977' }}>
+                  <span className="text-[10px] font-medium px-2 py-1 rounded-full" style={{ background: '#242424', color: '#A78BFA' }}>
                     Method: {form.pricing_method_used}
                   </span>
                 )}
@@ -750,28 +750,28 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
                   ? Math.max(acreage, propertyAcreage) / Math.min(acreage, propertyAcreage) > 3
                   : false
                 return (
-                  <div key={n} className="rounded-xl overflow-hidden" style={{ border: '1px solid #EDE8F5' }}>
-                    <div className="px-4 pt-4 pb-3" style={{ background: '#F8F5FC', borderBottom: '1px solid #EDE8F5' }}>
+                  <div key={n} className="rounded-xl overflow-hidden" style={{ border: '1px solid #2E2E2E' }}>
+                    <div className="px-4 pt-4 pb-3" style={{ background: '#1A1A1A', borderBottom: '1px solid #2E2E2E' }}>
                       <div className="flex items-center justify-between mb-1">
-                        <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#9B8AAE' }}>Comp {n}</p>
+                        <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#6B6B6B' }}>Comp {n}</p>
                         <div className="flex gap-1">
-                          {isStale && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#FFF9E6', color: '#B8860B', border: '1px solid #FFE082' }}>STALE</span>}
-                          {isPoor && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#FFF0F0', color: '#B71C1C', border: '1px solid #FFCDD2' }}>POOR</span>}
+                          {isStale && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#2A2000', color: '#F59E0B', border: '1px solid #3E2E00' }}>STALE</span>}
+                          {isPoor && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#2A1A1A', color: '#EF4444', border: '1px solid #3E2020' }}>POOR</span>}
                         </div>
                       </div>
-                      <p className="text-2xl font-bold" style={{ color: '#1A0A2E' }}>
-                        {price != null ? fmtCurrency(price) : <span style={{ color: '#C4B5D8', fontSize: '13px', fontWeight: 400 }}>No price yet</span>}
+                      <p className="text-2xl font-bold" style={{ color: '#F5F5F5' }}>
+                        {price != null ? fmtCurrency(price) : <span style={{ color: '#6B6B6B', fontSize: '13px', fontWeight: 400 }}>No price yet</span>}
                       </p>
-                      {acreage != null && <p className="text-sm mt-0.5" style={{ color: '#6B5B8A' }}>{acreage.toFixed(2)} ac{ppa != null ? ` · ${fmtCurrency(ppa)}/ac` : ''}</p>}
-                      {address && <p className="text-xs mt-1 leading-tight" style={{ color: '#6B5B8A' }}>{address}</p>}
+                      {acreage != null && <p className="text-sm mt-0.5" style={{ color: '#A0A0A0' }}>{acreage.toFixed(2)} ac{ppa != null ? ` · ${fmtCurrency(ppa)}/ac` : ''}</p>}
+                      {address && <p className="text-xs mt-1 leading-tight" style={{ color: '#A0A0A0' }}>{address}</p>}
                       <div className="flex flex-wrap gap-2 mt-1.5">
-                        {date && <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: '#EDE8F5', color: '#6B5B8A' }}>{new Date(date).toLocaleDateString('en-US', { year: 'numeric', month: 'short' })}</span>}
-                        {distance != null && <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: '#EDE8F5', color: '#6B5B8A' }}>{distance.toFixed(2)} mi away</span>}
+                        {date && <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: '#242424', color: '#A0A0A0' }}>{new Date(date).toLocaleDateString('en-US', { year: 'numeric', month: 'short' })}</span>}
+                        {distance != null && <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: '#242424', color: '#A0A0A0' }}>{distance.toFixed(2)} mi away</span>}
                       </div>
                       {link && (
                         <a href={link} target="_blank" rel="noopener noreferrer"
                           className="inline-block mt-2 text-xs font-semibold px-2 py-1 rounded-lg"
-                          style={{ background: '#EDE8F5', color: '#5C2977' }}
+                          style={{ background: '#242424', color: '#A78BFA' }}
                         >View on Land Portal →</a>
                       )}
                     </div>
@@ -801,8 +801,8 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
                 return conf ? (
                   <span className="inline-block self-start px-3 py-1.5 rounded-full text-sm font-bold"
                     style={{
-                      background: conf === 'HIGH' ? '#E8F5E9' : conf === 'MEDIUM' ? '#FFF9E6' : '#FFF0F0',
-                      color: conf === 'HIGH' ? '#2D7A4F' : conf === 'MEDIUM' ? '#B8860B' : '#B71C1C',
+                      background: conf === 'HIGH' ? '#0D2418' : conf === 'MEDIUM' ? '#2A2000' : '#2A1A1A',
+                      color: conf === 'HIGH' ? '#10B981' : conf === 'MEDIUM' ? '#F59E0B' : '#EF4444',
                     }}>
                     {conf}
                   </span>
@@ -839,9 +839,9 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
                 <div className="flex gap-2 mt-2 flex-wrap">
                   {(form.tags || []).map(t => (
                     <span key={t} className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs"
-                      style={{ background: '#F0EBF8', color: '#5C2977', border: '1px solid #D4B8E8' }}>
+                      style={{ background: '#242424', color: '#A78BFA', border: '1px solid #2E2E2E' }}>
                       {t}
-                      <button onClick={() => removeTag(t)} style={{ color: '#9B8AAE', lineHeight: 1 }}>×</button>
+                      <button onClick={() => removeTag(t)} style={{ color: '#6B6B6B', lineHeight: 1 }}>×</button>
                     </span>
                   ))}
                 </div>
@@ -856,12 +856,12 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
                 style={{
                   padding: '8px 12px',
                   width: '100%',
-                  background: '#FFFFFF',
-                  border: '1.5px solid #E0D0F0',
+                  background: '#242424',
+                  border: '1.5px solid #2E2E2E',
                   borderRadius: '8px',
                   fontSize: '13px',
                   fontFamily: "'Montserrat', sans-serif",
-                  color: '#1A0A2E',
+                  color: '#F5F5F5',
                   outline: 'none',
                   resize: 'vertical',
                 }}
@@ -876,7 +876,7 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
                   {noteSaving ? 'Saving…' : 'Save Note'}
                 </button>
                 {noteSaved && (
-                  <span className="text-xs font-medium" style={{ color: '#2D7A4F' }}>Saved to history</span>
+                  <span className="text-xs font-medium" style={{ color: '#10B981' }}>Saved to history</span>
                 )}
               </div>
               {noteHistory.length > 0 && (
@@ -884,11 +884,11 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
                   <p className="label-caps mb-2">Note History</p>
                   <div className="flex flex-col gap-2">
                     {noteHistory.map(n => (
-                      <div key={n.id} className="rounded-lg p-3" style={{ background: '#F8F5FC', border: '1px solid #EDE8F5' }}>
-                        <p className="text-[11px] mb-1" style={{ color: '#9B8AAE' }}>
+                      <div key={n.id} className="rounded-lg p-3" style={{ background: '#1A1A1A', border: '1px solid #2E2E2E' }}>
+                        <p className="text-[11px] mb-1" style={{ color: '#6B6B6B' }}>
                           {new Date(n.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
                         </p>
-                        <p className="text-xs whitespace-pre-wrap" style={{ color: '#1A0A2E' }}>{n.content}</p>
+                        <p className="text-xs whitespace-pre-wrap" style={{ color: '#F5F5F5' }}>{n.content}</p>
                       </div>
                     ))}
                   </div>
@@ -920,25 +920,25 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
                 </div>
               </div>
               {docError && (
-                <p className="text-xs mb-3" style={{ color: '#B71C1C' }}>{docError}</p>
+                <p className="text-xs mb-3" style={{ color: '#EF4444' }}>{docError}</p>
               )}
               {docsLoading ? (
-                <p className="text-xs" style={{ color: '#9B8AAE' }}>Loading…</p>
+                <p className="text-xs" style={{ color: '#6B6B6B' }}>Loading…</p>
               ) : docs.length === 0 ? (
-                <p className="text-xs" style={{ color: '#9B8AAE' }}>No documents yet. Upload a PDF, Word doc, or image.</p>
+                <p className="text-xs" style={{ color: '#6B6B6B' }}>No documents yet. Upload a PDF, Word doc, or image.</p>
               ) : (
                 <div className="space-y-2">
                   {docs.map(doc => (
                     <div key={doc.id} className="flex items-center justify-between rounded-lg px-4 py-3"
-                      style={{ background: '#F8F5FC', border: '1px solid #EDE8F5' }}>
+                      style={{ background: '#1A1A1A', border: '1px solid #2E2E2E' }}>
                       <div className="flex items-center gap-3 min-w-0">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9B8AAE" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6B6B6B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0">
                           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                           <polyline points="14 2 14 8 20 8"/>
                         </svg>
                         <div className="min-w-0">
-                          <p className="text-sm font-medium truncate" style={{ color: '#1A0A2E' }}>{doc.filename}</p>
-                          <p className="text-[11px]" style={{ color: '#9B8AAE' }}>
+                          <p className="text-sm font-medium truncate" style={{ color: '#F5F5F5' }}>{doc.filename}</p>
+                          <p className="text-[11px]" style={{ color: '#6B6B6B' }}>
                             {doc.file_type?.split('/')[1]?.toUpperCase() ?? 'FILE'}
                             {doc.file_size ? ` · ${fmtFileSize(doc.file_size)}` : ''}
                             {' · '}{new Date(doc.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
@@ -984,9 +984,9 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
           {!isNew && (
             <AccordionSection title="Communications History" sectionKey="comms" {...accordionProps}>
               {commsLoading ? (
-                <p className="text-xs" style={{ color: '#9B8AAE' }}>Loading…</p>
+                <p className="text-xs" style={{ color: '#6B6B6B' }}>Loading…</p>
               ) : comms.length === 0 ? (
-                <p className="text-xs" style={{ color: '#9B8AAE' }}>
+                <p className="text-xs" style={{ color: '#6B6B6B' }}>
                   No communications yet. Use the "Send Text" button to send an SMS, or communications will appear here when this seller calls or texts your Telnyx number.
                 </p>
               ) : (
@@ -1001,27 +1001,27 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
                         key={c.id}
                         type="button"
                         className="w-full text-left rounded-lg p-3"
-                        style={{ background: '#F8F5FC', border: '1px solid #EDE8F5', cursor: 'pointer', transition: 'background 0.1s' }}
+                        style={{ background: '#1A1A1A', border: '1px solid #2E2E2E', cursor: 'pointer', transition: 'background 0.1s' }}
                         onClick={() => setDetailComm(c)}
-                        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#EDE8F5' }}
-                        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = '#F8F5FC' }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#242424' }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = '#1A1A1A' }}
                       >
                         <div className="flex items-center justify-between mb-1.5">
                           <div className="flex items-center gap-2 flex-wrap">
                             <TypeBadge type={c.type} />
                             <ScoreBadge score={c.lead_score} />
                             {isCall && c.duration_seconds != null && (
-                              <span className="text-[11px]" style={{ color: '#9B8AAE' }}>{fmtTalk(c.duration_seconds)}</span>
+                              <span className="text-[11px]" style={{ color: '#6B6B6B' }}>{fmtTalk(c.duration_seconds)}</span>
                             )}
                           </div>
-                          <span className="text-[11px] flex-shrink-0 ml-2" style={{ color: '#9B8AAE' }}>
+                          <span className="text-[11px] flex-shrink-0 ml-2" style={{ color: '#6B6B6B' }}>
                             {new Date(c.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                           </span>
                         </div>
                         {previewText && (
-                          <p className="text-xs" style={{ color: '#6B5B8A' }}>{previewText}</p>
+                          <p className="text-xs" style={{ color: '#A0A0A0' }}>{previewText}</p>
                         )}
-                        <p className="text-[10px] mt-1" style={{ color: '#9B8AAE' }}>Click to view full details →</p>
+                        <p className="text-[10px] mt-1" style={{ color: '#6B6B6B' }}>Click to view full details →</p>
                       </button>
                     )
                   })}
@@ -1037,12 +1037,12 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
       {showSmsModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background: 'rgba(26,10,46,0.5)' }}
+          style={{ background: 'rgba(0,0,0,0.7)' }}
           onClick={e => { if (e.target === e.currentTarget) setShowSmsModal(false) }}
         >
           <div className="card" style={{ width: 480, maxWidth: '95vw', padding: 24 }}>
             <h2 className="section-heading mb-1">Send Text Message</h2>
-            <p className="text-xs mb-3" style={{ color: '#9B8AAE' }}>
+            <p className="text-xs mb-3" style={{ color: '#6B6B6B' }}>
               To: {form.owner_phone} — {form.owner_first_name || form.owner_full_name || 'Owner'}
             </p>
             <textarea
@@ -1052,7 +1052,7 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
               onChange={e => setSmsMessage(e.target.value)}
               style={{ resize: 'vertical' }}
             />
-            {smsError && <p className="text-xs mb-2" style={{ color: '#B71C1C' }}>{smsError}</p>}
+            {smsError && <p className="text-xs mb-2" style={{ color: '#EF4444' }}>{smsError}</p>}
             <div className="flex gap-2 justify-end">
               <button className="btn-secondary" onClick={() => setShowSmsModal(false)}>Cancel</button>
               <button
@@ -1070,17 +1070,17 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
       {/* Call Modal */}
       {showCallModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background: 'rgba(26,10,46,0.5)' }}
+          style={{ background: 'rgba(0,0,0,0.7)' }}
           onClick={e => { if (e.target === e.currentTarget) { setShowCallModal(false); setCallMsg(null) } }}>
           <div className="card" style={{ width: 420, maxWidth: '95vw', padding: 24 }}>
             <h2 className="section-heading mb-1">Start Call</h2>
-            <p className="text-sm mb-4" style={{ color: '#6B5B8A' }}>
+            <p className="text-sm mb-4" style={{ color: '#A0A0A0' }}>
               Calling <strong>{form.owner_first_name || form.owner_full_name || 'Owner'}</strong> at{' '}
               <strong>{form.owner_phone}</strong> from your Telnyx number.
             </p>
             {callMsg && (
               <div className="mb-4 p-3 rounded-lg text-sm"
-                style={{ background: callMsg.startsWith('Error') ? '#FFF0F0' : '#E8F5E9', color: callMsg.startsWith('Error') ? '#B71C1C' : '#2D7A4F' }}>
+                style={{ background: callMsg.startsWith('Error') ? '#2A1A1A' : '#0D2418', color: callMsg.startsWith('Error') ? '#EF4444' : '#10B981' }}>
                 {callMsg}
               </div>
             )}
@@ -1116,10 +1116,10 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
       )}
 
       {confirmDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(26,10,46,0.55)' }}>
-          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.75)' }}>
+          <div style={{ background: '#1A1A1A', border: '1px solid #2E2E2E', borderRadius: '8px', padding: '24px', width: '100%', maxWidth: '384px' }}>
             <h2 className="section-heading mb-2">Delete Property?</h2>
-            <p className="text-sm mb-5" style={{ color: '#6B5B8A' }}>
+            <p className="text-sm mb-5" style={{ color: '#A0A0A0' }}>
               Permanently delete <strong>{form.apn || 'this property'}</strong>. This cannot be undone.
             </p>
             <div className="flex gap-2">

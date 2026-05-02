@@ -56,8 +56,8 @@ export default function Dashboard() {
             ← Upload Comps
           </button>
           <div>
-            <h1 className="text-lg" style={{ color: '#1A0A2E', fontWeight: 700 }}>Market Analysis</h1>
-            <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>
+            <h1 className="text-lg" style={{ color: '#F5F5F5', fontWeight: 700 }}>Market Analysis</h1>
+            <p className="text-xs mt-0.5" style={{ color: '#A0A0A0' }}>
               {compsStats.valid_rows.toLocaleString()} valid sold comps · {dashboardData?.available_zips.length ?? '…'} ZIP codes
             </p>
           </div>
@@ -86,7 +86,7 @@ export default function Dashboard() {
               value={sweetBand}
               sub={sweetPct > 0 ? `${sweetPct}% of all sales` : 'Most common size'}
               icon={<IconTarget />}
-              accent="#8B4DB8"
+              accent="#A78BFA"
             />
             <SummaryCard
               label="Most Active ZIP"
@@ -107,7 +107,7 @@ export default function Dashboard() {
               value={dashboardData.valid_comps.toLocaleString()}
               sub={`of ${dashboardData.total_comps.toLocaleString()} total`}
               icon={<IconDB />}
-              accent="#5C2977"
+              accent="#7C3AED"
             />
           </div>
         )}
@@ -119,7 +119,7 @@ export default function Dashboard() {
         )}
 
         {error && (
-          <div className="rounded-xl px-5 py-4 mb-6 text-sm" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#dc2626' }}>
+          <div className="rounded-xl px-5 py-4 mb-6 text-sm" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', color: '#EF4444' }}>
             {error}
           </div>
         )}
@@ -160,10 +160,10 @@ export default function Dashboard() {
 // ── Top Markets Card ──────────────────────────────────────────────────────
 
 function zipDotColor(z: ZipStats, outlierSet: Set<string>): string {
-  if (outlierSet.has(z.zip_code)) return '#dc2626'
-  if (z.sales_count >= 10) return '#2D7A4F'
+  if (outlierSet.has(z.zip_code)) return '#EF4444'
+  if (z.sales_count >= 10) return '#10B981'
   if (z.sales_count >= 5)  return '#D5A940'
-  return '#dc2626'
+  return '#EF4444'
 }
 
 function TopMarketsCard({ zipStats, comps }: { zipStats: ZipStats[]; comps: CompLocation[] }) {
@@ -194,8 +194,8 @@ function TopMarketsCard({ zipStats, comps }: { zipStats: ZipStats[]; comps: Comp
     <div className="card mb-6">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="font-semibold" style={{ color: '#1A0A2E' }}>Top 20 Markets</h2>
-          <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>Ranked by sales volume · color shows market quality</p>
+          <h2 className="font-semibold" style={{ color: '#F5F5F5' }}>Top 20 Markets</h2>
+          <p className="text-xs mt-0.5" style={{ color: '#A0A0A0' }}>Ranked by sales volume · color shows market quality</p>
         </div>
         <button className="btn-secondary text-xs" onClick={() => setShowMap(v => !v)}>
           {showMap ? 'Hide Map' : 'View on Map'}
@@ -203,15 +203,15 @@ function TopMarketsCard({ zipStats, comps }: { zipStats: ZipStats[]; comps: Comp
       </div>
 
       {/* Legend */}
-      <div className="flex items-center gap-4 mb-4 text-xs" style={{ color: '#6B5B8A' }}>
-        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full inline-block" style={{ background: '#2D7A4F' }} />Solid (10+ sales)</span>
+      <div className="flex items-center gap-4 mb-4 text-xs" style={{ color: '#A0A0A0' }}>
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full inline-block" style={{ background: '#10B981' }} />Solid (10+ sales)</span>
         <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full inline-block" style={{ background: '#D5A940' }} />Thin Data (5–9 sales)</span>
-        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full inline-block" style={{ background: '#dc2626' }} />Avoid (outlier)</span>
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full inline-block" style={{ background: '#EF4444' }} />Avoid (outlier)</span>
       </div>
 
       {/* Top 20 ranked list */}
-      <div className="rounded-xl overflow-hidden mb-4" style={{ border: '1px solid #E8E0F0' }}>
-        <div className="grid text-[10px] uppercase tracking-wider px-4 py-2" style={{ gridTemplateColumns: '32px 12px 1fr 90px 100px 80px', color: '#6B5B8A', background: '#F8F6FB', borderBottom: '1px solid #E8E0F0' }}>
+      <div className="rounded-xl overflow-hidden mb-4" style={{ border: '1px solid #2E2E2E' }}>
+        <div className="grid text-[10px] uppercase tracking-wider px-4 py-2" style={{ gridTemplateColumns: '32px 12px 1fr 90px 100px 80px', color: '#6B6B6B', background: '#242424', borderBottom: '1px solid #2E2E2E' }}>
           <span>#</span><span></span><span>ZIP</span><span className="text-right">Sales</span><span className="text-right">Median $/Acre</span><span></span>
         </div>
         {top20.map((z, i) => {
@@ -221,18 +221,18 @@ function TopMarketsCard({ zipStats, comps }: { zipStats: ZipStats[]; comps: Comp
             <div
               key={z.zip_code}
               className="grid items-center px-4 py-2.5"
-              style={{ gridTemplateColumns: '32px 12px 1fr 90px 100px 80px', background: i % 2 === 0 ? '#FFFFFF' : '#FAFAF8', borderBottom: i < top20.length - 1 ? '1px solid #F0EBF8' : 'none' }}
+              style={{ gridTemplateColumns: '32px 12px 1fr 90px 100px 80px', background: i % 2 === 0 ? '#1A1A1A' : '#171717', borderBottom: i < top20.length - 1 ? '1px solid #2E2E2E' : 'none' }}
             >
-              <span className="text-xs font-bold" style={{ color: '#9B8AAE' }}>{i + 1}</span>
+              <span className="text-xs font-bold" style={{ color: '#6B6B6B' }}>{i + 1}</span>
               <div className="w-2 h-2 rounded-full" style={{ background: dot }} />
-              <span className="font-mono font-semibold text-sm" style={{ color: '#5C2977' }}>{z.zip_code}</span>
-              <span className="text-xs text-right font-medium" style={{ color: '#1A0A2E' }}>{z.sales_count.toLocaleString()}</span>
+              <span className="font-mono font-semibold text-sm" style={{ color: '#A78BFA' }}>{z.zip_code}</span>
+              <span className="text-xs text-right font-medium" style={{ color: '#F5F5F5' }}>{z.sales_count.toLocaleString()}</span>
               <span className="text-xs text-right" style={{ color: '#D5A940' }}>
                 {z.median_price_per_acre != null ? `$${Math.round(z.median_price_per_acre).toLocaleString()}` : '—'}
               </span>
               <span className="flex justify-end">
                 {isThinWarning && (
-                  <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 6, background: '#FFF9E6', color: '#B8860B', border: '1px solid #FFE082' }}>Thin Data</span>
+                  <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 6, background: 'rgba(245,158,11,0.1)', color: '#F59E0B', border: '1px solid rgba(245,158,11,0.25)' }}>Thin Data</span>
                 )}
               </span>
             </div>
@@ -242,16 +242,16 @@ function TopMarketsCard({ zipStats, comps }: { zipStats: ZipStats[]; comps: Comp
 
       {/* Avoid section */}
       {(outlierSet.size > 0 || thinZips.length > 0) && (
-        <div className="rounded-lg px-4 py-3 mb-4 text-xs space-y-1" style={{ background: 'rgba(220,38,38,0.04)', border: '1px solid rgba(220,38,38,0.12)' }}>
-          <p className="font-medium mb-1.5" style={{ color: '#9B1C1C' }}>Excluded from targets</p>
+        <div className="rounded-lg px-4 py-3 mb-4 text-xs space-y-1" style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)' }}>
+          <p className="font-medium mb-1.5" style={{ color: '#EF4444' }}>Excluded from targets</p>
           {outlierSet.size > 0 && (
             <div>
-              <span style={{ color: '#6B5B8A' }}>{outlierSet.size} outlier ZIPs excluded (premium/waterfront areas)</span>
-              <button className="ml-2 underline" style={{ color: '#5C2977' }} onClick={() => setShowOutliers(v => !v)}>
+              <span style={{ color: '#A0A0A0' }}>{outlierSet.size} outlier ZIPs excluded (premium/waterfront areas)</span>
+              <button className="ml-2 underline" style={{ color: '#A78BFA' }} onClick={() => setShowOutliers(v => !v)}>
                 {showOutliers ? 'hide' : 'view all'}
               </button>
               {showOutliers && (
-                <p className="mt-1 font-mono text-[10px] leading-relaxed" style={{ color: '#9B8AAE' }}>
+                <p className="mt-1 font-mono text-[10px] leading-relaxed" style={{ color: '#6B6B6B' }}>
                   {[...outlierSet].join(', ')}
                 </p>
               )}
@@ -259,12 +259,12 @@ function TopMarketsCard({ zipStats, comps }: { zipStats: ZipStats[]; comps: Comp
           )}
           {thinZips.length > 0 && (
             <div>
-              <span style={{ color: '#6B5B8A' }}>{thinZips.length} thin data ZIPs excluded (fewer than 5 sales)</span>
-              <button className="ml-2 underline" style={{ color: '#5C2977' }} onClick={() => setShowThin(v => !v)}>
+              <span style={{ color: '#A0A0A0' }}>{thinZips.length} thin data ZIPs excluded (fewer than 5 sales)</span>
+              <button className="ml-2 underline" style={{ color: '#A78BFA' }} onClick={() => setShowThin(v => !v)}>
                 {showThin ? 'hide' : 'view all'}
               </button>
               {showThin && (
-                <p className="mt-1 font-mono text-[10px] leading-relaxed" style={{ color: '#9B8AAE' }}>
+                <p className="mt-1 font-mono text-[10px] leading-relaxed" style={{ color: '#6B6B6B' }}>
                   {thinZips.join(', ')}
                 </p>
               )}
@@ -309,9 +309,9 @@ function CollapsibleZipTable({ zipStats }: { zipStats: ZipStats[] }) {
   return (
     <div className="card mb-6">
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold" style={{ color: '#1A0A2E' }}>
+        <h2 className="font-semibold" style={{ color: '#F5F5F5' }}>
           ZIP Code Data
-          <span className="text-sm font-normal ml-2" style={{ color: '#6B5B8A' }}>
+          <span className="text-sm font-normal ml-2" style={{ color: '#A0A0A0' }}>
             ({zipStats.length} total ZIPs)
           </span>
         </h2>
@@ -326,17 +326,17 @@ function CollapsibleZipTable({ zipStats }: { zipStats: ZipStats[] }) {
       {expanded && (
         <div className="mt-4">
           <div className="flex items-center justify-between mb-3">
-            <p className="text-xs" style={{ color: '#6B5B8A' }}>
+            <p className="text-xs" style={{ color: '#A0A0A0' }}>
               Showing {filtered.length} ZIPs
               {!showAll && ' with 10+ sales, excluding outliers'}
             </p>
-            <button className="text-xs underline" style={{ color: '#5C2977' }} onClick={() => setShowAll(v => !v)}>
+            <button className="text-xs underline" style={{ color: '#A78BFA' }} onClick={() => setShowAll(v => !v)}>
               {showAll ? 'Hide thin/outlier ZIPs' : 'Show all ZIPs'}
             </button>
           </div>
 
-          <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #E8E0F0' }}>
-            <div className="grid text-[10px] uppercase tracking-wider px-4 py-2" style={{ gridTemplateColumns: '1fr 70px 100px 90px', color: '#6B5B8A', background: '#F8F6FB', borderBottom: '1px solid #E8E0F0' }}>
+          <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #2E2E2E' }}>
+            <div className="grid text-[10px] uppercase tracking-wider px-4 py-2" style={{ gridTemplateColumns: '1fr 70px 100px 90px', color: '#6B6B6B', background: '#242424', borderBottom: '1px solid #2E2E2E' }}>
               <span>ZIP</span>
               <span className="text-right">Sales</span>
               <span className="text-right">Max Price</span>
@@ -346,14 +346,14 @@ function CollapsibleZipTable({ zipStats }: { zipStats: ZipStats[] }) {
               <div
                 key={z.zip_code}
                 className="grid items-center px-4 py-2"
-                style={{ gridTemplateColumns: '1fr 70px 100px 90px', background: i % 2 === 0 ? '#FFFFFF' : '#FAFAF8', borderBottom: i < filtered.length - 1 ? '1px solid #F0EBF8' : 'none' }}
+                style={{ gridTemplateColumns: '1fr 70px 100px 90px', background: i % 2 === 0 ? '#1A1A1A' : '#171717', borderBottom: i < filtered.length - 1 ? '1px solid #2E2E2E' : 'none' }}
               >
-                <span className="font-mono text-xs font-semibold" style={{ color: '#5C2977' }}>{z.zip_code}</span>
-                <span className="text-xs text-right" style={{ color: '#1A0A2E' }}>{z.sales_count.toLocaleString()}</span>
+                <span className="font-mono text-xs font-semibold" style={{ color: '#A78BFA' }}>{z.zip_code}</span>
+                <span className="text-xs text-right" style={{ color: '#F5F5F5' }}>{z.sales_count.toLocaleString()}</span>
                 <span className="text-xs text-right" style={{ color: '#D5A940' }}>
                   {z.max_sale_price ? `$${Math.round(z.max_sale_price).toLocaleString()}` : '—'}
                 </span>
-                <span className="text-xs text-right" style={{ color: '#6B5B8A' }}>
+                <span className="text-xs text-right" style={{ color: '#A0A0A0' }}>
                   {z.median_lot_size != null ? `${z.median_lot_size.toFixed(2)} ac` : '—'}
                 </span>
               </div>
@@ -525,28 +525,28 @@ function BuyBoxRecipe({
 
   function handlePdf() {
     const pill = (label: string) =>
-      `<span style="background:#5C297715;color:#5C2977;border:1px solid #5C297730;border-radius:4px;padding:2px 8px;font-size:12px;display:inline-block;margin:2px">${label}</span>`
+      `<span style="background:rgba(124,58,237,0.12);color:#A78BFA;border:1px solid rgba(124,58,237,0.2);border-radius:4px;padding:2px 8px;font-size:12px;display:inline-block;margin:2px">${label}</span>`
     const check = (text: string, ok = true) =>
-      `<div style="display:flex;gap:8px;margin-bottom:4px;font-size:13px"><span style="color:${ok ? '#2D7A4F' : '#dc2626'};font-weight:700">${ok ? '✓' : '✗'}</span><span style="color:#1A0A2E">${text}</span></div>`
+      `<div style="display:flex;gap:8px;margin-bottom:4px;font-size:13px"><span style="color:${ok ? '#10B981' : '#EF4444'};font-weight:700">${ok ? '✓' : '✗'}</span><span style="color:#F5F5F5">${text}</span></div>`
     const row = (label: string, value: string) =>
-      `<div style="display:flex;gap:8px;margin-bottom:4px;font-size:13px"><span style="color:#6B5B8A;min-width:200px">${label}</span><span style="color:#1A0A2E;font-weight:600">${value}</span></div>`
+      `<div style="display:flex;gap:8px;margin-bottom:4px;font-size:13px"><span style="color:#A0A0A0;min-width:200px">${label}</span><span style="color:#F5F5F5;font-weight:600">${value}</span></div>`
     const sec = (title: string, content: string) =>
-      `<div style="margin-bottom:20px"><h2 style="color:#5C2977;font-size:13px;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #E8E0F0;padding-bottom:6px;margin-bottom:10px">${title}</h2>${content}</div>`
+      `<div style="margin-bottom:20px"><h2 style="color:#A78BFA;font-size:13px;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #2E2E2E;padding-bottom:6px;margin-bottom:10px">${title}</h2>${content}</div>`
 
     const html = `<!DOCTYPE html><html><head><title>Buy Box Recipe</title>
-<style>body{font-family:-apple-system,sans-serif;padding:40px;color:#1A0A2E;max-width:800px}@media print{@page{margin:24px}}</style></head><body>
-<h1 style="color:#5C2977;font-size:20px;margin-bottom:8px">Land Portal Buy Box Recipe</h1>
-<p style="color:#6B5B8A;font-size:12px;margin-bottom:28px">Generated ${new Date().toLocaleDateString()} · Based on ${comps.length.toLocaleString()} sold comps</p>
+<style>body{font-family:-apple-system,sans-serif;padding:40px;color:#F5F5F5;background:#0F0F0F;max-width:800px}@media print{@page{margin:24px}}</style></head><body>
+<h1 style="color:#A78BFA;font-size:20px;margin-bottom:8px">Land Portal Buy Box Recipe</h1>
+<p style="color:#A0A0A0;font-size:12px;margin-bottom:28px">Generated ${new Date().toLocaleDateString()} · Based on ${comps.length.toLocaleString()} sold comps</p>
 ${sec('1. Location — Pull by County (not ZIP)',
   (topStates.length ? row('State', topStates.join(', ')) : '') +
-  (sortedCounties.length ? `<div style="color:#2D7A4F;font-weight:600;font-size:12px;margin-bottom:4px">Pull by County — Land Portal → Location → County</div><div style="margin:4px 0 8px">${sortedCounties.map(pill).join('')}</div><div style="background:#F0FAF4;border:1px solid #A8D8B4;border-radius:6px;padding:8px;font-size:11px;color:#2D5A3A;margin-bottom:8px"><strong>Why pull the whole county?</strong> ZIP codes cut across market boundaries — county pulls capture more deals and let the matching engine filter by comp strength.</div>` : '') +
-  `<div style="color:#9B8AAE;font-size:11px;margin-bottom:4px">Reference ZIPs — for context only (don't filter by ZIP in LP)</div><div style="margin:4px 0">${topZips.map(pill).join('')}</div>`
+  (sortedCounties.length ? `<div style="color:#10B981;font-weight:600;font-size:12px;margin-bottom:4px">Pull by County — Land Portal → Location → County</div><div style="margin:4px 0 8px">${sortedCounties.map(pill).join('')}</div><div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:6px;padding:8px;font-size:11px;color:#10B981;margin-bottom:8px"><strong>Why pull the whole county?</strong> ZIP codes cut across market boundaries — county pulls capture more deals and let the matching engine filter by comp strength.</div>` : '') +
+  `<div style="color:#6B6B6B;font-size:11px;margin-bottom:4px">Reference ZIPs — for context only (don't filter by ZIP in LP)</div><div style="margin:4px 0">${topZips.map(pill).join('')}</div>`
 )}
 ${sec('2. Property Type',
-  `<p style="font-size:12px;color:#6B5B8A;margin-bottom:8px">Land Portal → Property Type → Land Use — check <strong>only</strong>:</p>` +
+  `<p style="font-size:12px;color:#A0A0A0;margin-bottom:8px">Land Portal → Property Type → Land Use — check <strong>only</strong>:</p>` +
   check('Vacant Land (General)') +
   check('Residential Vacant Land') +
-  `<p style="font-size:12px;color:#6B5B8A;margin:8px 0 4px">Uncheck all others:</p>` +
+  `<p style="font-size:12px;color:#A0A0A0;margin:8px 0 4px">Uncheck all others:</p>` +
   check('Commercial', false) + check('Agricultural', false) + check('Industrial', false) +
   check('Mobile Home', false) + check('Improved/Built lots', false)
 )}
@@ -572,17 +572,17 @@ ${sec('6. Owner',
 
   if (topZips.length === 0) return null
 
-  const cardStyle = { background: '#F8F6FB', border: '1px solid #E8E0F0' }
+  const cardStyle = { background: '#242424', border: '1px solid #2E2E2E' }
   const hdr = (title: string) => (
-    <p className="text-[10px] uppercase tracking-wider font-semibold mb-3" style={{ color: '#5C2977' }}>{title}</p>
+    <p className="text-[10px] uppercase tracking-wider font-semibold mb-3" style={{ color: '#6B6B6B' }}>{title}</p>
   )
 
   return (
-    <div className="card mb-6" style={{ border: '1.5px solid rgba(213,169,64,0.35)' }}>
+    <div className="card mb-6" style={{ border: '1.5px solid rgba(213,169,64,0.25)' }}>
       <div className="flex items-start justify-between mb-5">
         <div>
-          <h2 className="font-semibold" style={{ color: '#1A0A2E' }}>Land Portal Buy Box Recipe</h2>
-          <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>
+          <h2 className="font-semibold" style={{ color: '#F5F5F5' }}>Land Portal Buy Box Recipe</h2>
+          <p className="text-xs mt-0.5" style={{ color: '#A0A0A0' }}>
             Exact filter settings derived from your {comps.length.toLocaleString()} sold comps — paste directly into Land Portal
           </p>
         </div>
@@ -606,32 +606,32 @@ ${sec('6. Owner',
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
             {topStates.length > 0 && (
               <div>
-                <p className="mb-1" style={{ color: '#6B5B8A' }}>State</p>
+                <p className="mb-1" style={{ color: '#A0A0A0' }}>State</p>
                 <div className="flex flex-wrap gap-1.5">
                   {topStates.map(s => (
-                    <span key={s} className="font-semibold px-2 py-0.5 rounded text-[11px]" style={{ background: 'rgba(92,41,119,0.1)', color: '#5C2977', border: '1px solid rgba(92,41,119,0.2)' }}>{s}</span>
+                    <span key={s} className="font-semibold px-2 py-0.5 rounded text-[11px]" style={{ background: 'rgba(124,58,237,0.12)', color: '#A78BFA', border: '1px solid rgba(124,58,237,0.2)' }}>{s}</span>
                   ))}
                 </div>
               </div>
             )}
             {sortedCounties.length > 0 && (
               <div className="md:col-span-2">
-                <p className="mb-1 font-semibold" style={{ color: '#2D7A4F' }}>Pull by County — Land Portal → Location → County</p>
+                <p className="mb-1 font-semibold" style={{ color: '#10B981' }}>Pull by County — Land Portal → Location → County</p>
                 <div className="flex flex-wrap gap-1.5 mb-2">
                   {sortedCounties.map(c => (
-                    <span key={c} className="text-[11px] px-2 py-0.5 rounded font-medium" style={{ background: 'rgba(45,122,79,0.1)', color: '#2D7A4F', border: '1px solid rgba(45,122,79,0.25)' }}>{c}</span>
+                    <span key={c} className="text-[11px] px-2 py-0.5 rounded font-medium" style={{ background: 'rgba(16,185,129,0.1)', color: '#10B981', border: '1px solid rgba(16,185,129,0.2)' }}>{c}</span>
                   ))}
                 </div>
-                <div className="rounded-lg p-2.5" style={{ background: 'rgba(45,122,79,0.05)', border: '1px solid rgba(45,122,79,0.18)' }}>
-                  <p className="text-[10px]" style={{ color: '#2D5A3A' }}><span className="font-semibold">Why pull the whole county?</span> ZIP codes cut across market boundaries — filtering by ZIP excludes deals just outside your target area that would still comp well. Pull the entire county and let the matching engine filter by comp strength.</p>
+                <div className="rounded-lg p-2.5" style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)' }}>
+                  <p className="text-[10px]" style={{ color: '#10B981' }}><span className="font-semibold">Why pull the whole county?</span> ZIP codes cut across market boundaries — filtering by ZIP excludes deals just outside your target area that would still comp well. Pull the entire county and let the matching engine filter by comp strength.</p>
                 </div>
               </div>
             )}
             <div>
-              <p className="mb-1" style={{ color: '#9B8AAE' }}>Top 20 ZIPs — reference only · don't filter by ZIP in LP</p>
+              <p className="mb-1" style={{ color: '#6B6B6B' }}>Top 20 ZIPs — reference only · don't filter by ZIP in LP</p>
               <div className="flex flex-wrap gap-1.5">
                 {topZips.map(z => (
-                  <span key={z} className="font-mono text-[11px] px-2 py-0.5 rounded" style={{ background: 'rgba(92,41,119,0.05)', color: '#8B6BAE', border: '1px solid rgba(92,41,119,0.12)' }}>{z}</span>
+                  <span key={z} className="font-mono text-[11px] px-2 py-0.5 rounded" style={{ background: '#1A1A1A', color: '#A0A0A0', border: '1px solid #2E2E2E' }}>{z}</span>
                 ))}
               </div>
             </div>
@@ -642,15 +642,15 @@ ${sec('6. Owner',
         <div className="rounded-xl p-4" style={cardStyle}>
           {hdr('2 · Property Type')}
           <div className="space-y-2 text-xs">
-            <p className="text-[10px] mb-1" style={{ color: '#6B5B8A' }}>Land Portal → Property Type → Land Use — check <strong>only</strong>:</p>
-            <div className="flex gap-2"><span style={{ color: '#2D7A4F', fontWeight: 700 }}>✓</span><span style={{ color: '#1A0A2E' }}>Vacant Land (General)</span></div>
-            <div className="flex gap-2"><span style={{ color: '#2D7A4F', fontWeight: 700 }}>✓</span><span style={{ color: '#1A0A2E' }}>Residential Vacant Land</span></div>
-            <p className="text-[10px] mt-1 mb-0.5" style={{ color: '#6B5B8A' }}>Uncheck all others:</p>
-            <div className="flex gap-2"><span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>Commercial</span></div>
-            <div className="flex gap-2"><span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>Agricultural</span></div>
-            <div className="flex gap-2"><span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>Industrial</span></div>
-            <div className="flex gap-2"><span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>Mobile Home</span></div>
-            <div className="flex gap-2"><span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>Improved/Built lots</span></div>
+            <p className="text-[10px] mb-1" style={{ color: '#A0A0A0' }}>Land Portal → Property Type → Land Use — check <strong>only</strong>:</p>
+            <div className="flex gap-2"><span style={{ color: '#10B981', fontWeight: 700 }}>✓</span><span style={{ color: '#F5F5F5' }}>Vacant Land (General)</span></div>
+            <div className="flex gap-2"><span style={{ color: '#10B981', fontWeight: 700 }}>✓</span><span style={{ color: '#F5F5F5' }}>Residential Vacant Land</span></div>
+            <p className="text-[10px] mt-1 mb-0.5" style={{ color: '#A0A0A0' }}>Uncheck all others:</p>
+            <div className="flex gap-2"><span style={{ color: '#EF4444', fontWeight: 700 }}>✗</span><span style={{ color: '#A0A0A0' }}>Commercial</span></div>
+            <div className="flex gap-2"><span style={{ color: '#EF4444', fontWeight: 700 }}>✗</span><span style={{ color: '#A0A0A0' }}>Agricultural</span></div>
+            <div className="flex gap-2"><span style={{ color: '#EF4444', fontWeight: 700 }}>✗</span><span style={{ color: '#A0A0A0' }}>Industrial</span></div>
+            <div className="flex gap-2"><span style={{ color: '#EF4444', fontWeight: 700 }}>✗</span><span style={{ color: '#A0A0A0' }}>Mobile Home</span></div>
+            <div className="flex gap-2"><span style={{ color: '#EF4444', fontWeight: 700 }}>✗</span><span style={{ color: '#A0A0A0' }}>Improved/Built lots</span></div>
           </div>
         </div>
 
@@ -659,16 +659,16 @@ ${sec('6. Owner',
           {hdr('3 · Lot Size')}
           <div className="space-y-2 text-xs">
             <div className="flex justify-between">
-              <span style={{ color: '#6B5B8A' }}>Min lot size</span>
-              <span style={{ color: '#1A0A2E', fontWeight: 600 }}>{fmtSqft(minAcre)}</span>
+              <span style={{ color: '#A0A0A0' }}>Min lot size</span>
+              <span style={{ color: '#F5F5F5', fontWeight: 600 }}>{fmtSqft(minAcre)}</span>
             </div>
             <div className="flex justify-between">
-              <span style={{ color: '#6B5B8A' }}>Max lot size</span>
-              <span style={{ color: '#1A0A2E', fontWeight: 600 }}>{fmtSqft(maxAcre)}</span>
+              <span style={{ color: '#A0A0A0' }}>Max lot size</span>
+              <span style={{ color: '#F5F5F5', fontWeight: 600 }}>{fmtSqft(maxAcre)}</span>
             </div>
-            <div className="mt-2 pt-2 flex justify-between" style={{ borderTop: '1px solid #E8E0F0' }}>
-              <span style={{ color: '#6B5B8A' }}>Sweet spot</span>
-              <span style={{ color: '#8B4DB8', fontWeight: 600 }}>{sweetLabel}</span>
+            <div className="mt-2 pt-2 flex justify-between" style={{ borderTop: '1px solid #2E2E2E' }}>
+              <span style={{ color: '#A0A0A0' }}>Sweet spot</span>
+              <span style={{ color: '#A78BFA', fontWeight: 600 }}>{sweetLabel}</span>
             </div>
           </div>
         </div>
@@ -677,12 +677,12 @@ ${sec('6. Owner',
         <div className="rounded-xl p-4" style={cardStyle}>
           {hdr('4 · Land Quality')}
           <div className="space-y-2 text-xs">
-            <div className="flex justify-between gap-2"><span style={{ color: '#6B5B8A', flexShrink: 0 }}>Buildability minimum</span><span style={{ color: '#2D7A4F', fontWeight: 600, textAlign: 'right' }}>{buildabilityLabel}</span></div>
-            {slopeLabel && <div className="flex justify-between gap-2"><span style={{ color: '#6B5B8A', flexShrink: 0 }}>Maximum slope</span><span style={{ color: '#1A0A2E', fontWeight: 600, textAlign: 'right' }}>{slopeLabel}</span></div>}
-            {wetlandsLabel && <div className="flex justify-between gap-2"><span style={{ color: '#6B5B8A', flexShrink: 0 }}>Wetlands coverage</span><span style={{ color: '#1A0A2E', fontWeight: 600, textAlign: 'right' }}>{wetlandsLabel}</span></div>}
-            <div className="flex gap-2"><span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>FEMA flood zones (exclude all)</span></div>
-            <div className="flex gap-2"><span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>Landlocked parcels (exclude)</span></div>
-            <div className="flex justify-between gap-2"><span style={{ color: '#6B5B8A', flexShrink: 0 }}>Road frontage</span><span style={{ color: '#2D7A4F', fontWeight: 600, textAlign: 'right' }}>{roadFrontageLabel}</span></div>
+            <div className="flex justify-between gap-2"><span style={{ color: '#A0A0A0', flexShrink: 0 }}>Buildability minimum</span><span style={{ color: '#10B981', fontWeight: 600, textAlign: 'right' }}>{buildabilityLabel}</span></div>
+            {slopeLabel && <div className="flex justify-between gap-2"><span style={{ color: '#A0A0A0', flexShrink: 0 }}>Maximum slope</span><span style={{ color: '#F5F5F5', fontWeight: 600, textAlign: 'right' }}>{slopeLabel}</span></div>}
+            {wetlandsLabel && <div className="flex justify-between gap-2"><span style={{ color: '#A0A0A0', flexShrink: 0 }}>Wetlands coverage</span><span style={{ color: '#F5F5F5', fontWeight: 600, textAlign: 'right' }}>{wetlandsLabel}</span></div>}
+            <div className="flex gap-2"><span style={{ color: '#EF4444', fontWeight: 700 }}>✗</span><span style={{ color: '#A0A0A0' }}>FEMA flood zones (exclude all)</span></div>
+            <div className="flex gap-2"><span style={{ color: '#EF4444', fontWeight: 700 }}>✗</span><span style={{ color: '#A0A0A0' }}>Landlocked parcels (exclude)</span></div>
+            <div className="flex justify-between gap-2"><span style={{ color: '#A0A0A0', flexShrink: 0 }}>Road frontage</span><span style={{ color: '#10B981', fontWeight: 600, textAlign: 'right' }}>{roadFrontageLabel}</span></div>
           </div>
         </div>
 
@@ -690,21 +690,21 @@ ${sec('6. Owner',
         <div className="rounded-xl p-4" style={cardStyle}>
           {hdr('5 · Comp Filters (Land Portal Export)')}
           <div className="space-y-2 text-xs">
-            <div className="flex gap-2"><span style={{ color: '#2D7A4F', fontWeight: 700 }}>✓</span><span style={{ color: '#1A0A2E' }}>Sale Date: last 24 months</span></div>
-            <div className="flex gap-2"><span style={{ color: '#2D7A4F', fontWeight: 700 }}>✓</span><span style={{ color: '#1A0A2E' }}>Buyer Type: LLC / Corporation only</span></div>
-            <div className="flex gap-2"><span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>Individual / Trust buyers (exclude — less reliable pricing)</span></div>
+            <div className="flex gap-2"><span style={{ color: '#10B981', fontWeight: 700 }}>✓</span><span style={{ color: '#F5F5F5' }}>Sale Date: last 24 months</span></div>
+            <div className="flex gap-2"><span style={{ color: '#10B981', fontWeight: 700 }}>✓</span><span style={{ color: '#F5F5F5' }}>Buyer Type: LLC / Corporation only</span></div>
+            <div className="flex gap-2"><span style={{ color: '#EF4444', fontWeight: 700 }}>✗</span><span style={{ color: '#A0A0A0' }}>Individual / Trust buyers (exclude — less reliable pricing)</span></div>
           </div>
-          <p className="text-[10px] mt-2 italic" style={{ color: '#9B8AAE' }}>LLC buyers are professional investors who pay retail — best benchmark for offer pricing</p>
+          <p className="text-[10px] mt-2 italic" style={{ color: '#6B6B6B' }}>LLC buyers are professional investors who pay retail — best benchmark for offer pricing</p>
         </div>
 
         {/* Section 6 — Owner */}
         <div className="rounded-xl p-4" style={cardStyle}>
           {hdr('6 · Owner')}
           <div className="space-y-2 text-xs">
-            <div className="flex justify-between"><span style={{ color: '#6B5B8A' }}>Owner type</span><span style={{ color: '#1A0A2E', fontWeight: 600 }}>Individual / Trust only</span></div>
-            <div className="flex gap-2"><span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>LLC / Corp owners (exclude)</span></div>
-            <div className="flex justify-between"><span style={{ color: '#6B5B8A' }}>Owner tenure</span><span style={{ color: '#1A0A2E', fontWeight: 600 }}>5+ years</span></div>
-            <div className="flex justify-between"><span style={{ color: '#6B5B8A' }}>Absentee</span><span style={{ color: '#8B4DB8', fontWeight: 600 }}>Cross-county preferred</span></div>
+            <div className="flex justify-between"><span style={{ color: '#A0A0A0' }}>Owner type</span><span style={{ color: '#F5F5F5', fontWeight: 600 }}>Individual / Trust only</span></div>
+            <div className="flex gap-2"><span style={{ color: '#EF4444', fontWeight: 700 }}>✗</span><span style={{ color: '#A0A0A0' }}>LLC / Corp owners (exclude)</span></div>
+            <div className="flex justify-between"><span style={{ color: '#A0A0A0' }}>Owner tenure</span><span style={{ color: '#F5F5F5', fontWeight: 600 }}>5+ years</span></div>
+            <div className="flex justify-between"><span style={{ color: '#A0A0A0' }}>Absentee</span><span style={{ color: '#A78BFA', fontWeight: 600 }}>Cross-county preferred</span></div>
           </div>
         </div>
       </div>
@@ -738,13 +738,13 @@ function SummaryCard({ label, value, sub, icon, accent }: {
   return (
     <div className="stat-card">
       <div className="flex items-start justify-between mb-3">
-        <p className="text-xs uppercase tracking-wider font-medium" style={{ color: '#6B5B8A', letterSpacing: '0.8px' }}>{label}</p>
+        <p className="text-xs uppercase tracking-wider font-medium" style={{ color: '#6B6B6B', letterSpacing: '0.8px' }}>{label}</p>
         <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${accent}20`, color: accent }}>
           {icon}
         </div>
       </div>
       <p className="text-2xl font-bold mb-0.5" style={{ color: accent }}>{value}</p>
-      {sub && <p className="text-xs" style={{ color: '#6B5B8A' }}>{sub}</p>}
+      {sub && <p className="text-xs" style={{ color: '#6B6B6B' }}>{sub}</p>}
     </div>
   )
 }

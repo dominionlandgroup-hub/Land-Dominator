@@ -92,7 +92,7 @@ export default function AIAssistant() {
         <button
           onClick={() => setIsOpen(true)}
           className="fixed bottom-6 right-6 z-40 flex items-center justify-center rounded-full shadow-xl transition-transform hover:scale-105 active:scale-95"
-          style={{ width: 56, height: 56, background: '#5C2977' }}
+          style={{ width: 56, height: 56, background: '#7C3AED' }}
           title="Land Assistant"
         >
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -105,7 +105,7 @@ export default function AIAssistant() {
       {isOpen && (
         <div
           className="fixed inset-0 z-40"
-          style={{ background: 'rgba(26,10,46,0.25)' }}
+          style={{ background: 'rgba(0,0,0,0.6)' }}
           onClick={() => setIsOpen(false)}
         />
       )}
@@ -115,8 +115,8 @@ export default function AIAssistant() {
         className="fixed top-0 right-0 h-full z-50 flex flex-col"
         style={{
           width: 400,
-          background: '#FFFFFF',
-          boxShadow: '-6px 0 32px rgba(92,41,119,0.18)',
+          background: '#1A1A1A',
+          border: '1px solid #2E2E2E',
           transform: isOpen ? 'translateX(0)' : 'translateX(100%)',
           transition: 'transform 0.28s cubic-bezier(0.4,0,0.2,1)',
         }}
@@ -125,8 +125,8 @@ export default function AIAssistant() {
         <div
           className="flex items-center gap-3 px-4 py-3 flex-shrink-0"
           style={{
-            background: '#5C2977',
-            borderBottom: '1px solid rgba(255,255,255,0.12)',
+            background: '#111111',
+            borderBottom: '1px solid #2E2E2E',
           }}
         >
           <img
@@ -136,18 +136,18 @@ export default function AIAssistant() {
             onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
           />
           <div className="flex-1 min-w-0">
-            <div className="font-semibold text-sm" style={{ color: '#FFFFFF', letterSpacing: '0.01em' }}>
+            <div className="font-semibold text-sm" style={{ color: '#F5F5F5', letterSpacing: '0.01em' }}>
               Land Assistant
             </div>
-            <div className="text-xs" style={{ color: 'rgba(255,255,255,0.65)' }}>
+            <div className="text-xs" style={{ color: '#A0A0A0' }}>
               AI-powered land investing guide
             </div>
           </div>
           <button
             onClick={() => setIsOpen(false)}
             className="flex items-center justify-center rounded-lg transition-colors flex-shrink-0"
-            style={{ width: 30, height: 30, color: 'rgba(255,255,255,0.7)' }}
-            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.12)')}
+            style={{ width: 30, height: 30, color: '#A0A0A0' }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
             onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -157,13 +157,13 @@ export default function AIAssistant() {
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3" style={{ background: '#FAF8FD' }}>
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3" style={{ background: '#1A1A1A' }}>
           {messages.map((msg, i) => (
             <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               {msg.role === 'assistant' && (
                 <div
                   className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center mr-2 mt-0.5"
-                  style={{ background: '#5C2977' }}
+                  style={{ background: '#7C3AED' }}
                 >
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
                     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
@@ -174,8 +174,8 @@ export default function AIAssistant() {
                 className="rounded-2xl px-3.5 py-2.5 text-sm max-w-[85%]"
                 style={
                   msg.role === 'user'
-                    ? { background: '#5C2977', color: '#FFFFFF', borderBottomRightRadius: 4 }
-                    : { background: '#FFFFFF', color: '#1A0A2E', borderBottomLeftRadius: 4, border: '1px solid #E8E0F0', lineHeight: '1.55' }
+                    ? { background: 'rgba(124,58,237,0.2)', color: '#F5F5F5', borderBottomRightRadius: 4 }
+                    : { background: '#242424', color: '#F5F5F5', borderBottomLeftRadius: 4, border: '1px solid #2E2E2E', lineHeight: '1.55' }
                 }
               >
                 {renderContent(msg.content)}
@@ -187,7 +187,7 @@ export default function AIAssistant() {
             <div className="flex justify-start">
               <div
                 className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center mr-2 mt-0.5"
-                style={{ background: '#5C2977' }}
+                style={{ background: '#7C3AED' }}
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
                   <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
@@ -195,7 +195,7 @@ export default function AIAssistant() {
               </div>
               <div
                 className="rounded-2xl px-4 py-3 flex items-center gap-1"
-                style={{ background: '#FFFFFF', border: '1px solid #E8E0F0', borderBottomLeftRadius: 4 }}
+                style={{ background: '#242424', border: '1px solid #2E2E2E', borderBottomLeftRadius: 4 }}
               >
                 <span className="typing-dot" />
                 <span className="typing-dot" style={{ animationDelay: '0.18s' }} />
@@ -210,16 +210,16 @@ export default function AIAssistant() {
         {/* Input */}
         <div
           className="flex-shrink-0 px-3 py-3 flex items-end gap-2"
-          style={{ background: '#FFFFFF', borderTop: '1px solid #E8E0F0' }}
+          style={{ background: '#242424', borderTop: '1px solid #2E2E2E' }}
         >
           <input
             ref={inputRef}
             type="text"
             className="flex-1 rounded-xl text-sm px-3.5 py-2.5 outline-none resize-none"
             style={{
-              border: '1.5px solid #D4B8E8',
-              color: '#1A0A2E',
-              background: '#FDFBFF',
+              border: '1.5px solid #2E2E2E',
+              color: '#F5F5F5',
+              background: '#1A1A1A',
               fontFamily: "'Montserrat', sans-serif",
               transition: 'border-color 0.15s',
             }}
@@ -227,8 +227,8 @@ export default function AIAssistant() {
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKey}
-            onFocus={e => (e.target.style.borderColor = '#5C2977')}
-            onBlur={e => (e.target.style.borderColor = '#D4B8E8')}
+            onFocus={e => (e.target.style.borderColor = '#7C3AED')}
+            onBlur={e => (e.target.style.borderColor = '#2E2E2E')}
             disabled={loading}
           />
           <button
@@ -238,8 +238,8 @@ export default function AIAssistant() {
             style={{
               width: 40,
               height: 40,
-              background: input.trim() && !loading ? '#5C2977' : '#E8E0F0',
-              color: input.trim() && !loading ? '#FFFFFF' : '#9B8AAE',
+              background: input.trim() && !loading ? '#7C3AED' : '#2E2E2E',
+              color: input.trim() && !loading ? '#FFFFFF' : '#6B6B6B',
             }}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

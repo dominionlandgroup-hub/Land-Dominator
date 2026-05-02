@@ -45,34 +45,34 @@ interface StatCardProps {
 function StatCard({ label, value, sub, accentColor, icon }: StatCardProps) {
   return (
     <div
-      className="rounded-xl p-5 bg-white"
+      className="rounded-lg p-5"
       style={{
         borderTop: `4px solid ${accentColor}`,
-        boxShadow: '0 1px 4px rgba(61,26,94,0.08)',
-        border: '1px solid #EDE8F5',
+        border: '1px solid #2E2E2E',
         borderTopColor: accentColor,
         borderTopWidth: '4px',
+        background: '#1A1A1A',
       }}
     >
       <div className="flex items-start justify-between mb-3">
-        <p style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: '#6B5B8A' }}>
+        <p style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: '#6B6B6B' }}>
           {label}
         </p>
         <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${accentColor}18`, color: accentColor }}>
           {icon}
         </div>
       </div>
-      <p className="text-2xl font-bold" style={{ color: '#1A0A2E' }}>{value}</p>
-      {sub && <p className="text-xs mt-1" style={{ color: '#9B8AAE' }}>{sub}</p>}
+      <p className="text-2xl font-bold" style={{ color: '#F5F5F5' }}>{value}</p>
+      {sub && <p className="text-xs mt-1" style={{ color: '#A0A0A0' }}>{sub}</p>}
     </div>
   )
 }
 
 function TableCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-white rounded-xl" style={{ border: '1px solid #EDE8F5', boxShadow: '0 1px 4px rgba(61,26,94,0.06)' }}>
-      <div className="px-5 py-4" style={{ borderBottom: '1px solid #F0EBF8' }}>
-        <h2 className="font-semibold text-sm" style={{ color: '#1A0A2E' }}>{title}</h2>
+    <div className="rounded-lg" style={{ border: '1px solid #2E2E2E', background: '#1A1A1A' }}>
+      <div className="px-5 py-4" style={{ borderBottom: '1px solid #2E2E2E' }}>
+        <h2 className="font-semibold text-sm" style={{ color: '#F5F5F5' }}>{title}</h2>
       </div>
       <div className="overflow-x-auto">
         {children}
@@ -143,20 +143,20 @@ export default function CRMDashboard() {
   const stats = computeStats(properties, deals)
 
   const STAT_CARDS: StatCardProps[] = [
-    { label: 'Deals Added',           value: stats.dealsAdded,           sub: 'total in pipeline',       accentColor: '#5C2977', icon: <IconDeals /> },
+    { label: 'Deals Added',           value: stats.dealsAdded,           sub: 'total in pipeline',       accentColor: '#7C3AED', icon: <IconDeals /> },
     { label: 'Offers Made',           value: stats.offersMade,           sub: 'across all properties',   accentColor: '#D5A940', icon: <IconOffer /> },
-    { label: 'Properties Purchased',  value: stats.propertiesPurchased,  sub: 'with purchase price set', accentColor: '#2D7A4F', icon: <IconBuy /> },
+    { label: 'Properties Purchased',  value: stats.propertiesPurchased,  sub: 'with purchase price set', accentColor: '#10B981', icon: <IconBuy /> },
     { label: 'Properties Sold',       value: stats.propertiesSold,       sub: 'with sale price set',     accentColor: '#4A90D9', icon: <IconSell /> },
-    { label: 'ROI',                   value: `${stats.roi}%`,            sub: 'sale vs purchase total',  accentColor: stats.roi >= 0 ? '#2D7A4F' : '#DC2626', icon: <IconROI /> },
+    { label: 'ROI',                   value: `${stats.roi}%`,            sub: 'sale vs purchase total',  accentColor: stats.roi >= 0 ? '#10B981' : '#EF4444', icon: <IconROI /> },
   ]
 
   return (
-    <div className="flex flex-col min-h-screen" style={{ background: '#F8F6FB' }}>
+    <div className="flex flex-col min-h-screen" style={{ background: '#0F0F0F' }}>
       {/* Header */}
       <div className="page-header">
         <div>
-          <h1 className="text-lg font-bold" style={{ color: '#1A0A2E' }}>Dashboard</h1>
-          <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>
+          <h1 className="text-lg font-bold" style={{ color: '#F5F5F5' }}>Dashboard</h1>
+          <p className="text-xs mt-0.5" style={{ color: '#6B6B6B' }}>
             Overview of your land investing activity
           </p>
         </div>
@@ -171,27 +171,27 @@ export default function CRMDashboard() {
 
         {/* Quick Start card */}
         {showQuickStart && (
-          <div className="rounded-xl px-5 py-4" style={{ background: '#fff', border: '1.5px solid rgba(92,41,119,0.25)', boxShadow: '0 2px 12px rgba(92,41,119,0.08)' }}>
+          <div className="rounded-lg px-5 py-4" style={{ background: '#1A1A1A', border: '1.5px solid rgba(124,58,237,0.25)' }}>
             <div className="flex items-start justify-between mb-3">
               <div>
-                <p className="font-semibold text-sm" style={{ color: '#1A0A2E' }}>
+                <p className="font-semibold text-sm" style={{ color: '#F5F5F5' }}>
                   Quick Start — {completedSteps} of 6 steps complete
                 </p>
-                <p className="text-xs mt-0.5" style={{ color: '#9B8AAE' }}>
+                <p className="text-xs mt-0.5" style={{ color: '#A0A0A0' }}>
                   Complete these steps to send your first mailer
                 </p>
               </div>
               <button
                 onClick={dismissQuickStart}
                 className="text-xs ml-4 flex-none"
-                style={{ color: '#C4B8D0' }}
+                style={{ color: '#6B6B6B' }}
                 title="Dismiss"
               >✕</button>
             </div>
-            <div className="h-1.5 rounded-full overflow-hidden mb-4" style={{ background: '#EDE8F5' }}>
+            <div className="h-1.5 rounded-full overflow-hidden mb-4" style={{ background: '#2E2E2E' }}>
               <div
                 className="h-full rounded-full transition-all duration-500"
-                style={{ width: `${((completedSteps ?? 0) / 6) * 100}%`, background: '#5C2977' }}
+                style={{ width: `${((completedSteps ?? 0) / 6) * 100}%`, background: '#7C3AED' }}
               />
             </div>
             <button
@@ -214,53 +214,52 @@ export default function CRMDashboard() {
         <div
           onClick={() => setCurrentPage('seller-inbox')}
           style={{
-            cursor: 'pointer', borderRadius: 12, padding: '14px 20px', background: '#fff',
-            border: `2px solid ${unreadCount > 0 ? '#DC2626' : '#EDE8F5'}`,
-            boxShadow: unreadCount > 0 ? '0 2px 8px rgba(220,38,38,0.12)' : '0 1px 4px rgba(61,26,94,0.06)',
-            display: 'flex', alignItems: 'center', gap: 16, transition: 'box-shadow 0.15s',
+            cursor: 'pointer', borderRadius: 8, padding: '14px 20px', background: '#1A1A1A',
+            border: `2px solid ${unreadCount > 0 ? '#EF4444' : '#2E2E2E'}`,
+            display: 'flex', alignItems: 'center', gap: 16, transition: 'border-color 0.15s',
           }}
-          onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 16px rgba(92,41,119,0.15)' }}
-          onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = unreadCount > 0 ? '0 2px 8px rgba(220,38,38,0.12)' : '0 1px 4px rgba(61,26,94,0.06)' }}
+          onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = unreadCount > 0 ? '#EF4444' : '#3E3E3E' }}
+          onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = unreadCount > 0 ? '#EF4444' : '#2E2E2E' }}
         >
-          <div style={{ width: 40, height: 40, borderRadius: 10, background: unreadCount > 0 ? '#FEF2F2' : '#F3EEF8', display: 'flex', alignItems: 'center', justifyContent: 'center', color: unreadCount > 0 ? '#DC2626' : '#5C2977', flexShrink: 0 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 8, background: unreadCount > 0 ? 'rgba(239,68,68,0.12)' : '#242424', display: 'flex', alignItems: 'center', justifyContent: 'center', color: unreadCount > 0 ? '#EF4444' : '#7C3AED', flexShrink: 0 }}>
             <IconInbox />
           </div>
           <div style={{ flex: 1 }}>
-            <p style={{ fontSize: 11, fontWeight: 600, color: '#6B5B8A', textTransform: 'uppercase', letterSpacing: '0.07em', margin: 0 }}>Unread Messages</p>
+            <p style={{ fontSize: 11, fontWeight: 600, color: '#6B6B6B', textTransform: 'uppercase', letterSpacing: '0.07em', margin: 0 }}>Unread Messages</p>
             <div className="flex items-baseline gap-2">
-              <p style={{ fontSize: 28, fontWeight: 800, color: unreadCount > 0 ? '#DC2626' : '#1A0A2E', margin: 0, lineHeight: 1.2 }}>
+              <p style={{ fontSize: 28, fontWeight: 800, color: unreadCount > 0 ? '#EF4444' : '#F5F5F5', margin: 0, lineHeight: 1.2 }}>
                 {unreadCount}
               </p>
               {unreadCount > 0 && (
-                <span style={{ fontSize: 13, color: '#DC2626', fontWeight: 600 }}>
+                <span style={{ fontSize: 13, color: '#EF4444', fontWeight: 600 }}>
                   unread {unreadCount === 1 ? 'conversation' : 'conversations'}
                 </span>
               )}
               {unreadCount === 0 && (
-                <span style={{ fontSize: 13, color: '#9B8AAE' }}>all caught up</span>
+                <span style={{ fontSize: 13, color: '#A0A0A0' }}>all caught up</span>
               )}
             </div>
           </div>
-          <span style={{ fontSize: 13, color: '#5C2977', fontWeight: 600 }}>Open Inbox →</span>
+          <span style={{ fontSize: 13, color: '#7C3AED', fontWeight: 600 }}>Open Inbox →</span>
         </div>
 
         {/* Campaign Report */}
         <TableCard title="Campaign Report">
           {loading ? (
-            <div className="py-10 text-center text-sm" style={{ color: '#9B8AAE' }}>Loading…</div>
+            <div className="py-10 text-center text-sm" style={{ color: '#A0A0A0' }}>Loading…</div>
           ) : campaigns.length === 0 ? (
             <div className="py-10 text-center">
-              <p className="text-sm" style={{ color: '#9B8AAE' }}>No campaigns yet.</p>
-              <button className="mt-2 text-sm underline" style={{ color: '#5C2977' }} onClick={() => setCurrentPage('campaigns')}>
+              <p className="text-sm" style={{ color: '#A0A0A0' }}>No campaigns yet.</p>
+              <button className="mt-2 text-sm underline" style={{ color: '#7C3AED' }} onClick={() => setCurrentPage('campaigns')}>
                 Go to Campaigns →
               </button>
             </div>
           ) : (
             <table className="w-full text-sm">
               <thead>
-                <tr style={{ borderBottom: '1px solid #F0EBF8' }}>
+                <tr style={{ borderBottom: '1px solid #2E2E2E', background: '#171717' }}>
                   {['Campaign Name', 'Amount Spent', 'Total Records', 'Total Deals', 'Response Rate', 'ROAS'].map((h) => (
-                    <th key={h} className="px-5 py-3 text-left" style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#9B8AAE' }}>
+                    <th key={h} className="px-5 py-3 text-left" style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#6B6B6B' }}>
                       {h}
                     </th>
                   ))}
@@ -272,16 +271,16 @@ export default function CRMDashboard() {
                   return (
                     <tr
                       key={c.id}
-                      style={{ borderBottom: i < campaigns.length - 1 ? '1px solid #F8F5FC' : 'none' }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = '#FAF8FD')}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                      style={{ borderBottom: i < campaigns.length - 1 ? '1px solid #2E2E2E' : 'none', background: '#1A1A1A' }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = '#242424')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = '#1A1A1A')}
                     >
-                      <td className="px-5 py-3 font-medium" style={{ color: '#1A0A2E' }}>{c.name}</td>
-                      <td className="px-5 py-3" style={{ color: '#9B8AAE' }}>—</td>
-                      <td className="px-5 py-3" style={{ color: '#3D2B5E' }}>{records > 0 ? records.toLocaleString() : '—'}</td>
-                      <td className="px-5 py-3" style={{ color: '#9B8AAE' }}>—</td>
-                      <td className="px-5 py-3" style={{ color: '#9B8AAE' }}>—</td>
-                      <td className="px-5 py-3" style={{ color: '#9B8AAE' }}>—</td>
+                      <td className="px-5 py-3 font-medium" style={{ color: '#F5F5F5' }}>{c.name}</td>
+                      <td className="px-5 py-3" style={{ color: '#A0A0A0' }}>—</td>
+                      <td className="px-5 py-3" style={{ color: '#F5F5F5' }}>{records > 0 ? records.toLocaleString() : '—'}</td>
+                      <td className="px-5 py-3" style={{ color: '#A0A0A0' }}>—</td>
+                      <td className="px-5 py-3" style={{ color: '#A0A0A0' }}>—</td>
+                      <td className="px-5 py-3" style={{ color: '#A0A0A0' }}>—</td>
                     </tr>
                   )
                 })}
@@ -294,39 +293,39 @@ export default function CRMDashboard() {
         <TableCard title="Communication Report">
           <table className="w-full text-sm">
             <thead>
-              <tr style={{ borderBottom: '1px solid #F0EBF8' }}>
+              <tr style={{ borderBottom: '1px solid #2E2E2E', background: '#171717' }}>
                 {['Total Conversations', 'Calls', 'Texts Sent', 'Talk Time', 'HOT Leads (7d)', 'Inbox'].map((h) => (
-                  <th key={h} className="px-5 py-3 text-left" style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#9B8AAE' }}>
+                  <th key={h} className="px-5 py-3 text-left" style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#6B6B6B' }}>
                     {h}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td className="px-5 py-4 font-semibold" style={{ color: '#1A0A2E' }}>
+              <tr style={{ background: '#1A1A1A' }}>
+                <td className="px-5 py-4 font-semibold" style={{ color: '#F5F5F5' }}>
                   {commStats ? commStats.total_conversations.toLocaleString() : '—'}
                 </td>
-                <td className="px-5 py-4" style={{ color: '#1565C0' }}>
+                <td className="px-5 py-4" style={{ color: '#A78BFA' }}>
                   {commStats ? commStats.calls_total.toLocaleString() : '—'}
                 </td>
-                <td className="px-5 py-4" style={{ color: '#6A1B9A' }}>
+                <td className="px-5 py-4" style={{ color: '#A78BFA' }}>
                   {commStats ? commStats.texts_outbound.toLocaleString() : '—'}
                 </td>
-                <td className="px-5 py-4" style={{ color: '#1A0A2E' }}>
+                <td className="px-5 py-4" style={{ color: '#F5F5F5' }}>
                   {commStats
                     ? commStats.talk_time_seconds > 0
                       ? `${Math.floor(commStats.talk_time_seconds / 60)}m ${commStats.talk_time_seconds % 60}s`
                       : '0m'
                     : '—'}
                 </td>
-                <td className="px-5 py-4 font-bold" style={{ color: commStats && commStats.hot_leads_this_week > 0 ? '#E65100' : '#9B8AAE' }}>
+                <td className="px-5 py-4 font-bold" style={{ color: commStats && commStats.hot_leads_this_week > 0 ? '#F59E0B' : '#A0A0A0' }}>
                   {commStats ? (commStats.hot_leads_this_week > 0 ? `🔥 ${commStats.hot_leads_this_week}` : '0') : '—'}
                 </td>
                 <td className="px-5 py-4">
                   <button
                     className="text-xs underline"
-                    style={{ color: '#5C2977' }}
+                    style={{ color: '#7C3AED' }}
                     onClick={() => setCurrentPage('seller-inbox')}
                   >
                     View Inbox →
@@ -336,8 +335,8 @@ export default function CRMDashboard() {
             </tbody>
           </table>
           {!commStats && (
-            <div className="px-5 py-3" style={{ borderTop: '1px solid #F8F5FC' }}>
-              <p className="text-xs" style={{ color: '#9B8AAE' }}>
+            <div className="px-5 py-3" style={{ borderTop: '1px solid #2E2E2E' }}>
+              <p className="text-xs" style={{ color: '#A0A0A0' }}>
                 Connect Telnyx to start tracking communication data. Set <code>TELNYX_API_KEY</code> and <code>TELNYX_PHONE_NUMBER</code> in Railway.
               </p>
             </div>
@@ -347,16 +346,16 @@ export default function CRMDashboard() {
         {/* Quick links */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {([
-            { label: 'View Properties', page: 'crm-properties', color: '#5C2977' },
+            { label: 'View Properties', page: 'crm-properties', color: '#7C3AED' },
             { label: 'View Contacts',   page: 'crm-contacts',   color: '#4A90D9' },
-            { label: 'Deals Pipeline',  page: 'crm-deals',      color: '#2D7A4F' },
+            { label: 'Deals Pipeline',  page: 'crm-deals',      color: '#10B981' },
             { label: 'Campaigns',       page: 'campaigns',      color: '#D5A940' },
           ] as { label: string; page: AppPage; color: string }[]).map(({ label, page, color }) => (
             <button
               key={page}
               onClick={() => setCurrentPage(page)}
-              className="rounded-xl py-3 px-4 text-sm font-medium text-left transition-all hover:opacity-90"
-              style={{ background: '#FFFFFF', color, border: `1px solid ${color}30`, boxShadow: '0 1px 3px rgba(61,26,94,0.06)' }}
+              className="rounded-lg py-3 px-4 text-sm font-medium text-left transition-all hover:opacity-90"
+              style={{ background: '#1A1A1A', color, border: `1px solid ${color}30` }}
             >
               {label} →
             </button>
@@ -366,4 +365,3 @@ export default function CRMDashboard() {
     </div>
   )
 }
-

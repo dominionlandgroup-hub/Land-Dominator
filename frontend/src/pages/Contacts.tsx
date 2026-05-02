@@ -50,11 +50,11 @@ export default function Contacts() {
         <button
           onClick={() => { setEditContact(row); setShowForm(true) }}
           className="font-semibold text-left hover:underline"
-          style={{ color: '#5C2977' }}
+          style={{ color: '#A78BFA' }}
         >
           {val
             ? String(val)
-            : [row.first_name, row.last_name].filter(Boolean).join(' ') || <span style={{ color: '#9B8AAE' }}>—</span>}
+            : [row.first_name, row.last_name].filter(Boolean).join(' ') || <span style={{ color: '#6B6B6B' }}>—</span>}
         </button>
       ),
     },
@@ -63,26 +63,26 @@ export default function Contacts() {
       header: 'Email',
       sortable: true,
       render: (val) => val
-        ? <a href={`mailto:${val}`} style={{ color: '#5C2977' }}>{String(val)}</a>
-        : <span style={{ color: '#9B8AAE' }}>—</span>,
+        ? <a href={`mailto:${val}`} style={{ color: '#A78BFA' }}>{String(val)}</a>
+        : <span style={{ color: '#6B6B6B' }}>—</span>,
     },
     {
       key: 'phone',
       header: 'Phone',
-      render: (val) => val ? String(val) : <span style={{ color: '#9B8AAE' }}>—</span>,
+      render: (val) => val ? String(val) : <span style={{ color: '#6B6B6B' }}>—</span>,
     },
     {
       key: 'state',
       header: 'State',
       sortable: true,
-      render: (val) => val ? String(val) : <span style={{ color: '#9B8AAE' }}>—</span>,
+      render: (val) => val ? String(val) : <span style={{ color: '#6B6B6B' }}>—</span>,
     },
     {
       key: 'city',
       header: 'City',
       sortable: true,
       defaultHidden: true,
-      render: (val) => val ? String(val) : <span style={{ color: '#9B8AAE' }}>—</span>,
+      render: (val) => val ? String(val) : <span style={{ color: '#6B6B6B' }}>—</span>,
     },
     {
       key: 'tags',
@@ -93,10 +93,10 @@ export default function Contacts() {
           <div className="flex gap-1 flex-wrap">
             {tags.map(t => (
               <span key={t} className="px-1.5 py-0.5 rounded text-[11px]"
-                style={{ background: '#F0EBF8', color: '#5C2977' }}>{t}</span>
+                style={{ background: 'rgba(124,58,237,0.12)', color: '#A78BFA' }}>{t}</span>
             ))}
           </div>
-        ) : <span style={{ color: '#9B8AAE' }}>—</span>
+        ) : <span style={{ color: '#6B6B6B' }}>—</span>
       },
     },
     {
@@ -132,9 +132,9 @@ export default function Contacts() {
         {/* Summary stat */}
         <div className="grid gap-4 mb-6" style={{ gridTemplateColumns: 'repeat(3, 1fr)', maxWidth: '480px' }}>
           {[
-            { label: 'Total Contacts', value: contacts.length, accent: '#5C2977' },
-            { label: 'With Email', value: contacts.filter(c => c.email).length, accent: '#1565C0' },
-            { label: 'With Phone', value: contacts.filter(c => c.phone).length, accent: '#2E7D32' },
+            { label: 'Total Contacts', value: contacts.length, accent: '#7C3AED' },
+            { label: 'With Email', value: contacts.filter(c => c.email).length, accent: '#4A90D9' },
+            { label: 'With Phone', value: contacts.filter(c => c.phone).length, accent: '#10B981' },
           ].map(s => (
             <div key={s.label} className="stat-card" style={{ '--stat-accent': s.accent } as React.CSSProperties}>
               <span className="label-caps">{s.label}</span>
@@ -144,14 +144,14 @@ export default function Contacts() {
         </div>
 
         {error && (
-          <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: '#FFF0F0', color: '#B71C1C', border: '1px solid #FFCDD2' }}>
+          <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: 'rgba(239,68,68,0.12)', color: '#F87171', border: '1px solid rgba(239,68,68,0.3)' }}>
             {error}
           </div>
         )}
 
         {loading ? (
           <div className="flex items-center justify-center py-16">
-            <div className="text-sm" style={{ color: '#6B5B8A' }}>Loading contacts…</div>
+            <div className="text-sm" style={{ color: '#6B6B6B' }}>Loading contacts…</div>
           </div>
         ) : (
           <div className="card-static">
@@ -236,15 +236,15 @@ function ContactForm({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(26,10,46,0.55)' }}>
-      <div className="bg-white rounded-2xl p-6 w-full shadow-xl" style={{ maxWidth: '520px', maxHeight: '90vh', overflowY: 'auto' }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }}>
+      <div className="rounded-lg p-6 w-full" style={{ maxWidth: '520px', maxHeight: '90vh', overflowY: 'auto', background: '#1A1A1A', border: '1px solid #2E2E2E' }}>
         <div className="flex items-center justify-between mb-5">
           <h2 className="section-heading">{contact ? 'Edit Contact' : 'New Contact'}</h2>
-          <button onClick={onClose} style={{ color: '#9B8AAE', fontSize: '18px', lineHeight: 1 }}>✕</button>
+          <button onClick={onClose} style={{ color: '#6B6B6B', fontSize: '18px', lineHeight: 1 }}>✕</button>
         </div>
 
         {error && (
-          <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: '#FFF0F0', color: '#B71C1C', border: '1px solid #FFCDD2' }}>
+          <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: 'rgba(239,68,68,0.12)', color: '#F87171', border: '1px solid rgba(239,68,68,0.3)' }}>
             {error}
           </div>
         )}
@@ -308,10 +308,10 @@ function ContactForm({
               onChange={e => set('notes', e.target.value)}
               style={{
                 width: '100%', padding: '8px 12px',
-                background: '#FFFFFF', border: '1.5px solid #E0D0F0',
-                borderRadius: '8px', fontSize: '13px',
+                background: '#242424', border: '1.5px solid #2E2E2E',
+                borderRadius: '6px', fontSize: '13px',
                 fontFamily: "'Montserrat', sans-serif",
-                color: '#1A0A2E', outline: 'none', resize: 'vertical',
+                color: '#F5F5F5', outline: 'none', resize: 'vertical',
               }}
             />
           </div>
@@ -333,9 +333,9 @@ function ContactForm({
               <div className="flex gap-2 mt-2 flex-wrap">
                 {(form.tags || []).map(t => (
                   <span key={t} className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs"
-                    style={{ background: '#F0EBF8', color: '#5C2977', border: '1px solid #D4B8E8' }}>
+                    style={{ background: 'rgba(124,58,237,0.12)', color: '#A78BFA', border: '1px solid rgba(124,58,237,0.25)' }}>
                     {t}
-                    <button onClick={() => removeTag(t)} style={{ color: '#9B8AAE', lineHeight: 1 }}>×</button>
+                    <button onClick={() => removeTag(t)} style={{ color: '#6B6B6B', lineHeight: 1 }}>×</button>
                   </span>
                 ))}
               </div>

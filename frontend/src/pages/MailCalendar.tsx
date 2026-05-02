@@ -19,10 +19,10 @@ function fmt(iso?: string) {
 
 function StatusBadge({ status }: { status: MailDrop['status'] }) {
   const map: Record<string, { bg: string; text: string; label: string }> = {
-    scheduled: { bg: '#EDE8F5', text: '#5C2977', label: 'Scheduled' },
-    approved:  { bg: '#E8F5E9', text: '#2E7D32', label: 'Approved' },
-    sent:      { bg: '#E3F2FD', text: '#1565C0', label: 'Sent' },
-    error:     { bg: '#FFF0F0', text: '#B71C1C', label: 'Error' },
+    scheduled: { bg: 'rgba(124,58,237,0.12)', text: '#A78BFA', label: 'Scheduled' },
+    approved:  { bg: 'rgba(16,185,129,0.12)', text: '#34D399', label: 'Approved' },
+    sent:      { bg: 'rgba(124,58,237,0.12)', text: '#A78BFA', label: 'Sent' },
+    error:     { bg: 'rgba(239,68,68,0.12)', text: '#F87171', label: 'Error' },
   }
   const s = map[status] ?? map.scheduled
   return (
@@ -131,7 +131,7 @@ export default function MailCalendar() {
   const totalPieces = drops.filter(d => d.status === 'sent').reduce((s, d) => s + (d.pieces_count ?? 0), 0)
 
   return (
-    <div style={{ background: '#F8F6FB', minHeight: '100vh' }}>
+    <div style={{ background: '#0F0F0F', minHeight: '100vh' }}>
       {/* Header */}
       <div className="page-header">
         <div className="page-header-left">
@@ -156,25 +156,25 @@ export default function MailCalendar() {
         {/* Summary cards */}
         <div className="grid grid-cols-3 gap-4 mb-6">
           {[
-            { label: 'Pending Drops', value: totalPending, color: '#5C2977' },
-            { label: 'Sent This Month', value: totalSentMonth, color: '#1565C0' },
-            { label: 'Total Pieces Mailed', value: totalPieces.toLocaleString(), color: '#2E7D32' },
+            { label: 'Pending Drops', value: totalPending, color: '#A78BFA' },
+            { label: 'Sent This Month', value: totalSentMonth, color: '#A78BFA' },
+            { label: 'Total Pieces Mailed', value: totalPieces.toLocaleString(), color: '#10B981' },
           ].map(({ label, value, color }) => (
-            <div key={label} className="bg-white rounded-xl p-5" style={{ border: '1px solid #EDE8F5' }}>
-              <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: '#9B8AAE' }}>{label}</p>
+            <div key={label} className="bg-white rounded-xl p-5" style={{ background: '#1A1A1A', border: '1px solid #2E2E2E', borderRadius: 8 }}>
+              <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: '#6B6B6B' }}>{label}</p>
               <p className="text-2xl font-bold" style={{ color }}>{value}</p>
             </div>
           ))}
         </div>
 
         {error && (
-          <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: '#FFF0F0', color: '#B71C1C', border: '1px solid #FFCDD2' }}>
+          <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: 'rgba(239,68,68,0.1)', color: '#F87171', border: '1px solid rgba(239,68,68,0.2)' }}>
             {error}
           </div>
         )}
 
         {actionError && (
-          <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: '#FFF0F0', color: '#B71C1C', border: '1px solid #FFCDD2' }}>
+          <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: 'rgba(239,68,68,0.1)', color: '#F87171', border: '1px solid rgba(239,68,68,0.2)' }}>
             {actionError}
             <button className="ml-3 underline text-xs" onClick={() => setActionError(null)}>Dismiss</button>
           </div>
@@ -183,10 +183,10 @@ export default function MailCalendar() {
         {/* Drops table */}
         {loading ? (
           <div className="flex items-center justify-center py-20">
-            <div className="text-sm" style={{ color: '#6B5B8A' }}>Loading…</div>
+            <div className="text-sm" style={{ color: '#A0A0A0' }}>Loading…</div>
           </div>
         ) : drops.length === 0 ? (
-          <div className="text-center py-20" style={{ color: '#6B5B8A' }}>
+          <div className="text-center py-20" style={{ color: '#A0A0A0' }}>
             <svg className="mx-auto mb-4 opacity-30" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
               <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/>
               <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
@@ -196,12 +196,12 @@ export default function MailCalendar() {
             <button className="btn-primary mt-4" onClick={() => setShowModal(true)}>+ Schedule Drop</button>
           </div>
         ) : (
-          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div className="card" style={{ padding: 0, overflow: 'hidden', background: '#1A1A1A', border: '1px solid #2E2E2E', borderRadius: 8 }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
-                <tr style={{ background: '#F8F6FB', borderBottom: '2px solid #EDE8F5' }}>
+                <tr style={{ background: '#242424', borderBottom: '2px solid #2E2E2E' }}>
                   {['Date', 'Campaign', 'Pieces', 'Est. Cost', 'Status', 'Sent To', 'Actions'].map(h => (
-                    <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: '11px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#6B5B8A' }}>{h}</th>
+                    <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: '11px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#6B6B6B' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -211,39 +211,39 @@ export default function MailCalendar() {
                   return (
                     <tr
                       key={drop.id}
-                      style={{ background: idx % 2 === 0 ? '#fff' : '#FAF8FD', borderBottom: '1px solid #EDE8F5' }}
+                      style={{ background: idx % 2 === 0 ? '#1A1A1A' : '#1F1F1F', borderBottom: '1px solid #2E2E2E' }}
                     >
                       <td style={{ padding: '12px 16px', whiteSpace: 'nowrap' }}>
-                        <span className="text-sm font-medium" style={{ color: '#1A0A2E' }}>{fmt(drop.scheduled_date)}</span>
+                        <span className="text-sm font-medium" style={{ color: '#F5F5F5' }}>{fmt(drop.scheduled_date)}</span>
                       </td>
                       <td style={{ padding: '12px 16px', maxWidth: 200 }}>
-                        <span className="text-sm" style={{ color: '#5C2977' }}>{drop.campaign_name || '—'}</span>
+                        <span className="text-sm" style={{ color: '#A78BFA' }}>{drop.campaign_name || '—'}</span>
                       </td>
                       <td style={{ padding: '12px 16px' }}>
-                        <span className="text-sm font-semibold" style={{ color: '#1A0A2E' }}>
+                        <span className="text-sm font-semibold" style={{ color: '#F5F5F5' }}>
                           {(drop.pieces_count ?? 0).toLocaleString()}
                         </span>
                       </td>
                       <td style={{ padding: '12px 16px' }}>
-                        <span className="text-sm" style={{ color: '#6B5B8A' }}>
+                        <span className="text-sm" style={{ color: '#A0A0A0' }}>
                           {drop.estimated_cost != null ? `$${drop.estimated_cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
                         </span>
                       </td>
                       <td style={{ padding: '12px 16px' }}>
                         <StatusBadge status={drop.status} />
                         {drop.error && (
-                          <p className="text-xs mt-0.5" style={{ color: '#B71C1C' }} title={drop.error}>Error</p>
+                          <p className="text-xs mt-0.5" style={{ color: '#F87171' }} title={drop.error}>Error</p>
                         )}
                       </td>
                       <td style={{ padding: '12px 16px', maxWidth: 180 }}>
-                        <span className="text-xs" style={{ color: '#9B8AAE' }}>{drop.email_sent_to || '—'}</span>
+                        <span className="text-xs" style={{ color: '#6B6B6B' }}>{drop.email_sent_to || '—'}</span>
                       </td>
                       <td style={{ padding: '12px 16px' }}>
                         <div className="flex items-center gap-1.5">
                           {drop.status === 'scheduled' && (
                             <button
                               className="px-2.5 py-1 rounded text-xs font-semibold"
-                              style={{ background: '#E8F5E9', color: '#2E7D32', border: '1px solid #C8E6C9' }}
+                              style={{ background: 'rgba(16,185,129,0.12)', color: '#34D399', border: '1px solid rgba(16,185,129,0.2)' }}
                               onClick={() => handleApprove(drop.id)}
                               disabled={busy}
                             >
@@ -253,7 +253,7 @@ export default function MailCalendar() {
                           {drop.status === 'approved' && (
                             <button
                               className="px-2.5 py-1 rounded text-xs font-semibold"
-                              style={{ background: '#E3F2FD', color: '#1565C0', border: '1px solid #BBDEFB' }}
+                              style={{ background: 'rgba(124,58,237,0.12)', color: '#A78BFA', border: '1px solid rgba(124,58,237,0.2)' }}
                               onClick={() => handleSend(drop.id)}
                               disabled={busy}
                             >
@@ -263,7 +263,7 @@ export default function MailCalendar() {
                           {drop.status === 'sent' && (
                             <button
                               className="px-2.5 py-1 rounded text-xs font-semibold"
-                              style={{ background: '#F3E5F5', color: '#6A1B9A', border: '1px solid #E1BEE7' }}
+                              style={{ background: 'rgba(124,58,237,0.12)', color: '#A78BFA', border: '1px solid rgba(124,58,237,0.2)' }}
                               onClick={() => downloadMailDropCsv(drop.id)}
                               disabled={busy}
                             >
@@ -273,7 +273,7 @@ export default function MailCalendar() {
                           {(drop.status === 'scheduled' || drop.status === 'approved' || drop.status === 'error') && (
                             <button
                               className="px-2 py-1 rounded text-xs"
-                              style={{ color: '#C4B5D8', border: '1px solid #EDE8F5' }}
+                              style={{ color: '#6B6B6B', border: '1px solid #2E2E2E' }}
                               onClick={() => handleDelete(drop.id)}
                               disabled={busy}
                               title="Delete"
@@ -299,15 +299,15 @@ export default function MailCalendar() {
       {showModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background: 'rgba(26,10,46,0.5)' }}
+          style={{ background: 'rgba(0,0,0,0.7)' }}
           onClick={e => { if (e.target === e.currentTarget) { setShowModal(false); setPreview(null) } }}
         >
-          <div className="card" style={{ width: 480, maxWidth: '95vw', padding: 24 }}>
+          <div className="card" style={{ width: 480, maxWidth: '95vw', padding: 24, background: '#1A1A1A', border: '1px solid #2E2E2E', borderRadius: 8 }}>
             <h2 className="section-heading mb-4">Schedule Mail Drop</h2>
 
             <div className="space-y-3 mb-4">
               <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: '#6B5B8A' }}>Campaign</label>
+                <label className="block text-xs font-semibold mb-1" style={{ color: '#A0A0A0' }}>Campaign</label>
                 <select
                   className="input-base w-full text-sm"
                   value={modalCampaignId}
@@ -320,7 +320,7 @@ export default function MailCalendar() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: '#6B5B8A' }}>Scheduled Date</label>
+                <label className="block text-xs font-semibold mb-1" style={{ color: '#A0A0A0' }}>Scheduled Date</label>
                 <input
                   type="date"
                   className="input-base w-full text-sm"
@@ -343,24 +343,24 @@ export default function MailCalendar() {
 
             {/* Preview results */}
             {preview && (
-              <div className="rounded-xl p-4 mb-4 space-y-2" style={{ background: '#F8F5FC', border: '1px solid #EDE8F5' }}>
-                <p className="text-xs font-bold uppercase tracking-wider" style={{ color: '#9B8AAE' }}>Drop Preview</p>
+              <div className="rounded-xl p-4 mb-4 space-y-2" style={{ background: '#242424', border: '1px solid #2E2E2E' }}>
+                <p className="text-xs font-bold uppercase tracking-wider" style={{ color: '#6B6B6B' }}>Drop Preview</p>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
                   {[
                     ['Total Records', preview.total_records.toLocaleString()],
                     ['Suppressed', preview.suppressed_count.toLocaleString()],
-                    ['Eligible to Mail', <strong key="e" style={{ color: '#5C2977' }}>{preview.eligible_count.toLocaleString()}</strong>],
+                    ['Eligible to Mail', <strong key="e" style={{ color: '#A78BFA' }}>{preview.eligible_count.toLocaleString()}</strong>],
                     ['Cost Per Piece', `$${preview.cost_per_piece.toFixed(2)}`],
-                    ['Estimated Cost', <strong key="c" style={{ color: '#2E7D32' }}>{`$${preview.estimated_cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</strong>],
+                    ['Estimated Cost', <strong key="c" style={{ color: '#10B981' }}>{`$${preview.estimated_cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</strong>],
                   ].map(([label, val], i) => (
                     <React.Fragment key={i}>
-                      <span className="text-xs" style={{ color: '#9B8AAE' }}>{label}</span>
-                      <span className="text-xs font-medium" style={{ color: '#1A0A2E' }}>{val}</span>
+                      <span className="text-xs" style={{ color: '#6B6B6B' }}>{label}</span>
+                      <span className="text-xs font-medium" style={{ color: '#F5F5F5' }}>{val}</span>
                     </React.Fragment>
                   ))}
                 </div>
                 {preview.eligible_count === 0 && (
-                  <p className="text-xs mt-1" style={{ color: '#B71C1C' }}>
+                  <p className="text-xs mt-1" style={{ color: '#F87171' }}>
                     No eligible records after suppression. Check statuses and "Do Not Mail" tags.
                   </p>
                 )}
@@ -368,7 +368,7 @@ export default function MailCalendar() {
             )}
 
             {modalError && (
-              <p className="text-sm mb-3" style={{ color: '#B71C1C' }}>{modalError}</p>
+              <p className="text-sm mb-3" style={{ color: '#F87171' }}>{modalError}</p>
             )}
 
             <div className="flex gap-2 justify-end">

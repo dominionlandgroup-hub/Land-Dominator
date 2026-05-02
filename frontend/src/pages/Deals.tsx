@@ -11,13 +11,13 @@ interface StageConfig {
 }
 
 const STAGES: StageConfig[] = [
-  { id: 'lead',           label: 'Lead',           color: '#E65100', bg: '#FFF3E0', border: '#FFCC80' },
-  { id: 'prospect',       label: 'Prospect',       color: '#1565C0', bg: '#E3F2FD', border: '#90CAF9' },
-  { id: 'offer_sent',     label: 'Offer Sent',     color: '#6A1B9A', bg: '#F3E5F5', border: '#CE93D8' },
-  { id: 'under_contract', label: 'Under Contract', color: '#2E7D32', bg: '#E8F5E9', border: '#A5D6A7' },
-  { id: 'due_diligence',  label: 'Due Diligence',  color: '#F57F17', bg: '#FFF8E1', border: '#FFE082' },
-  { id: 'closed_won',     label: 'Closed Won',     color: '#00695C', bg: '#E0F2F1', border: '#80CBC4' },
-  { id: 'closed_lost',    label: 'Closed Lost',    color: '#B71C1C', bg: '#FFEBEE', border: '#EF9A9A' },
+  { id: 'lead',           label: 'Lead',           color: '#F59E0B', bg: 'rgba(245,158,11,0.08)',   border: 'rgba(245,158,11,0.2)'  },
+  { id: 'prospect',       label: 'Prospect',       color: '#4A90D9', bg: 'rgba(74,144,217,0.08)',   border: 'rgba(74,144,217,0.2)'  },
+  { id: 'offer_sent',     label: 'Offer Sent',     color: '#A78BFA', bg: 'rgba(167,139,250,0.08)',  border: 'rgba(167,139,250,0.2)' },
+  { id: 'under_contract', label: 'Under Contract', color: '#10B981', bg: 'rgba(16,185,129,0.08)',   border: 'rgba(16,185,129,0.2)'  },
+  { id: 'due_diligence',  label: 'Due Diligence',  color: '#F59E0B', bg: 'rgba(245,158,11,0.08)',   border: 'rgba(245,158,11,0.2)'  },
+  { id: 'closed_won',     label: 'Closed Won',     color: '#10B981', bg: 'rgba(16,185,129,0.08)',   border: 'rgba(16,185,129,0.2)'  },
+  { id: 'closed_lost',    label: 'Closed Lost',    color: '#EF4444', bg: 'rgba(239,68,68,0.08)',    border: 'rgba(239,68,68,0.2)'   },
 ]
 
 export default function Deals() {
@@ -93,7 +93,7 @@ export default function Deals() {
             const count = deals.filter(d => d.stage === s.id).length
             const val = deals.filter(d => d.stage === s.id).reduce((sum, d) => sum + (d.value || 0), 0)
             return (
-              <div key={s.id} className="flex-none rounded-xl px-4 py-3 text-center" style={{ minWidth: '110px', background: s.bg, border: `1px solid ${s.border}` }}>
+              <div key={s.id} className="flex-none rounded-lg px-4 py-3 text-center" style={{ minWidth: '110px', background: s.bg, border: `1px solid ${s.border}` }}>
                 <div className="text-xs font-semibold" style={{ color: s.color }}>{s.label}</div>
                 <div className="text-xl font-bold mt-1" style={{ color: s.color }}>{count}</div>
                 {val > 0 && <div className="text-xs mt-0.5" style={{ color: s.color }}>${val.toLocaleString()}</div>}
@@ -103,14 +103,14 @@ export default function Deals() {
         </div>
 
         {error && (
-          <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: '#FFF0F0', color: '#B71C1C', border: '1px solid #FFCDD2' }}>
+          <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: 'rgba(239,68,68,0.12)', color: '#F87171', border: '1px solid rgba(239,68,68,0.3)' }}>
             {error}
           </div>
         )}
 
         {loading ? (
           <div className="flex items-center justify-center py-16">
-            <div className="text-sm" style={{ color: '#6B5B8A' }}>Loading deals…</div>
+            <div className="text-sm" style={{ color: '#6B6B6B' }}>Loading deals…</div>
           </div>
         ) : (
           <div className="flex gap-4 overflow-x-auto pb-4" style={{ alignItems: 'flex-start' }}>
@@ -118,7 +118,7 @@ export default function Deals() {
               const stageDeals = deals.filter(d => d.stage === stage.id)
               return (
                 <div key={stage.id} style={{ flex: '0 0 240px', minWidth: '240px' }}>
-                  <div className="rounded-xl p-3 mb-3" style={{ background: stage.bg, border: `1px solid ${stage.border}` }}>
+                  <div className="rounded-lg p-3 mb-3" style={{ background: stage.bg, border: `1px solid ${stage.border}` }}>
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold" style={{ color: stage.color }}>{stage.label}</span>
                       <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
@@ -145,19 +145,19 @@ export default function Deals() {
                     ))}
                     <button
                       style={{
-                        width: '100%', padding: '8px', borderRadius: '10px',
-                        fontSize: '12px', color: '#9B8AAE', textAlign: 'center',
-                        border: '1.5px dashed #D4B8E8', background: 'transparent', cursor: 'pointer',
+                        width: '100%', padding: '8px', borderRadius: '6px',
+                        fontSize: '12px', color: '#6B6B6B', textAlign: 'center',
+                        border: '1.5px dashed #2E2E2E', background: 'transparent', cursor: 'pointer',
                       }}
                       onMouseEnter={e => {
                         const el = e.currentTarget
-                        el.style.borderColor = '#5C2977'
-                        el.style.color = '#5C2977'
+                        el.style.borderColor = '#7C3AED'
+                        el.style.color = '#A78BFA'
                       }}
                       onMouseLeave={e => {
                         const el = e.currentTarget
-                        el.style.borderColor = '#D4B8E8'
-                        el.style.color = '#9B8AAE'
+                        el.style.borderColor = '#2E2E2E'
+                        el.style.color = '#6B6B6B'
                       }}
                       onClick={() => { setFormStage(stage.id); setShowForm(true) }}
                     >
@@ -208,25 +208,25 @@ function DealCard({
   }, [showMenu])
 
   return (
-    <div className="bg-white rounded-xl p-3 relative" style={{ border: '1px solid #EDE6F5', boxShadow: '0 1px 3px rgba(92,41,119,0.06)' }}>
+    <div className="rounded-lg p-3 relative" style={{ background: '#1A1A1A', border: '1px solid #2E2E2E' }}>
       <div className="flex items-start justify-between gap-2 mb-1">
-        <div className="text-sm font-semibold leading-snug" style={{ color: '#1A0A2E' }}>{deal.title}</div>
+        <div className="text-sm font-semibold leading-snug" style={{ color: '#F5F5F5' }}>{deal.title}</div>
         <div className="relative flex-none" ref={menuRef}>
           <button
             onClick={() => setShowMenu(v => !v)}
-            style={{ color: '#9B8AAE', fontSize: '16px', lineHeight: 1, padding: '0 2px' }}
+            style={{ color: '#6B6B6B', fontSize: '16px', lineHeight: 1, padding: '0 2px' }}
           >⋮</button>
           {showMenu && (
-            <div className="absolute right-0 top-full mt-1 rounded-xl z-30 overflow-hidden"
-              style={{ background: '#fff', border: '1px solid #EDE6F5', boxShadow: '0 8px 24px rgba(92,41,119,0.12)', minWidth: '170px' }}>
+            <div className="absolute right-0 top-full mt-1 rounded-lg z-30 overflow-hidden"
+              style={{ background: '#242424', border: '1px solid #2E2E2E', minWidth: '170px' }}>
               <div className="p-1">
-                <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#9B8AAE' }}>Move to</div>
+                <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#6B6B6B' }}>Move to</div>
                 {stages.filter(s => s.id !== deal.stage).map(s => (
                   <button
                     key={s.id}
                     className="w-full text-left px-3 py-2 text-xs rounded-lg transition-colors"
-                    style={{ color: '#3D2B5E' }}
-                    onMouseEnter={e => (e.currentTarget.style.background = '#F8F5FF')}
+                    style={{ color: '#F5F5F5' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = '#2E2E2E')}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                     onClick={() => { onMove(s.id); setShowMenu(false) }}
                   >
@@ -235,11 +235,11 @@ function DealCard({
                   </button>
                 ))}
               </div>
-              <div style={{ borderTop: '1px solid #EDE6F5' }} className="p-1">
+              <div style={{ borderTop: '1px solid #2E2E2E' }} className="p-1">
                 <button
                   className="w-full text-left px-3 py-2 text-xs rounded-lg"
                   style={{ color: '#EF4444' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = '#FFF0F0')}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.12)')}
                   onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                   onClick={() => { onDelete(); setShowMenu(false) }}
                 >
@@ -252,17 +252,17 @@ function DealCard({
       </div>
 
       {deal.value != null && deal.value > 0 && (
-        <div className="text-xs font-bold mb-1" style={{ color: '#5C2977' }}>
+        <div className="text-xs font-bold mb-1" style={{ color: '#A78BFA' }}>
           ${deal.value.toLocaleString()}
         </div>
       )}
       {deal.expected_close_date && (
-        <div className="text-xs" style={{ color: '#9B8AAE' }}>
+        <div className="text-xs" style={{ color: '#A0A0A0' }}>
           Close: {new Date(deal.expected_close_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
         </div>
       )}
       {deal.notes && (
-        <div className="text-xs mt-1" style={{ color: '#6B5B8A', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+        <div className="text-xs mt-1" style={{ color: '#6B6B6B', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
           {deal.notes}
         </div>
       )}
@@ -270,7 +270,7 @@ function DealCard({
         <div className="flex gap-1 flex-wrap mt-2">
           {(deal.tags || []).slice(0, 3).map(t => (
             <span key={t} className="px-1.5 py-0.5 rounded text-[10px]"
-              style={{ background: '#F0EBF8', color: '#5C2977' }}>{t}</span>
+              style={{ background: 'rgba(124,58,237,0.12)', color: '#A78BFA' }}>{t}</span>
           ))}
         </div>
       )}
@@ -331,15 +331,15 @@ function DealForm({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(26,10,46,0.55)' }}>
-      <div className="bg-white rounded-2xl p-6 w-full shadow-xl" style={{ maxWidth: '440px' }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }}>
+      <div className="rounded-lg p-6 w-full" style={{ maxWidth: '440px', background: '#1A1A1A', border: '1px solid #2E2E2E' }}>
         <div className="flex items-center justify-between mb-5">
           <h2 className="section-heading">New Deal</h2>
-          <button onClick={onClose} style={{ color: '#9B8AAE', fontSize: '18px', lineHeight: 1 }}>✕</button>
+          <button onClick={onClose} style={{ color: '#6B6B6B', fontSize: '18px', lineHeight: 1 }}>✕</button>
         </div>
 
         {error && (
-          <div className="mb-3 p-3 rounded-lg text-sm" style={{ background: '#FFF0F0', color: '#B71C1C', border: '1px solid #FFCDD2' }}>
+          <div className="mb-3 p-3 rounded-lg text-sm" style={{ background: 'rgba(239,68,68,0.12)', color: '#F87171', border: '1px solid rgba(239,68,68,0.3)' }}>
             {error}
           </div>
         )}
@@ -388,10 +388,10 @@ function DealForm({
               onChange={e => set('notes', e.target.value || undefined)}
               style={{
                 width: '100%', padding: '8px 12px',
-                background: '#FFFFFF', border: '1.5px solid #E0D0F0',
-                borderRadius: '8px', fontSize: '13px',
+                background: '#242424', border: '1.5px solid #2E2E2E',
+                borderRadius: '6px', fontSize: '13px',
                 fontFamily: "'Montserrat', sans-serif",
-                color: '#1A0A2E', outline: 'none', resize: 'vertical',
+                color: '#F5F5F5', outline: 'none', resize: 'vertical',
               }}
             />
           </div>
@@ -412,9 +412,9 @@ function DealForm({
               <div className="flex gap-2 mt-2 flex-wrap">
                 {(form.tags || []).map(t => (
                   <span key={t} className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs"
-                    style={{ background: '#F0EBF8', color: '#5C2977', border: '1px solid #D4B8E8' }}>
+                    style={{ background: 'rgba(124,58,237,0.12)', color: '#A78BFA', border: '1px solid rgba(124,58,237,0.25)' }}>
                     {t}
-                    <button onClick={() => removeTag(t)} style={{ color: '#9B8AAE', lineHeight: 1 }}>×</button>
+                    <button onClick={() => removeTag(t)} style={{ color: '#6B6B6B', lineHeight: 1 }}>×</button>
                   </span>
                 ))}
               </div>
