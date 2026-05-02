@@ -140,24 +140,35 @@ async def run_match(filters: MatchFilters) -> Response:
             detail="Target session not found. Please re-upload your targets CSV.",
         )
 
-    comps_df = get_comps(filters.session_id)
-    if comps_df is None:
-        # Session expired — try to load comps from crm_sold_comps DB filtered by target state(s)
-        target_states: list[str] = []
-        if "Parcel State" in targets_df.columns:
-            target_states = [
-                s for s in targets_df["Parcel State"].dropna().astype(str).str.strip().str.upper().unique()
-                if s and s not in ("NAN", "NONE", "")
-            ]
-        comps_df = _load_comps_from_db(states=target_states if target_states else None)
+    # Determine target states for DB filtering
+    target_states: list[str] = []
+    if "Parcel State" in targets_df.columns:
+        target_states = [
+            s for s in targets_df["Parcel State"].dropna().astype(str).str.strip().str.upper().unique()
+            if s and s not in ("NAN", "NONE", "")
+        ]
+
+    # Always load comps from DB (source of truth — not in-memory session which can be stale).
+    # Session is used only as a fallback if the DB is empty.
+    db_comps_df = _load_comps_from_db(states=target_states if target_states else None)
+    if db_comps_df is not None and len(db_comps_df) > 0:
+        comps_df = db_comps_df
+        from storage.session_store import store_comps
+        store_comps(filters.session_id, comps_df)  # refresh session cache
+        print(f"[match] Loaded {len(comps_df)} comps from crm_sold_comps DB", flush=True)
+    else:
+        # DB is empty — fall back to session if available
+        comps_df = get_comps(filters.session_id)
         if comps_df is not None and len(comps_df) > 0:
-            from storage.session_store import store_comps
-            store_comps(filters.session_id, comps_df)
-            print(f"[match] Restored {len(comps_df)} comps from crm_sold_comps DB (session expired)", flush=True)
+            print(f"[match] DB empty — using session comps ({len(comps_df)} rows). Re-upload comps to persist them.", flush=True)
         else:
             raise HTTPException(
                 status_code=404,
-                detail="Comps session not found and no comps in database. Please re-upload your comps CSV.",
+                detail=(
+                    "No comps found in database and no session comps available. "
+                    "Please upload your comps CSV. "
+                    f"Target states detected: {target_states or 'none'}."
+                ),
             )
 
     flood_mode = (filters.flood_zone_filter or "").strip().lower()

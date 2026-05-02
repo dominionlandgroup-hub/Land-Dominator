@@ -3,11 +3,11 @@ Upload endpoints for comps and target CSVs.
 Supports Land Portal format, MLS format, and generic CSV.
 Multiple files can be uploaded and merged (append mode, APN-deduped).
 """
+import asyncio
 import io
 import csv
 import uuid
 import time
-import threading
 from datetime import datetime, timezone
 from typing import Optional
 import numpy as np
@@ -384,18 +384,47 @@ def _save_comps_to_db(
                     rows[idx_row]["latitude"]  = lat_g
                     rows[idx_row]["longitude"] = lon_g
 
-        # Insert in chunks
+        if not rows:
+            print(f"[comps-db] No rows to insert after filtering (all {skipped_filter} skipped)", flush=True)
+            return 0, skipped_filter, deduped
+
+        # Insert in chunks with per-chunk error reporting
         CHUNK = 500
         inserted = 0
+        insert_errors: list[str] = []
         for i in range(0, len(rows), CHUNK):
-            sb.table("crm_sold_comps").insert(rows[i:i+CHUNK]).execute()
-            inserted += len(rows[i:i+CHUNK])
+            chunk = rows[i:i+CHUNK]
+            try:
+                res = sb.table("crm_sold_comps").insert(chunk).execute()
+                n = len(res.data) if res.data else len(chunk)
+                inserted += n
+                print(f"[comps-db] Inserted chunk {i}–{i+len(chunk)}: {n} rows saved", flush=True)
+            except Exception as chunk_exc:
+                msg = str(chunk_exc)
+                insert_errors.append(msg)
+                print(f"[comps-db] INSERT ERROR chunk {i}–{i+len(chunk)}: {msg}", flush=True)
+                # Log first row of failing chunk to diagnose schema mismatch
+                if i == 0 and chunk:
+                    print(f"[comps-db] First failing row keys: {list(chunk[0].keys())}", flush=True)
+                    print(f"[comps-db] First failing row sample: {dict(list(chunk[0].items())[:5])}", flush=True)
 
-        print(f"[comps-db] ✓ Inserted {inserted}, geocoded {geocoded_count}", flush=True)
+        if insert_errors:
+            print(f"[comps-db] ⚠ {len(insert_errors)} chunk(s) failed. First error: {insert_errors[0]}", flush=True)
+
+        # Verify final count in DB
+        try:
+            count_res = sb.table("crm_sold_comps").select("id", count="exact").execute()
+            db_total = count_res.count or 0
+            print(f"[comps-db] ✓ Done — inserted={inserted}, geocoded={geocoded_count}, DB total now={db_total}", flush=True)
+        except Exception:
+            print(f"[comps-db] ✓ Done — inserted={inserted}, geocoded={geocoded_count}", flush=True)
+
         return inserted, skipped_filter, deduped
 
     except Exception as exc:
-        print(f"[comps-db] ERROR: {exc}", flush=True)
+        import traceback
+        print(f"[comps-db] CRITICAL ERROR: {exc}", flush=True)
+        print(f"[comps-db] Traceback: {traceback.format_exc()}", flush=True)
         return 0, 0, 0
 
 
@@ -523,25 +552,29 @@ async def upload_comps(
     store_comps(session_id, df)
     uploaded_at = datetime.now(timezone.utc).isoformat()
 
-    db_row_count = int(
-        (pd.to_numeric(df.get("Current Sale Price", pd.Series(dtype=float)), errors="coerce").fillna(0) > 0).sum()
-    ) if "Current Sale Price" in df.columns else stats["valid_rows"]
+    print(f"[comps] Parsed {len(df)} rows (format={detected_format}), saving to crm_sold_comps...", flush=True)
 
-    inserted_ref = [0]
-    deduped_ref  = [0]
-    geocoded_ref = [0]
+    # Run DB save synchronously in a thread-pool executor so it completes before we respond.
+    # Using run_in_executor avoids blocking the async event loop while still waiting for the result.
+    loop = asyncio.get_running_loop()
+    try:
+        inserted, skipped_filter, deduped = await loop.run_in_executor(
+            None, _save_comps_to_db, df, filename, detected_format, append
+        )
+    except Exception as exc:
+        print(f"[comps] run_in_executor _save_comps_to_db raised: {exc}", flush=True)
+        inserted = skipped_filter = deduped = 0
 
-    def _persist():
-        from services.comps_persistence import persist_comps
-        persist_comps(session_id, df, {**stats, "uploaded_at": uploaded_at})
-        ins, _, dedup = _save_comps_to_db(df, filename, detected_format, append=append)
-        inserted_ref[0] = ins
-        deduped_ref[0]  = dedup
+    geocoded_count = 0  # geocoding happens inside _save_comps_to_db; already logged there
 
-    t = threading.Thread(target=_persist, daemon=True)
-    t.start()
-    # Wait briefly so first-response numbers are more accurate
-    t.join(timeout=5.0)
+    # Fire-and-forget Storage backup (non-critical, never blocks response)
+    def _backup_to_storage():
+        try:
+            from services.comps_persistence import persist_comps
+            persist_comps(session_id, df, {**stats, "uploaded_at": uploaded_at})
+        except Exception as backup_exc:
+            print(f"[comps] Storage backup failed (non-critical): {backup_exc}", flush=True)
+    loop.run_in_executor(None, _backup_to_storage)
 
     return UploadResponse(
         session_id=session_id,
@@ -551,10 +584,10 @@ async def upload_comps(
         missing_columns=stats["missing_columns"],
         preview=stats["preview"],
         uploaded_at=uploaded_at,
-        saved_to_db=inserted_ref[0] or db_row_count,
+        saved_to_db=inserted,
         detected_format=detected_format,
-        deduped_count=deduped_ref[0],
-        geocoded_count=geocoded_ref[0],
+        deduped_count=deduped,
+        geocoded_count=geocoded_count,
     )
 
 
@@ -702,6 +735,36 @@ async def clear_comps_by_file(filename: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     return {"filename": filename, "deleted": deleted}
+
+
+@router.get("/comps/db-status")
+async def comps_db_status():
+    """Diagnostic: count comps in DB, list states, and verify Supabase connectivity."""
+    from services.supabase_client import get_supabase
+    try:
+        sb = get_supabase()
+        count_res = sb.table("crm_sold_comps").select("id", count="exact").execute()
+        total = count_res.count or 0
+
+        # Sample a few rows to confirm column structure
+        sample_res = sb.table("crm_sold_comps").select("state,county,acreage,sale_price,latitude,longitude").limit(5).execute()
+        sample = sample_res.data or []
+
+        # State breakdown
+        state_res = sb.table("crm_sold_comps").select("state").execute()
+        state_counts: dict = {}
+        for r in (state_res.data or []):
+            s = r.get("state") or "NULL"
+            state_counts[s] = state_counts.get(s, 0) + 1
+
+        return {
+            "status": "ok",
+            "total_comps": total,
+            "states": state_counts,
+            "sample": sample,
+        }
+    except Exception as exc:
+        return {"status": "error", "detail": str(exc), "total_comps": 0}
 
 
 @router.post("/comps/normalize-counties")
