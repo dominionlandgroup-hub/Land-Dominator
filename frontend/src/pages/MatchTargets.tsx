@@ -56,9 +56,16 @@ export default function MatchTargets() {
   const [minScore] = useState<number>(Number(init?.min_match_score ?? 0))
   const [zipFilter, setZipFilter] = useState<string[]>((init?.zip_filter as string[]) ?? [])
   const [zipInputText, setZipInputText] = useState<string>(((init?.zip_filter as string[]) ?? []).join(', '))
-  const [minAcreage, setMinAcreage] = useState<string>('')
-  const [maxAcreage, setMaxAcreage] = useState<string>('')
-  const acreagePrefilled = React.useRef(false)
+  const [minAcreage, setMinAcreage] = useState<string>(
+    () => localStorage.getItem('matchTargets_acreage_min') ?? '0.1'
+  )
+  const [maxAcreage, setMaxAcreage] = useState<string>(
+    () => localStorage.getItem('matchTargets_acreage_max') ?? '0.5'
+  )
+  // Only pre-fill from sweet spot if localStorage has no saved value
+  const acreagePrefilled = React.useRef(
+    localStorage.getItem('matchTargets_acreage_min') !== null
+  )
   const [floodZoneFilter, setFloodZoneFilter] = useState<'all' | 'exclude' | 'only'>((init?.flood_zone_filter as 'all' | 'exclude' | 'only') ?? 'exclude')
   const [minOfferFloor, setMinOfferFloor] = useState<string>('10000')
   const [minLpEstimate, setMinLpEstimate] = useState<string>('20000')
@@ -75,18 +82,24 @@ export default function MatchTargets() {
   const [mailingDone, setMailingDone] = useState(false)
   const [showUnmatched, setShowUnmatched] = useState(false)
 
-  // Pre-fill acreage from sweet spot — runs once when dashboardData first loads, never overrides user edits
+  // Persist acreage to localStorage whenever values change
   useEffect(() => {
-    if (acreagePrefilled.current || lastFilters || !dashboardData) return
+    localStorage.setItem('matchTargets_acreage_min', minAcreage)
+    localStorage.setItem('matchTargets_acreage_max', maxAcreage)
+  }, [minAcreage, maxAcreage])
+
+  // Pre-fill acreage from sweet spot — only on first load when no localStorage value exists
+  useEffect(() => {
+    if (acreagePrefilled.current || !dashboardData) return
     acreagePrefilled.current = true
     const b = dashboardData.sweet_spot?.bucket
-    if (b === '0-0.5') { setMinAcreage('0.1'); setMaxAcreage('2') }
-    else if (b === '0.5-1') { setMinAcreage('0.1'); setMaxAcreage('2') }
-    else if (b === '1-2') { setMinAcreage('0.5'); setMaxAcreage('3') }
-    else if (b === '2-5') { setMinAcreage('1'); setMaxAcreage('6') }
-    else if (b === '5-10') { setMinAcreage('3'); setMaxAcreage('12') }
-    else if (b === '10+') { setMinAcreage('8'); setMaxAcreage('50') }
-    else { setMinAcreage('0.1'); setMaxAcreage('2') }
+    if (b === '0-0.5')      { setMinAcreage('0.1'); setMaxAcreage('0.5') }
+    else if (b === '0.5-1') { setMinAcreage('0.5'); setMaxAcreage('1.0') }
+    else if (b === '1-2')   { setMinAcreage('1.0'); setMaxAcreage('2.0') }
+    else if (b === '2-5')   { setMinAcreage('2.0'); setMaxAcreage('5.0') }
+    else if (b === '5-10')  { setMinAcreage('5.0'); setMaxAcreage('10.0') }
+    else if (b === '10+')   { setMinAcreage('10.0'); setMaxAcreage('40.0') }
+    else                    { setMinAcreage('0.1');  setMaxAcreage('0.5') }
   }, [dashboardData])
 
   // Top 20 ZIPs from dashboard for "Use Buy Box ZIPs" — exclude outliers (ppa > 3x market median) and <5 sales
