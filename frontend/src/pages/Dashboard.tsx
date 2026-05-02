@@ -56,8 +56,8 @@ export default function Dashboard() {
             ← Upload Comps
           </button>
           <div>
-            <h1 className="text-lg" style={{ color: '#1A0A2E', fontWeight: 700 }}>Market Analysis</h1>
-            <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>
+            <h1 className="text-lg" style={{ color: '#F9FAFB', fontWeight: 700 }}>Market Analysis</h1>
+            <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>
               {compsStats.valid_rows.toLocaleString()} valid sold comps · {dashboardData?.available_zips.length ?? '…'} ZIP codes
             </p>
           </div>
@@ -119,7 +119,7 @@ export default function Dashboard() {
         )}
 
         {error && (
-          <div className="rounded-xl px-5 py-4 mb-6 text-sm" style={{ background: '#FEE2E2', border: '1px solid rgba(220,38,38,0.3)', color: '#DC2626' }}>
+          <div className="rounded-xl px-5 py-4 mb-6 text-sm" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#EF4444' }}>
             {error}
           </div>
         )}
@@ -194,8 +194,8 @@ function TopMarketsCard({ zipStats, comps }: { zipStats: ZipStats[]; comps: Comp
     <div className="card mb-6">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="font-semibold" style={{ color: '#1A0A2E' }}>Top 20 Markets</h2>
-          <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>Ranked by sales volume · color shows market quality</p>
+          <h2 className="font-semibold" style={{ color: '#F9FAFB' }}>Top 20 Markets</h2>
+          <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>Ranked by sales volume · color shows market quality</p>
         </div>
         <button className="btn-secondary text-xs" onClick={() => setShowMap(v => !v)}>
           {showMap ? 'Hide Map' : 'View on Map'}
@@ -203,15 +203,15 @@ function TopMarketsCard({ zipStats, comps }: { zipStats: ZipStats[]; comps: Comp
       </div>
 
       {/* Legend */}
-      <div className="flex items-center gap-4 mb-4 text-xs" style={{ color: '#6B5B8A' }}>
+      <div className="flex items-center gap-4 mb-4 text-xs" style={{ color: '#9CA3AF' }}>
         <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full inline-block" style={{ background: '#059669' }} />Solid (10+ sales)</span>
         <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full inline-block" style={{ background: '#D5A940' }} />Thin Data (5–9 sales)</span>
         <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full inline-block" style={{ background: '#DC2626' }} />Avoid (outlier)</span>
       </div>
 
       {/* Top 20 ranked list */}
-      <div className="rounded-xl overflow-hidden mb-4" style={{ border: '1px solid #E8E0F0' }}>
-        <div className="grid text-[10px] uppercase tracking-wider px-4 py-2" style={{ gridTemplateColumns: '32px 12px 1fr 90px 100px 80px', color: '#9B8AAE', background: '#F3EEF9', borderBottom: '1px solid #E8E0F0' }}>
+      <div className="rounded-xl overflow-hidden mb-4" style={{ border: '1px solid #2D3748' }}>
+        <div className="grid text-[10px] uppercase tracking-wider px-4 py-2" style={{ gridTemplateColumns: '32px 12px 1fr 90px 100px 80px', color: '#6B7280', background: '#111827', borderBottom: '1px solid #2D3748' }}>
           <span>#</span><span></span><span>ZIP</span><span className="text-right">Sales</span><span className="text-right">Median $/Acre</span><span></span>
         </div>
         {top20.map((z, i) => {
@@ -221,18 +221,18 @@ function TopMarketsCard({ zipStats, comps }: { zipStats: ZipStats[]; comps: Comp
             <div
               key={z.zip_code}
               className="grid items-center px-4 py-2.5"
-              style={{ gridTemplateColumns: '32px 12px 1fr 90px 100px 80px', background: i % 2 === 0 ? '#FFFFFF' : '#FAF7FD', borderBottom: i < top20.length - 1 ? '1px solid #E8E0F0' : 'none' }}
+              style={{ gridTemplateColumns: '32px 12px 1fr 90px 100px 80px', background: i % 2 === 0 ? '#1F2937' : '#1A2231', borderBottom: i < top20.length - 1 ? '1px solid #1F2937' : 'none' }}
             >
-              <span className="text-xs font-bold" style={{ color: '#9B8AAE' }}>{i + 1}</span>
+              <span className="text-xs font-bold" style={{ color: '#6B7280' }}>{i + 1}</span>
               <div className="w-2 h-2 rounded-full" style={{ background: dot }} />
-              <span className="font-mono font-semibold text-sm" style={{ color: '#5C2977' }}>{z.zip_code}</span>
-              <span className="text-xs text-right font-medium" style={{ color: '#1A0A2E' }}>{z.sales_count.toLocaleString()}</span>
+              <span className="font-mono font-semibold text-sm" style={{ color: '#D5A940' }}>{z.zip_code}</span>
+              <span className="text-xs text-right font-medium" style={{ color: '#F9FAFB' }}>{z.sales_count.toLocaleString()}</span>
               <span className="text-xs text-right" style={{ color: '#D5A940' }}>
                 {z.median_price_per_acre != null ? `$${Math.round(z.median_price_per_acre).toLocaleString()}` : '—'}
               </span>
               <span className="flex justify-end">
                 {isThinWarning && (
-                  <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 6, background: '#FEF3C7', color: '#D97706', border: '1px solid rgba(217,119,6,0.25)' }}>Thin Data</span>
+                  <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 6, background: 'rgba(245,158,11,0.15)', color: '#F59E0B', border: '1px solid rgba(245,158,11,0.25)' }}>Thin Data</span>
                 )}
               </span>
             </div>
@@ -242,16 +242,16 @@ function TopMarketsCard({ zipStats, comps }: { zipStats: ZipStats[]; comps: Comp
 
       {/* Avoid section */}
       {(outlierSet.size > 0 || thinZips.length > 0) && (
-        <div className="rounded-lg px-4 py-3 mb-4 text-xs space-y-1" style={{ background: '#FEE2E2', border: '1px solid rgba(220,38,38,0.15)' }}>
-          <p className="font-medium mb-1.5" style={{ color: '#DC2626' }}>Excluded from targets</p>
+        <div className="rounded-lg px-4 py-3 mb-4 text-xs space-y-1" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.15)' }}>
+          <p className="font-medium mb-1.5" style={{ color: '#EF4444' }}>Excluded from targets</p>
           {outlierSet.size > 0 && (
             <div>
-              <span style={{ color: '#6B5B8A' }}>{outlierSet.size} outlier ZIPs excluded (premium/waterfront areas)</span>
-              <button className="ml-2 underline" style={{ color: '#5C2977' }} onClick={() => setShowOutliers(v => !v)}>
+              <span style={{ color: '#9CA3AF' }}>{outlierSet.size} outlier ZIPs excluded (premium/waterfront areas)</span>
+              <button className="ml-2 underline" style={{ color: '#D5A940' }} onClick={() => setShowOutliers(v => !v)}>
                 {showOutliers ? 'hide' : 'view all'}
               </button>
               {showOutliers && (
-                <p className="mt-1 font-mono text-[10px] leading-relaxed" style={{ color: '#9B8AAE' }}>
+                <p className="mt-1 font-mono text-[10px] leading-relaxed" style={{ color: '#6B7280' }}>
                   {[...outlierSet].join(', ')}
                 </p>
               )}
@@ -259,12 +259,12 @@ function TopMarketsCard({ zipStats, comps }: { zipStats: ZipStats[]; comps: Comp
           )}
           {thinZips.length > 0 && (
             <div>
-              <span style={{ color: '#6B5B8A' }}>{thinZips.length} thin data ZIPs excluded (fewer than 5 sales)</span>
-              <button className="ml-2 underline" style={{ color: '#5C2977' }} onClick={() => setShowThin(v => !v)}>
+              <span style={{ color: '#9CA3AF' }}>{thinZips.length} thin data ZIPs excluded (fewer than 5 sales)</span>
+              <button className="ml-2 underline" style={{ color: '#D5A940' }} onClick={() => setShowThin(v => !v)}>
                 {showThin ? 'hide' : 'view all'}
               </button>
               {showThin && (
-                <p className="mt-1 font-mono text-[10px] leading-relaxed" style={{ color: '#9B8AAE' }}>
+                <p className="mt-1 font-mono text-[10px] leading-relaxed" style={{ color: '#6B7280' }}>
                   {thinZips.join(', ')}
                 </p>
               )}
@@ -309,9 +309,9 @@ function CollapsibleZipTable({ zipStats }: { zipStats: ZipStats[] }) {
   return (
     <div className="card mb-6">
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold" style={{ color: '#1A0A2E' }}>
+        <h2 className="font-semibold" style={{ color: '#F9FAFB' }}>
           ZIP Code Data
-          <span className="text-sm font-normal ml-2" style={{ color: '#6B5B8A' }}>
+          <span className="text-sm font-normal ml-2" style={{ color: '#9CA3AF' }}>
             ({zipStats.length} total ZIPs)
           </span>
         </h2>
@@ -326,17 +326,17 @@ function CollapsibleZipTable({ zipStats }: { zipStats: ZipStats[] }) {
       {expanded && (
         <div className="mt-4">
           <div className="flex items-center justify-between mb-3">
-            <p className="text-xs" style={{ color: '#6B5B8A' }}>
+            <p className="text-xs" style={{ color: '#9CA3AF' }}>
               Showing {filtered.length} ZIPs
               {!showAll && ' with 10+ sales, excluding outliers'}
             </p>
-            <button className="text-xs underline" style={{ color: '#5C2977' }} onClick={() => setShowAll(v => !v)}>
+            <button className="text-xs underline" style={{ color: '#D5A940' }} onClick={() => setShowAll(v => !v)}>
               {showAll ? 'Hide thin/outlier ZIPs' : 'Show all ZIPs'}
             </button>
           </div>
 
-          <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #E8E0F0' }}>
-            <div className="grid text-[10px] uppercase tracking-wider px-4 py-2" style={{ gridTemplateColumns: '1fr 70px 100px 90px', color: '#9B8AAE', background: '#F3EEF9', borderBottom: '1px solid #E8E0F0' }}>
+          <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #2D3748' }}>
+            <div className="grid text-[10px] uppercase tracking-wider px-4 py-2" style={{ gridTemplateColumns: '1fr 70px 100px 90px', color: '#6B7280', background: '#111827', borderBottom: '1px solid #2D3748' }}>
               <span>ZIP</span>
               <span className="text-right">Sales</span>
               <span className="text-right">Max Price</span>
@@ -346,14 +346,14 @@ function CollapsibleZipTable({ zipStats }: { zipStats: ZipStats[] }) {
               <div
                 key={z.zip_code}
                 className="grid items-center px-4 py-2"
-                style={{ gridTemplateColumns: '1fr 70px 100px 90px', background: i % 2 === 0 ? '#FFFFFF' : '#FAF7FD', borderBottom: i < filtered.length - 1 ? '1px solid #E8E0F0' : 'none' }}
+                style={{ gridTemplateColumns: '1fr 70px 100px 90px', background: i % 2 === 0 ? '#1F2937' : '#1A2231', borderBottom: i < filtered.length - 1 ? '1px solid #1F2937' : 'none' }}
               >
-                <span className="font-mono text-xs font-semibold" style={{ color: '#5C2977' }}>{z.zip_code}</span>
-                <span className="text-xs text-right" style={{ color: '#1A0A2E' }}>{z.sales_count.toLocaleString()}</span>
+                <span className="font-mono text-xs font-semibold" style={{ color: '#D5A940' }}>{z.zip_code}</span>
+                <span className="text-xs text-right" style={{ color: '#F9FAFB' }}>{z.sales_count.toLocaleString()}</span>
                 <span className="text-xs text-right" style={{ color: '#D5A940' }}>
                   {z.max_sale_price ? `$${Math.round(z.max_sale_price).toLocaleString()}` : '—'}
                 </span>
-                <span className="text-xs text-right" style={{ color: '#6B5B8A' }}>
+                <span className="text-xs text-right" style={{ color: '#9CA3AF' }}>
                   {z.median_lot_size != null ? `${z.median_lot_size.toFixed(2)} ac` : '—'}
                 </span>
               </div>
@@ -572,17 +572,17 @@ ${sec('6. Owner',
 
   if (topZips.length === 0) return null
 
-  const cardStyle = { background: '#F7F3FC', border: '1px solid #E8E0F0' }
+  const cardStyle = { background: '#253040', border: '1px solid #2D3748' }
   const hdr = (title: string) => (
-    <p className="text-[10px] uppercase tracking-wider font-semibold mb-3" style={{ color: '#9B8AAE' }}>{title}</p>
+    <p className="text-[10px] uppercase tracking-wider font-semibold mb-3" style={{ color: '#6B7280' }}>{title}</p>
   )
 
   return (
     <div className="card mb-6" style={{ border: '1.5px solid rgba(213,169,64,0.25)' }}>
       <div className="flex items-start justify-between mb-5">
         <div>
-          <h2 className="font-semibold" style={{ color: '#1A0A2E' }}>Land Portal Buy Box Recipe</h2>
-          <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>
+          <h2 className="font-semibold" style={{ color: '#F9FAFB' }}>Land Portal Buy Box Recipe</h2>
+          <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>
             Exact filter settings derived from your {comps.length.toLocaleString()} sold comps — paste directly into Land Portal
           </p>
         </div>
@@ -606,32 +606,32 @@ ${sec('6. Owner',
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
             {topStates.length > 0 && (
               <div>
-                <p className="mb-1" style={{ color: '#6B5B8A' }}>State</p>
+                <p className="mb-1" style={{ color: '#9CA3AF' }}>State</p>
                 <div className="flex flex-wrap gap-1.5">
                   {topStates.map(s => (
-                    <span key={s} className="font-semibold px-2 py-0.5 rounded text-[11px]" style={{ background: 'rgba(92,41,119,0.08)', color: '#5C2977', border: '1px solid rgba(92,41,119,0.2)' }}>{s}</span>
+                    <span key={s} className="font-semibold px-2 py-0.5 rounded text-[11px]" style={{ background: 'rgba(213,169,64,0.1)', color: '#D5A940', border: '1px solid rgba(213,169,64,0.2)' }}>{s}</span>
                   ))}
                 </div>
               </div>
             )}
             {sortedCounties.length > 0 && (
               <div className="md:col-span-2">
-                <p className="mb-1 font-semibold" style={{ color: '#059669' }}>Pull by County — Land Portal → Location → County</p>
+                <p className="mb-1 font-semibold" style={{ color: '#10B981' }}>Pull by County — Land Portal → Location → County</p>
                 <div className="flex flex-wrap gap-1.5 mb-2">
                   {sortedCounties.map(c => (
-                    <span key={c} className="text-[11px] px-2 py-0.5 rounded font-medium" style={{ background: '#D1FAE5', color: '#059669', border: '1px solid rgba(5,150,105,0.2)' }}>{c}</span>
+                    <span key={c} className="text-[11px] px-2 py-0.5 rounded font-medium" style={{ background: 'rgba(16,185,129,0.12)', color: '#10B981', border: '1px solid rgba(16,185,129,0.2)' }}>{c}</span>
                   ))}
                 </div>
-                <div className="rounded-lg p-2.5" style={{ background: 'rgba(5,150,105,0.06)', border: '1px solid rgba(5,150,105,0.15)' }}>
-                  <p className="text-[10px]" style={{ color: '#059669' }}><span className="font-semibold">Why pull the whole county?</span> ZIP codes cut across market boundaries — filtering by ZIP excludes deals just outside your target area that would still comp well. Pull the entire county and let the matching engine filter by comp strength.</p>
+                <div className="rounded-lg p-2.5" style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)' }}>
+                  <p className="text-[10px]" style={{ color: '#10B981' }}><span className="font-semibold">Why pull the whole county?</span> ZIP codes cut across market boundaries — filtering by ZIP excludes deals just outside your target area that would still comp well. Pull the entire county and let the matching engine filter by comp strength.</p>
                 </div>
               </div>
             )}
             <div>
-              <p className="mb-1" style={{ color: '#9B8AAE' }}>Top 20 ZIPs — reference only · don't filter by ZIP in LP</p>
+              <p className="mb-1" style={{ color: '#6B7280' }}>Top 20 ZIPs — reference only · don't filter by ZIP in LP</p>
               <div className="flex flex-wrap gap-1.5">
                 {topZips.map(z => (
-                  <span key={z} className="font-mono text-[11px] px-2 py-0.5 rounded" style={{ background: '#FFFFFF', color: '#6B5B8A', border: '1px solid #E8E0F0' }}>{z}</span>
+                  <span key={z} className="font-mono text-[11px] px-2 py-0.5 rounded" style={{ background: '#1F2937', color: '#9CA3AF', border: '1px solid #2D3748' }}>{z}</span>
                 ))}
               </div>
             </div>
@@ -642,15 +642,15 @@ ${sec('6. Owner',
         <div className="rounded-xl p-4" style={cardStyle}>
           {hdr('2 · Property Type')}
           <div className="space-y-2 text-xs">
-            <p className="text-[10px] mb-1" style={{ color: '#6B5B8A' }}>Land Portal → Property Type → Land Use — check <strong>only</strong>:</p>
-            <div className="flex gap-2"><span style={{ color: '#059669', fontWeight: 700 }}>✓</span><span style={{ color: '#1A0A2E' }}>Vacant Land (General)</span></div>
-            <div className="flex gap-2"><span style={{ color: '#059669', fontWeight: 700 }}>✓</span><span style={{ color: '#1A0A2E' }}>Residential Vacant Land</span></div>
-            <p className="text-[10px] mt-1 mb-0.5" style={{ color: '#6B5B8A' }}>Uncheck all others:</p>
-            <div className="flex gap-2"><span style={{ color: '#DC2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>Commercial</span></div>
-            <div className="flex gap-2"><span style={{ color: '#DC2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>Agricultural</span></div>
-            <div className="flex gap-2"><span style={{ color: '#DC2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>Industrial</span></div>
-            <div className="flex gap-2"><span style={{ color: '#DC2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>Mobile Home</span></div>
-            <div className="flex gap-2"><span style={{ color: '#DC2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>Improved/Built lots</span></div>
+            <p className="text-[10px] mb-1" style={{ color: '#9CA3AF' }}>Land Portal → Property Type → Land Use — check <strong>only</strong>:</p>
+            <div className="flex gap-2"><span style={{ color: '#10B981', fontWeight: 700 }}>✓</span><span style={{ color: '#E5E7EB' }}>Vacant Land (General)</span></div>
+            <div className="flex gap-2"><span style={{ color: '#10B981', fontWeight: 700 }}>✓</span><span style={{ color: '#E5E7EB' }}>Residential Vacant Land</span></div>
+            <p className="text-[10px] mt-1 mb-0.5" style={{ color: '#9CA3AF' }}>Uncheck all others:</p>
+            <div className="flex gap-2"><span style={{ color: '#EF4444', fontWeight: 700 }}>✗</span><span style={{ color: '#9CA3AF' }}>Commercial</span></div>
+            <div className="flex gap-2"><span style={{ color: '#EF4444', fontWeight: 700 }}>✗</span><span style={{ color: '#9CA3AF' }}>Agricultural</span></div>
+            <div className="flex gap-2"><span style={{ color: '#EF4444', fontWeight: 700 }}>✗</span><span style={{ color: '#9CA3AF' }}>Industrial</span></div>
+            <div className="flex gap-2"><span style={{ color: '#EF4444', fontWeight: 700 }}>✗</span><span style={{ color: '#9CA3AF' }}>Mobile Home</span></div>
+            <div className="flex gap-2"><span style={{ color: '#EF4444', fontWeight: 700 }}>✗</span><span style={{ color: '#9CA3AF' }}>Improved/Built lots</span></div>
           </div>
         </div>
 
@@ -659,16 +659,16 @@ ${sec('6. Owner',
           {hdr('3 · Lot Size')}
           <div className="space-y-2 text-xs">
             <div className="flex justify-between">
-              <span style={{ color: '#6B5B8A' }}>Min lot size</span>
-              <span style={{ color: '#1A0A2E', fontWeight: 600 }}>{fmtSqft(minAcre)}</span>
+              <span style={{ color: '#9CA3AF' }}>Min lot size</span>
+              <span style={{ color: '#F9FAFB', fontWeight: 600 }}>{fmtSqft(minAcre)}</span>
             </div>
             <div className="flex justify-between">
-              <span style={{ color: '#6B5B8A' }}>Max lot size</span>
-              <span style={{ color: '#1A0A2E', fontWeight: 600 }}>{fmtSqft(maxAcre)}</span>
+              <span style={{ color: '#9CA3AF' }}>Max lot size</span>
+              <span style={{ color: '#F9FAFB', fontWeight: 600 }}>{fmtSqft(maxAcre)}</span>
             </div>
-            <div className="mt-2 pt-2 flex justify-between" style={{ borderTop: '1px solid #E8E0F0' }}>
-              <span style={{ color: '#6B5B8A' }}>Sweet spot</span>
-              <span style={{ color: '#5C2977', fontWeight: 600 }}>{sweetLabel}</span>
+            <div className="mt-2 pt-2 flex justify-between" style={{ borderTop: '1px solid #2D3748' }}>
+              <span style={{ color: '#9CA3AF' }}>Sweet spot</span>
+              <span style={{ color: '#D5A940', fontWeight: 600 }}>{sweetLabel}</span>
             </div>
           </div>
         </div>
@@ -677,12 +677,12 @@ ${sec('6. Owner',
         <div className="rounded-xl p-4" style={cardStyle}>
           {hdr('4 · Land Quality')}
           <div className="space-y-2 text-xs">
-            <div className="flex justify-between gap-2"><span style={{ color: '#6B5B8A', flexShrink: 0 }}>Buildability minimum</span><span style={{ color: '#059669', fontWeight: 600, textAlign: 'right' }}>{buildabilityLabel}</span></div>
-            {slopeLabel && <div className="flex justify-between gap-2"><span style={{ color: '#6B5B8A', flexShrink: 0 }}>Maximum slope</span><span style={{ color: '#1A0A2E', fontWeight: 600, textAlign: 'right' }}>{slopeLabel}</span></div>}
-            {wetlandsLabel && <div className="flex justify-between gap-2"><span style={{ color: '#6B5B8A', flexShrink: 0 }}>Wetlands coverage</span><span style={{ color: '#1A0A2E', fontWeight: 600, textAlign: 'right' }}>{wetlandsLabel}</span></div>}
-            <div className="flex gap-2"><span style={{ color: '#DC2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>FEMA flood zones (exclude all)</span></div>
-            <div className="flex gap-2"><span style={{ color: '#DC2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>Landlocked parcels (exclude)</span></div>
-            <div className="flex justify-between gap-2"><span style={{ color: '#6B5B8A', flexShrink: 0 }}>Road frontage</span><span style={{ color: '#059669', fontWeight: 600, textAlign: 'right' }}>{roadFrontageLabel}</span></div>
+            <div className="flex justify-between gap-2"><span style={{ color: '#9CA3AF', flexShrink: 0 }}>Buildability minimum</span><span style={{ color: '#10B981', fontWeight: 600, textAlign: 'right' }}>{buildabilityLabel}</span></div>
+            {slopeLabel && <div className="flex justify-between gap-2"><span style={{ color: '#9CA3AF', flexShrink: 0 }}>Maximum slope</span><span style={{ color: '#F9FAFB', fontWeight: 600, textAlign: 'right' }}>{slopeLabel}</span></div>}
+            {wetlandsLabel && <div className="flex justify-between gap-2"><span style={{ color: '#9CA3AF', flexShrink: 0 }}>Wetlands coverage</span><span style={{ color: '#F9FAFB', fontWeight: 600, textAlign: 'right' }}>{wetlandsLabel}</span></div>}
+            <div className="flex gap-2"><span style={{ color: '#EF4444', fontWeight: 700 }}>✗</span><span style={{ color: '#9CA3AF' }}>FEMA flood zones (exclude all)</span></div>
+            <div className="flex gap-2"><span style={{ color: '#EF4444', fontWeight: 700 }}>✗</span><span style={{ color: '#9CA3AF' }}>Landlocked parcels (exclude)</span></div>
+            <div className="flex justify-between gap-2"><span style={{ color: '#9CA3AF', flexShrink: 0 }}>Road frontage</span><span style={{ color: '#10B981', fontWeight: 600, textAlign: 'right' }}>{roadFrontageLabel}</span></div>
           </div>
         </div>
 
@@ -690,21 +690,21 @@ ${sec('6. Owner',
         <div className="rounded-xl p-4" style={cardStyle}>
           {hdr('5 · Comp Filters (Land Portal Export)')}
           <div className="space-y-2 text-xs">
-            <div className="flex gap-2"><span style={{ color: '#059669', fontWeight: 700 }}>✓</span><span style={{ color: '#1A0A2E' }}>Sale Date: last 24 months</span></div>
-            <div className="flex gap-2"><span style={{ color: '#059669', fontWeight: 700 }}>✓</span><span style={{ color: '#1A0A2E' }}>Buyer Type: LLC / Corporation only</span></div>
-            <div className="flex gap-2"><span style={{ color: '#DC2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>Individual / Trust buyers (exclude — less reliable pricing)</span></div>
+            <div className="flex gap-2"><span style={{ color: '#10B981', fontWeight: 700 }}>✓</span><span style={{ color: '#E5E7EB' }}>Sale Date: last 24 months</span></div>
+            <div className="flex gap-2"><span style={{ color: '#10B981', fontWeight: 700 }}>✓</span><span style={{ color: '#E5E7EB' }}>Buyer Type: LLC / Corporation only</span></div>
+            <div className="flex gap-2"><span style={{ color: '#EF4444', fontWeight: 700 }}>✗</span><span style={{ color: '#9CA3AF' }}>Individual / Trust buyers (exclude — less reliable pricing)</span></div>
           </div>
-          <p className="text-[10px] mt-2 italic" style={{ color: '#9B8AAE' }}>LLC buyers are professional investors who pay retail — best benchmark for offer pricing</p>
+          <p className="text-[10px] mt-2 italic" style={{ color: '#6B7280' }}>LLC buyers are professional investors who pay retail — best benchmark for offer pricing</p>
         </div>
 
         {/* Section 6 — Owner */}
         <div className="rounded-xl p-4" style={cardStyle}>
           {hdr('6 · Owner')}
           <div className="space-y-2 text-xs">
-            <div className="flex justify-between"><span style={{ color: '#6B5B8A' }}>Owner type</span><span style={{ color: '#1A0A2E', fontWeight: 600 }}>Individual / Trust only</span></div>
-            <div className="flex gap-2"><span style={{ color: '#DC2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B5B8A' }}>LLC / Corp owners (exclude)</span></div>
-            <div className="flex justify-between"><span style={{ color: '#6B5B8A' }}>Owner tenure</span><span style={{ color: '#1A0A2E', fontWeight: 600 }}>5+ years</span></div>
-            <div className="flex justify-between"><span style={{ color: '#6B5B8A' }}>Absentee</span><span style={{ color: '#5C2977', fontWeight: 600 }}>Cross-county preferred</span></div>
+            <div className="flex justify-between"><span style={{ color: '#9CA3AF' }}>Owner type</span><span style={{ color: '#F9FAFB', fontWeight: 600 }}>Individual / Trust only</span></div>
+            <div className="flex gap-2"><span style={{ color: '#EF4444', fontWeight: 700 }}>✗</span><span style={{ color: '#9CA3AF' }}>LLC / Corp owners (exclude)</span></div>
+            <div className="flex justify-between"><span style={{ color: '#9CA3AF' }}>Owner tenure</span><span style={{ color: '#F9FAFB', fontWeight: 600 }}>5+ years</span></div>
+            <div className="flex justify-between"><span style={{ color: '#9CA3AF' }}>Absentee</span><span style={{ color: '#D5A940', fontWeight: 600 }}>Cross-county preferred</span></div>
           </div>
         </div>
       </div>
@@ -738,13 +738,13 @@ function SummaryCard({ label, value, sub, icon, accent }: {
   return (
     <div className="stat-card">
       <div className="flex items-start justify-between mb-3">
-        <p className="text-xs uppercase tracking-wider font-medium" style={{ color: '#9B8AAE', letterSpacing: '0.8px' }}>{label}</p>
+        <p className="text-xs uppercase tracking-wider font-medium" style={{ color: '#6B7280', letterSpacing: '0.8px' }}>{label}</p>
         <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${accent}20`, color: accent }}>
           {icon}
         </div>
       </div>
-      <p className="text-2xl font-bold mb-0.5" style={{ color: accent }}>{value}</p>
-      {sub && <p className="text-xs" style={{ color: '#9B8AAE' }}>{sub}</p>}
+      <p className="text-2xl font-bold mb-0.5" style={{ color: accent === '#5C2977' ? '#D5A940' : accent }}>{value}</p>
+      {sub && <p className="text-xs" style={{ color: '#6B7280' }}>{sub}</p>}
     </div>
   )
 }

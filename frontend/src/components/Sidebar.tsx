@@ -100,12 +100,12 @@ const IconChevronRight = () => (
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const SIDEBAR_BG = '#1A0A2E'
-const ACTIVE_GOLD = '#FFFFFF'
-const TEXT_DEFAULT = 'rgba(232,213,245,0.65)'
-const TEXT_ACTIVE = '#FFFFFF'
-const HOVER_BG = 'rgba(124,58,237,0.15)'
-const ACTIVE_BG = '#7C3AED'
+const SIDEBAR_BG = '#0D1117'
+const ACTIVE_GOLD = '#D5A940'
+const TEXT_DEFAULT = '#9CA3AF'
+const TEXT_ACTIVE = '#D5A940'
+const HOVER_BG = '#1F2937'
+const ACTIVE_BG = 'rgba(213,169,64,0.08)'
 
 const BOARD_SUBITEMS: { id: AppPage; label: string }[] = [
   { id: 'boards-seller', label: 'Seller Deals' },
@@ -138,12 +138,13 @@ function NavBtn({
       onClick={onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      className="w-full flex items-center gap-2.5 rounded-lg text-left transition-all duration-150"
+      className="w-full flex items-center gap-2.5 text-left transition-all duration-150"
       style={{
         padding: indent ? '6px 12px 6px 28px' : '7px 12px',
         background: active ? ACTIVE_BG : hovered ? HOVER_BG : 'transparent',
         color: active ? TEXT_ACTIVE : TEXT_DEFAULT,
-        borderLeft: active ? `3px solid ${ACTIVE_GOLD}` : '3px solid transparent',
+        borderLeft: active ? `2px solid ${ACTIVE_GOLD}` : '2px solid transparent',
+        borderRadius: active ? '0 6px 6px 0' : '6px',
       }}
     >
       {icon && <span className="flex-none" style={{ opacity: active ? 1 : 0.75 }}>{icon}</span>}
@@ -164,19 +165,20 @@ function SetupGuideBtn({ active, incompleteCount, onClick }: {
       onClick={onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      className="w-full flex items-center gap-2.5 rounded-lg text-left transition-all duration-150"
+      className="w-full flex items-center gap-2.5 text-left transition-all duration-150"
       style={{
         padding: '7px 12px',
         background: active ? ACTIVE_BG : hovered ? HOVER_BG : 'transparent',
         color: active ? TEXT_ACTIVE : TEXT_DEFAULT,
-        borderLeft: active ? `3px solid ${ACTIVE_GOLD}` : '3px solid transparent',
+        borderLeft: active ? `2px solid ${ACTIVE_GOLD}` : '2px solid transparent',
+        borderRadius: active ? '0 6px 6px 0' : '6px',
       }}
     >
       <span className="flex-none" style={{ opacity: active ? 1 : 0.75 }}><IconGuide /></span>
       <span className="text-sm font-medium flex-1">Setup Guide</span>
       {incompleteCount !== null && incompleteCount > 0 && (
         <span style={{
-          background: '#7C3AED', color: '#fff', borderRadius: 4,
+          background: '#EF4444', color: '#fff', borderRadius: 4,
           padding: '1px 6px', fontSize: 10, fontWeight: 600, lineHeight: '1.4',
           minWidth: 18, textAlign: 'center',
         }}>{incompleteCount}</span>
@@ -217,12 +219,13 @@ export default function Sidebar() {
   return (
     <aside
       className="w-60 min-h-screen flex flex-col shrink-0"
-      style={{ background: SIDEBAR_BG, borderRight: '1px solid rgba(255,255,255,0.06)' }}
+      style={{ background: SIDEBAR_BG, borderRight: '1px solid #1F2937' }}
     >
       {/* Logo */}
-      <div className="px-4 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-        <div className="flex items-center justify-center rounded-lg px-3 py-2" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
-          <img src="/logo.png" alt="Logo" className="h-10 w-auto object-contain" />
+      <div className="px-4 py-4" style={{ borderBottom: '1px solid #1F2937' }}>
+        <div className="flex items-center gap-2 px-2">
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#D5A940', flexShrink: 0 }} />
+          <span style={{ fontSize: 15, fontWeight: 700, color: '#F9FAFB', letterSpacing: '-0.02em' }}>LandIQ</span>
         </div>
       </div>
 
@@ -243,15 +246,16 @@ export default function Sidebar() {
         {/* Boards accordion */}
         <button
           onClick={() => setBoardsOpen((v) => !v)}
-          className="w-full flex items-center gap-2.5 rounded-lg text-left transition-all duration-150"
+          className="w-full flex items-center gap-2.5 text-left transition-all duration-150"
           style={{
             padding: '7px 12px',
             background: boardsActive ? ACTIVE_BG : 'transparent',
             color: boardsActive ? TEXT_ACTIVE : TEXT_DEFAULT,
-            borderLeft: boardsActive ? `3px solid ${ACTIVE_GOLD}` : '3px solid transparent',
+            borderLeft: boardsActive ? `2px solid ${ACTIVE_GOLD}` : '2px solid transparent',
+            borderRadius: boardsActive ? '0 6px 6px 0' : '6px',
           }}
-          onMouseEnter={(e) => { if (!boardsActive) (e.currentTarget as HTMLElement).style.background = HOVER_BG }}
-          onMouseLeave={(e) => { if (!boardsActive) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+          onMouseEnter={(e) => { if (!boardsActive) { (e.currentTarget as HTMLElement).style.background = HOVER_BG; (e.currentTarget as HTMLElement).style.color = '#F9FAFB' } }}
+          onMouseLeave={(e) => { if (!boardsActive) { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = TEXT_DEFAULT } }}
         >
           <span className="flex-none" style={{ opacity: boardsActive ? 1 : 0.75 }}><IconBoard /></span>
           <span className="text-sm font-medium flex-1">Boards</span>
@@ -271,7 +275,7 @@ export default function Sidebar() {
           />
         ))}
 
-        <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', margin: '6px 4px' }} />
+        <div style={{ borderTop: '1px solid #1F2937', margin: '6px 4px' }} />
 
         <NavBtn id="crm-campaigns"  label="Campaigns"      icon={<IconCampaign />} active={currentPage === 'crm-campaigns'}  onClick={() => nav('crm-campaigns')} />
         <NavBtn id="mail-calendar" label="Mail Calendar"  icon={<IconCalendar />} active={currentPage === 'mail-calendar'}  onClick={() => nav('mail-calendar')} />
@@ -279,7 +283,7 @@ export default function Sidebar() {
         <NavBtn id="crm-contacts"   label="Contacts"       icon={<IconPerson />}   active={currentPage === 'crm-contacts'}   onClick={() => nav('crm-contacts')} />
         <NavBtn id="crm-deals"      label="Deals Pipeline" icon={<IconPipeline />} active={currentPage === 'crm-deals'}      onClick={() => nav('crm-deals')} />
 
-        <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', margin: '6px 4px' }} />
+        <div style={{ borderTop: '1px solid #1F2937', margin: '6px 4px' }} />
 
         <NavBtn id="upload-comps" label="Upload Comps" icon={<IconUpload />}   active={currentPage === 'upload-comps' || currentPage === 'dashboard' || currentPage === 'match-targets'} onClick={() => nav('upload-comps')} />
 
@@ -295,8 +299,8 @@ export default function Sidebar() {
 
       {/* Session status footer — shown only when workflow data is loaded */}
       {(compsStats || targetStats || matchResult) && (
-        <div className="px-3 py-3 space-y-1.5" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-          <p style={{ fontSize: '9px', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(232,213,245,0.35)', marginBottom: '4px' }}>
+        <div className="px-3 py-3 space-y-1.5" style={{ borderTop: '1px solid #1F2937' }}>
+          <p style={{ fontSize: '9px', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#4B5563', marginBottom: '4px' }}>
             Session
           </p>
           {compsStats && (
@@ -317,8 +321,8 @@ export default function Sidebar() {
 function StatusRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between">
-      <span style={{ fontSize: '10px', color: 'rgba(232,213,245,0.45)' }}>{label}</span>
-      <span style={{ fontSize: '10px', color: '#E8D5F5', background: 'rgba(124,58,237,0.2)', border: '1px solid rgba(124,58,237,0.3)', borderRadius: '4px', padding: '1px 6px' }}>
+      <span style={{ fontSize: '10px', color: '#6B7280' }}>{label}</span>
+      <span style={{ fontSize: '10px', color: '#D5A940', background: 'rgba(213,169,64,0.1)', border: '1px solid rgba(213,169,64,0.2)', borderRadius: '4px', padding: '1px 6px' }}>
         {value}
       </span>
     </div>

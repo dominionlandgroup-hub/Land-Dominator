@@ -429,55 +429,55 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
   const bs = stats.by_status ?? {}
 
   return (
-    <div style={{ background: '#F8F6FB', minHeight: '100vh' }}>
+    <div style={{ background: '#111827', minHeight: '100vh' }}>
       {/* Top bar */}
-      <div className="page-header" style={{ borderBottom: '1px solid #EDE8F5' }}>
+      <div className="page-header" style={{ borderBottom: '1px solid #2D3748' }}>
         <div className="flex items-center gap-3">
           <button
             onClick={onBack}
             className="flex items-center gap-1.5 text-sm font-medium transition-opacity hover:opacity-70"
-            style={{ color: '#5C2977' }}
+            style={{ color: '#D5A940' }}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polyline points="15 18 9 12 15 6"/>
             </svg>
             Campaigns
           </button>
-          <span style={{ color: '#D4B8E8' }}>/</span>
-          <h1 className="text-base font-semibold truncate" style={{ color: '#1A0A2E', maxWidth: '320px' }}>{campaign.name}</h1>
+          <span style={{ color: '#2D3748' }}>/</span>
+          <h1 className="text-base font-semibold truncate" style={{ color: '#F9FAFB', maxWidth: '320px' }}>{campaign.name}</h1>
         </div>
         <div className="flex items-center gap-2">
           {/* LP pull progress */}
           {lpStatus === 'running' && lpTotal > 0 && (
-            <span className="text-xs" style={{ color: '#6B5B8A' }}>
+            <span className="text-xs" style={{ color: '#9CA3AF' }}>
               Pulling LP data… {lpDone.toLocaleString()} of {lpTotal.toLocaleString()}
             </span>
           )}
           {lpStatus === 'running' && lpTotal === 0 && (
-            <span className="text-xs" style={{ color: '#6B5B8A' }}>Starting LP pull…</span>
+            <span className="text-xs" style={{ color: '#9CA3AF' }}>Starting LP pull…</span>
           )}
           {lpStatus === 'done' && (
-            <span className="text-xs font-semibold" style={{ color: '#2E7D32' }}>
+            <span className="text-xs font-semibold" style={{ color: '#10B981' }}>
               ✓ LP data pulled: {lpDone.toLocaleString()} records
             </span>
           )}
           {lpStatus === 'error' && (
-            <span className="text-xs font-semibold" style={{ color: '#B71C1C' }}>
+            <span className="text-xs font-semibold" style={{ color: '#EF4444' }}>
               LP pull failed: {lpError}
             </span>
           )}
 
           {/* Import progress indicator */}
           {importPhase === 'parsing' && (
-            <span className="text-xs" style={{ color: '#6B5B8A' }}>Parsing CSV…</span>
+            <span className="text-xs" style={{ color: '#9CA3AF' }}>Parsing CSV…</span>
           )}
           {importPhase === 'importing' && (
-            <span className="text-xs" style={{ color: '#6B5B8A' }}>
+            <span className="text-xs" style={{ color: '#9CA3AF' }}>
               Importing {importProgress.toLocaleString()} / {importTotal.toLocaleString()}…
             </span>
           )}
           {importPhase === 'done' && (
-            <span className="text-xs font-semibold" style={{ color: '#2E7D32' }}>
+            <span className="text-xs font-semibold" style={{ color: '#10B981' }}>
               ✓ {importedCount.toLocaleString()} imported
             </span>
           )}
@@ -532,27 +532,27 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
       </div>
 
       {/* Campaign stats */}
-      <div className="px-6 py-4" style={{ borderBottom: '1px solid #EDE8F5', background: '#fff' }}>
+      <div className="px-6 py-4" style={{ borderBottom: '1px solid #2D3748', background: '#1F2937' }}>
         <div className="flex items-center gap-8 flex-wrap">
           {[
-            { label: 'Total Records', value: (stats.property_count ?? 0).toLocaleString(), accent: '#5C2977' },
-            { label: 'Amount Spent', value: '$0', accent: '#3D2B5E' },
-            { label: 'Deals', value: ((bs.offer_sent ?? 0) + (bs.under_contract ?? 0) + (bs.closed_won ?? 0)).toLocaleString(), accent: '#1565C0' },
-            { label: 'Response Rate', value: '0%', accent: '#3D2B5E' },
-            { label: 'Offers', value: (bs.offer_sent ?? 0).toLocaleString(), accent: '#6A1B9A' },
-            { label: 'Purchases', value: (bs.under_contract ?? 0).toLocaleString(), accent: '#2E7D32' },
-            { label: 'Sales', value: (bs.closed_won ?? 0).toLocaleString(), accent: '#00695C' },
+            { label: 'Total Records', value: (stats.property_count ?? 0).toLocaleString(), accent: '#D5A940' },
+            { label: 'Amount Spent', value: '$0', accent: '#9CA3AF' },
+            { label: 'Deals', value: ((bs.offer_sent ?? 0) + (bs.under_contract ?? 0) + (bs.closed_won ?? 0)).toLocaleString(), accent: '#3B82F6' },
+            { label: 'Response Rate', value: '0%', accent: '#9CA3AF' },
+            { label: 'Offers', value: (bs.offer_sent ?? 0).toLocaleString(), accent: '#C084FC' },
+            { label: 'Purchases', value: (bs.under_contract ?? 0).toLocaleString(), accent: '#10B981' },
+            { label: 'Sales', value: (bs.closed_won ?? 0).toLocaleString(), accent: '#10B981' },
           ].map(s => (
             <div key={s.label} className="text-center">
               <div className="text-xl font-bold" style={{ color: s.accent }}>{s.value}</div>
-              <div className="text-[10px] font-semibold uppercase tracking-wide mt-0.5" style={{ color: '#9B8AAE' }}>{s.label}</div>
+              <div className="text-[10px] font-semibold uppercase tracking-wide mt-0.5" style={{ color: '#6B7280' }}>{s.label}</div>
             </div>
           ))}
         </div>
       </div>
 
       {/* Filter bar */}
-      <div className="px-6 py-3 flex items-center gap-3 flex-wrap" style={{ borderBottom: '1px solid #EDE8F5', background: '#fff' }}>
+      <div className="px-6 py-3 flex items-center gap-3 flex-wrap" style={{ borderBottom: '1px solid #2D3748', background: '#1F2937' }}>
         {/* Status filter */}
         <select
           className="input-base text-sm py-1.5"
@@ -609,7 +609,7 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
 
         {/* Search */}
         <div className="flex-1 relative" style={{ maxWidth: '280px' }}>
-          <svg className="absolute left-3 top-1/2 -translate-y-1/2" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9B8AAE" strokeWidth="2">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6B7280" strokeWidth="2">
             <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
           </svg>
           <input

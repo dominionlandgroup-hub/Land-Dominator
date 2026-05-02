@@ -36,9 +36,9 @@ export default function UploadComps() {
     header: col,
     render: (val) =>
       val == null ? (
-        <span style={{ color: '#9B8AAE' }}>—</span>
+        <span style={{ color: '#6B7280' }}>—</span>
       ) : (
-        <span className="max-w-[180px] block truncate text-xs" title={String(val)}>
+        <span className="max-w-[180px] block truncate text-xs" title={String(val)} style={{ color: '#E5E7EB' }}>
           {String(val)}
         </span>
       ),
@@ -49,8 +49,8 @@ export default function UploadComps() {
       {/* Page header */}
       <div className="page-header">
         <div>
-          <h1 className="text-lg font-semibold" style={{ color: '#1A0A2E', fontWeight: 700 }}>Upload Sold Comps</h1>
-          <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>Step 1 of 5 — Import your Land Portal sold comps export</p>
+          <h1 className="text-lg font-semibold" style={{ color: '#F9FAFB', fontWeight: 700 }}>Upload Sold Comps</h1>
+          <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>Step 1 of 5 — Import your Land Portal sold comps export</p>
         </div>
         {compsStats && (
           <button className="btn-primary text-sm" onClick={() => setCurrentPage('dashboard')}>
@@ -63,8 +63,8 @@ export default function UploadComps() {
 
         {/* Land Portal Export Instructions */}
         <div className="card mb-6">
-          <h2 className="font-semibold mb-1" style={{ color: '#1A0A2E' }}>How to Export Sold Comps from Land Portal</h2>
-          <p className="text-xs mb-4" style={{ color: '#6B5B8A' }}>Follow these steps exactly — LLC/Corporate buyer sales give the most accurate pricing data</p>
+          <h2 className="font-semibold mb-1" style={{ color: '#F9FAFB' }}>How to Export Sold Comps from Land Portal</h2>
+          <p className="text-xs mb-4" style={{ color: '#9CA3AF' }}>Follow these steps exactly — LLC/Corporate buyer sales give the most accurate pricing data</p>
 
           <div className="space-y-2 mb-5">
             {[
@@ -81,16 +81,16 @@ export default function UploadComps() {
               <div key={step.n} className="flex items-start gap-3">
                 <span
                   className="w-5 h-5 rounded-full flex items-center justify-center flex-none text-[10px] font-bold mt-0.5"
-                  style={{ background: '#5C2977', color: '#fff' }}
+                  style={{ background: '#D5A940', color: '#111827' }}
                 >{step.n}</span>
-                <p className="text-sm" style={{ color: '#1A0A2E' }}>{step.text}</p>
+                <p className="text-sm" style={{ color: '#E5E7EB' }}>{step.text}</p>
               </div>
             ))}
           </div>
 
-          <div className="rounded-lg px-4 py-3" style={{ background: 'rgba(92,41,119,0.08)', border: '1px solid rgba(92,41,119,0.2)' }}>
-            <p className="text-xs font-semibold mb-1" style={{ color: '#5C2977' }}>Why LLC/Corporate buyers only?</p>
-            <p className="text-xs" style={{ color: '#6B5B8A' }}>
+          <div className="rounded-lg px-4 py-3" style={{ background: 'rgba(213,169,64,0.06)', border: '1px solid rgba(213,169,64,0.15)' }}>
+            <p className="text-xs font-semibold mb-1" style={{ color: '#D5A940' }}>Why LLC/Corporate buyers only?</p>
+            <p className="text-xs" style={{ color: '#9CA3AF' }}>
               Individual buyers often overpay or underpay due to emotion. LLC and corporate buyers are professional investors
               who consistently pay fair market retail prices — making them the most reliable benchmark for setting your acquisition offers.
             </p>
@@ -109,7 +109,7 @@ export default function UploadComps() {
         </div>
 
         {error && (
-          <div className="rounded-xl px-5 py-4 mb-6 text-sm" style={{ background: '#FEE2E2', border: '1px solid rgba(220,38,38,0.3)', color: '#DC2626' }}>
+          <div className="rounded-xl px-5 py-4 mb-6 text-sm" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#EF4444' }}>
             <strong className="font-semibold">Error:</strong> {error}
           </div>
         )}
@@ -117,20 +117,20 @@ export default function UploadComps() {
         {compsStats && (
           <>
             {/* Success banner */}
-            <div className="rounded-xl px-5 py-4 mb-6 flex items-start gap-4" style={{ background: '#D1FAE5', border: '1px solid rgba(5,150,105,0.2)', borderLeft: '4px solid #059669' }}>
-              <div className="w-8 h-8 rounded-full flex items-center justify-center flex-none" style={{ background: 'rgba(5,150,105,0.12)' }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2.5">
+            <div className="rounded-xl px-5 py-4 mb-6 flex items-start gap-4" style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderLeft: '4px solid #10B981' }}>
+              <div className="w-8 h-8 rounded-full flex items-center justify-center flex-none" style={{ background: 'rgba(16,185,129,0.12)' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2.5">
                   <polyline points="20 6 9 17 4 12"/>
                 </svg>
               </div>
               <div>
-                <p className="font-semibold text-sm" style={{ color: '#059669' }}>File uploaded successfully</p>
-                <p className="text-sm mt-0.5" style={{ color: '#1A0A2E' }}>
+                <p className="font-semibold text-sm" style={{ color: '#10B981' }}>File uploaded successfully</p>
+                <p className="text-sm mt-0.5" style={{ color: '#E5E7EB' }}>
                   <strong>{compsStats.total_rows.toLocaleString()}</strong> total rows —{' '}
                   <strong>{compsStats.valid_rows.toLocaleString()}</strong> have a valid sale price and will be used for analysis.
                 </p>
                 {compsStats.saved_to_db != null && (
-                  <p className="text-xs mt-1" style={{ color: '#059669' }}>
+                  <p className="text-xs mt-1" style={{ color: '#10B981' }}>
                     Saving <strong>{compsStats.saved_to_db.toLocaleString()}</strong> comps to database for persistent matching across sessions.
                   </p>
                 )}
@@ -146,8 +146,8 @@ export default function UploadComps() {
 
             {/* Missing columns warning */}
             {compsStats.missing_columns.length > 0 && (
-              <div className="rounded-xl px-5 py-4 mb-6" style={{ background: '#FEF3C7', border: '1px solid rgba(217,119,6,0.25)' }}>
-                <p className="font-semibold text-sm mb-2" style={{ color: '#D97706' }}>
+              <div className="rounded-xl px-5 py-4 mb-6" style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)' }}>
+                <p className="font-semibold text-sm mb-2" style={{ color: '#F59E0B' }}>
                   ⚠ Missing expected columns ({compsStats.missing_columns.length})
                 </p>
                 <div className="flex flex-wrap gap-2">
@@ -155,7 +155,7 @@ export default function UploadComps() {
                     <code
                       key={col}
                       className="text-xs px-2 py-0.5 rounded"
-                      style={{ background: 'rgba(217,119,6,0.1)', color: '#D97706' }}
+                      style={{ background: 'rgba(245,158,11,0.1)', color: '#F59E0B' }}
                     >
                       {col}
                     </code>
@@ -167,10 +167,10 @@ export default function UploadComps() {
             {/* Data preview */}
             <div className="card">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="font-semibold" style={{ color: '#1A0A2E' }}>
+                <h2 className="font-semibold" style={{ color: '#F9FAFB' }}>
                   Data Preview
                 </h2>
-                <span className="text-xs" style={{ color: '#6B5B8A' }}>First 20 rows · 12 columns shown</span>
+                <span className="text-xs" style={{ color: '#9CA3AF' }}>First 20 rows · 12 columns shown</span>
               </div>
               <DataTable<Record<string, unknown>>
                 columns={previewCols}
@@ -193,10 +193,11 @@ export default function UploadComps() {
 }
 
 function StatCard({ label, value, accent }: { label: string; value: string; accent: string }) {
+  const mappedAccent = accent === '#5C2977' ? '#D5A940' : accent === '#6B5B8A' ? '#9CA3AF' : accent
   return (
-    <div className="rounded-xl p-5" style={{ background: '#FFFFFF', border: '1px solid #E8E0F0', borderRadius: 8 }}>
-      <p className="text-xs uppercase tracking-wider mb-2" style={{ color: '#9B8AAE', letterSpacing: '0.8px' }}>{label}</p>
-      <p className="text-2xl font-bold" style={{ color: accent }}>{value}</p>
+    <div className="rounded-xl p-5" style={{ background: '#1F2937', border: '1px solid #2D3748', borderRadius: 8 }}>
+      <p className="text-xs uppercase tracking-wider mb-2" style={{ color: '#6B7280', letterSpacing: '0.8px' }}>{label}</p>
+      <p className="text-2xl font-bold" style={{ color: mappedAccent }}>{value}</p>
     </div>
   )
 }
