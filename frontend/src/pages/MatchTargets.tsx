@@ -57,10 +57,10 @@ export default function MatchTargets() {
   const [zipFilter, setZipFilter] = useState<string[]>((init?.zip_filter as string[]) ?? [])
   const [zipInputText, setZipInputText] = useState<string>(((init?.zip_filter as string[]) ?? []).join(', '))
   const [minAcreage, setMinAcreage] = useState<string>(
-    () => localStorage.getItem('matchTargets_acreage_min') ?? '0.1'
+    () => localStorage.getItem('matchTargets_acreage_min') ?? '0.05'
   )
   const [maxAcreage, setMaxAcreage] = useState<string>(
-    () => localStorage.getItem('matchTargets_acreage_max') ?? '0.5'
+    () => localStorage.getItem('matchTargets_acreage_max') ?? '5'
   )
   // Only pre-fill from sweet spot if localStorage has no saved value
   const acreagePrefilled = React.useRef(
@@ -99,7 +99,7 @@ export default function MatchTargets() {
     else if (b === '2-5')   { setMinAcreage('2.0'); setMaxAcreage('5.0') }
     else if (b === '5-10')  { setMinAcreage('5.0'); setMaxAcreage('10.0') }
     else if (b === '10+')   { setMinAcreage('10.0'); setMaxAcreage('40.0') }
-    else                    { setMinAcreage('0.1');  setMaxAcreage('0.5') }
+    else                    { setMinAcreage('0.05'); setMaxAcreage('5') }
   }, [dashboardData])
 
   // Top 20 ZIPs from dashboard for "Use Buy Box ZIPs" — exclude outliers (ppa > 3x market median) and <5 sales

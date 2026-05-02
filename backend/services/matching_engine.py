@@ -1563,15 +1563,14 @@ def run_matching(
                 print(f"[DEBUG {target_apn}] NO_COMPS - no comps within 3mi or same ZIP", flush=True)
 
             # ── Acreage similarity filter (band-specific thresholds) ──
-            # Micro/nano bands: lots under 0.5ac vary widely, use looser threshold
-            # Small/medium/large: tighter threshold to prevent cross-size matching
+            # Relaxed to recover match rate — 3mi radius cap is unchanged.
             ACREAGE_SIMILARITY_THRESHOLDS = {
-                'nano': 0.40,
-                'micro': 0.50,   # 0.05-0.5ac range is wide, allow more variation
-                'small': 0.75,   # Damien confirmed: 0.5ac vs 0.7ac = too different
-                'medium': 0.65,
-                'large': 0.55,
-                'tract': 0.50,
+                'nano': 0.30,
+                'micro': 0.40,
+                'small': 0.60,
+                'medium': 0.50,
+                'large': 0.40,
+                'tract': 0.35,
             }
             if has_acres and matched_mask.sum() > 0 and target_acres > 0:
                 matched_idx = np.where(matched_mask)[0]
