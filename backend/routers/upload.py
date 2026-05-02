@@ -29,9 +29,16 @@ COMP_COLS_REQUIRED = [
 ]
 
 TARGET_COLS_REQUIRED = [
-    'APN', 'propertyID', 'Latitude', 'Longitude', 'Lot Acres', 'Lot Sq Ft',
+    # APN variants
+    'APN', 'Assessor Parcel Number', 'Parcel Number', 'Parcel ID',
+    # LP property ID variants (LP exports "Property Id" with lowercase d)
+    'propertyID', 'Property Id', 'Property ID', 'Id',
+    'Latitude', 'Longitude', 'Lot Acres', 'Lot Sq Ft',
     'Parcel Zip', 'Parcel City', 'Parcel State', 'Parcel County',
-    'Parcel Full Address', 'Parcel Address County', 'Parcel FIPS', 'Parcel Carrier Code',
+    'Parcel Full Address', 'Parcel Address County',
+    # FIPS variants (LP exports "Parcel FIPS" with uppercase S)
+    'Parcel FIPS', 'Parcel Fips', 'County Code (FIPS)', 'FIPS', 'Fips',
+    'Parcel Carrier Code',
     'Owner Name(s)', 'Owner 1 Full Name',
     'Owner 1 First Name', 'Owner 1 Middle Name', 'Owner 1 Last Name',
     'Owner 2 Full Name', 'Owner 2 First Name', 'Owner 2 Last Name',
@@ -46,6 +53,11 @@ TARGET_COLS_REQUIRED = [
     'Building Sq Ft', 'Building Area', 'Bldg Area',
     'MLS Parcel Acreage', 'Zoning', 'Topography',
     'Total Assessed Value', 'Land Market Value',
+    # Phone
+    'Phone 1', 'Owner Phone', 'Phone',
+    # Additional LP fields
+    'Slope Avg', 'Elevation Avg', 'Wetlands Coverage', 'School District',
+    'Zoning Code', 'Land Use Code', 'Land Use',
 ]
 
 def slim_to_required(df: pd.DataFrame, required_cols: list) -> pd.DataFrame:

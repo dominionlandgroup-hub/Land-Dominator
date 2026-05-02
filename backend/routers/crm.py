@@ -348,7 +348,7 @@ def _looks_like_lp_name(s: str) -> bool:
     """True if string looks like Land Portal 'LAST FIRST MIDDLE' format (all caps, 2+ words)."""
     if _is_institutional(s):
         return False
-    stripped = s.replace("&", "").replace("AND", "").strip()
+    stripped = re.sub(r"\s*&\s*", " ", s).strip()
     return len(stripped) > 3 and stripped == stripped.upper() and " " in stripped
 
 
@@ -365,6 +365,32 @@ def _reformat_lp_name(raw: str) -> str:
         elif words:
             formatted.append(words[0].title())
     return " & ".join(formatted)
+
+
+def reformat_name(name: str) -> str:
+    """Reformat LP all-caps 'LAST FIRST [MIDDLE]' to 'First [Middle] Last'. Handles '&' for couples."""
+    if not name:
+        return name
+    institutional = ['llc', 'corp', 'inc', 'ltd', 'trust', 'county', 'city', 'state', 'bank', 'church', 'estate']
+    if any(word in name.lower() for word in institutional):
+        return name.title()
+    parts_by_amp = re.split(r"\s*&\s*", name)
+    if not (name.strip() == name.strip().upper() and len(name.strip()) > 3):
+        return name
+    reformatted = []
+    for segment in parts_by_amp:
+        words = segment.strip().split()
+        if len(words) >= 2:
+            last = words[0].capitalize()
+            first = words[1].capitalize()
+            if len(words) >= 3:
+                middle = words[2].capitalize()
+                reformatted.append(f"{first} {middle} {last}")
+            else:
+                reformatted.append(f"{first} {last}")
+        elif words:
+            reformatted.append(words[0].title())
+    return " & ".join(reformatted)
 
 
 def _map_pebble_row(row: dict, col_to_field: dict[str, str]) -> dict:
@@ -665,7 +691,7 @@ def _run_import_job(job_id: str, content: bytes) -> None:
                     continue
                 data["updated_at"] = now
                 if not data.get("offer_price") and data.get("lp_estimate"):
-                    data["offer_price"] = round(float(data["lp_estimate"]) * 0.525, 2)
+                    data["offer_price"] = int(round(float(data["lp_estimate"]) * 0.525 / 100)) * 100
                 batch.append(data)
                 if len(batch) >= 500:
                     n, warns = _safe_batch_insert(sb, batch)
@@ -731,7 +757,7 @@ async def import_properties_batch(
                     continue
                 data["updated_at"] = now
                 if not data.get("offer_price") and data.get("lp_estimate"):
-                    data["offer_price"] = round(float(data["lp_estimate"]) * 0.525, 2)
+                    data["offer_price"] = int(round(float(data["lp_estimate"]) * 0.525 / 100)) * 100
                 batch.append(data)
                 if len(batch) >= 50:
                     n, warns = _safe_batch_insert(sb, batch)
@@ -1063,7 +1089,10 @@ async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)
         print(f"[add-match-results] After filter: {len(results)} records to insert", flush=True)
 
         if results:
-            print(f"[add-match-results] RAW engine keys from first record: {list(results[0].keys())}", flush=True)
+            r0 = results[0]
+            print(f"[add-match-results] RAW engine keys (ALL): {sorted(r0.keys())}", flush=True)
+            print(f"[add-match-results] APN={r0.get('apn')!r} lp_property_id={r0.get('lp_property_id')!r} fips={r0.get('fips')!r}", flush=True)
+            print(f"[add-match-results] owner_name={r0.get('owner_name')!r} suggested_offer_mid={r0.get('suggested_offer_mid')!r}", flush=True)
 
         if not results:
             flag_counts: dict[str, int] = {}
@@ -1089,31 +1118,26 @@ async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)
         rows = []
         for seq, r in enumerate(results, start=1):
             owner_full_raw = r.get("owner_name") or r.get("owner_full_name") or ""
-            owner_first = r.get("owner_first_name") or ""
-            owner_last = r.get("owner_last_name") or ""
-            owner_full = owner_full_raw
+            owner_full = reformat_name(owner_full_raw) if owner_full_raw else ""
 
-            # Reformat LP "LAST FIRST MIDDLE" all-caps format to "First Middle Last".
-            # Always override first/last — matching engine may have parsed them inverted
-            # (it does owner_first=name_parts[0] which is LAST in LP format).
-            if owner_full and _looks_like_lp_name(owner_full):
-                orig_owners = re.split(r"\s*&\s*", owner_full)
-                orig_words = orig_owners[0].strip().split()
-                owner_full = _reformat_lp_name(owner_full)
-                # Always set first/last from original LP words (overwrite any wrong parse)
-                if len(orig_words) >= 2:
-                    owner_first = orig_words[1].capitalize()   # "DAVID" → "David"
-                    owner_last = orig_words[0].capitalize()    # "FOSTER" → "Foster"
-                elif orig_words:
-                    owner_last = orig_words[0].capitalize()
+            # Derive first/last from the reformatted name (first owner before &)
+            primary = re.split(r"\s*&\s*", owner_full)[0].strip() if owner_full else ""
+            primary_parts = primary.split()
+            if len(primary_parts) >= 3:
+                owner_first = primary_parts[0]
+                owner_last = primary_parts[-1]
+            elif len(primary_parts) == 2:
+                owner_first = primary_parts[0]
+                owner_last = primary_parts[1]
+            elif primary_parts:
+                owner_first = primary_parts[0]
+                owner_last = ""
+            else:
+                owner_first = ""
+                owner_last = ""
+
+            if owner_full_raw != owner_full:
                 print(f"[add-match-results] Name fix: '{owner_full_raw}' → '{owner_full}' (first='{owner_first}' last='{owner_last}')", flush=True)
-            elif not owner_first and not owner_last and owner_full.strip():
-                parts = owner_full.strip().split()
-                if len(parts) >= 2:
-                    owner_first = parts[0]
-                    owner_last = parts[-1]
-                elif parts:
-                    owner_first = parts[0]
 
             # Resolve FIPS and Land Portal property_id with broad key fallbacks
             prop_id = (
@@ -1162,9 +1186,9 @@ async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)
                 "property_id": prop_id,
                 "fips": fips_val,
                 # Pricing
-                "offer_price": r.get("suggested_offer_mid"),
+                "offer_price": (int(round(float(r["suggested_offer_mid"]) / 100)) * 100) if r.get("suggested_offer_mid") is not None else None,
                 "lp_estimate": r.get("retail_estimate"),
-                "recommended_offer": r.get("suggested_offer_mid"),
+                "recommended_offer": (int(round(float(r["suggested_offer_mid"]) / 100)) * 100) if r.get("suggested_offer_mid") is not None else None,
                 "confidence_level": r.get("confidence") or None,
                 "pricing_method_used": r.get("pricing_method") or None,
                 # Geo
@@ -1356,7 +1380,7 @@ def _run_lp_pull_job(job_id: str, campaign_id: str) -> None:
                     if size:
                         lp_estimate = round(price_acre_mean * size, 2)
                         updates["lp_estimate"] = lp_estimate
-                        updates["offer_price"] = round(lp_estimate * 0.525, 2)
+                        updates["offer_price"] = int(round(lp_estimate * 0.525 / 100)) * 100
 
                 comps = data.get("list_of_rows_data", [])
                 for i, comp in enumerate(comps[:3], 1):
@@ -1443,7 +1467,7 @@ async def bulk_insert_properties(
                     record_num = starting_record + valid_index
                     data["campaign_code"] = f"{campaign_number:02d}-{record_num}"
             if not data.get("offer_price") and data.get("lp_estimate"):
-                data["offer_price"] = round(float(data["lp_estimate"]) * 0.525, 2)
+                data["offer_price"] = int(round(float(data["lp_estimate"]) * 0.525 / 100)) * 100
             valid_index += 1
             mapped.append(data)
         except Exception as exc:

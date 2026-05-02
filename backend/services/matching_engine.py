@@ -800,9 +800,9 @@ def calculate_offer_price(
     # Client-confirmed 60/65/70 percentages (updated March 2026)
     if tlp_estimate and tlp_estimate > 0 and retail_estimate > tlp_estimate * 2.0:
         retail_estimate = tlp_estimate
-    offer_low = round(retail_estimate * LOW_PCT)
-    offer_mid = round(retail_estimate * MID_PCT)
-    offer_high = round(retail_estimate * HIGH_PCT)
+    offer_low = int(round(retail_estimate * LOW_PCT / 100)) * 100
+    offer_mid = int(round(retail_estimate * MID_PCT / 100)) * 100
+    offer_high = int(round(retail_estimate * HIGH_PCT / 100)) * 100
 
     # Confidence based on comp count
     n = len(comps)
@@ -1606,9 +1606,9 @@ def run_matching(
                         'pricing_flag': 'COUNTY_MEDIAN',
                         'pricing_source': 'COUNTY_MEDIAN',
                         'retail_estimate': round(_county_retail),
-                        'offer_low': round(_county_retail * LOW_PCT),
-                        'offer_mid': round(_county_retail * MID_PCT),
-                        'offer_high': round(_county_retail * HIGH_PCT),
+                        'offer_low': int(round(_county_retail * LOW_PCT / 100)) * 100,
+                        'offer_mid': int(round(_county_retail * MID_PCT / 100)) * 100,
+                        'offer_high': int(round(_county_retail * HIGH_PCT / 100)) * 100,
                         'confidence': 'EST',
                         'no_match_reason': f'No comps within 10mi — county median used',
                         'radius_label': 'COUNTY_MEDIAN',
@@ -1626,9 +1626,9 @@ def run_matching(
                 'pricing_flag': 'LP_FALLBACK',
                 'pricing_source': 'LP_FALLBACK',
                 'retail_estimate': round(lp_retail),
-                'offer_low': round(lp_retail * LOW_PCT),
-                'offer_mid': round(lp_retail * MID_PCT),
-                'offer_high': round(lp_retail * HIGH_PCT),
+                'offer_low': int(round(lp_retail * LOW_PCT / 100)) * 100,
+                'offer_mid': int(round(lp_retail * MID_PCT / 100)) * 100,
+                'offer_high': int(round(lp_retail * HIGH_PCT / 100)) * 100,
                 'confidence': 'EST',
                 'no_match_reason': _lp_reason,
                 'radius_label': 'LP_FALLBACK',
@@ -1794,7 +1794,7 @@ def run_matching(
                 pricing_sanity_flag = "OK"
 
         results.append({
-            "apn": _s(row.get("APN")),
+            "apn": _s(row.get("APN") or row.get("Assessor Parcel Number") or row.get("Parcel Number") or row.get("Parcel ID")),
             "owner_name": owner_full,
             "owner_first_name": owner_first,
             "owner_last_name": owner_last,
@@ -1836,8 +1836,8 @@ def run_matching(
             "buildability_pct": _f(row.get("Buildability total (%)")),
             # LP fields passed through from target CSV
             "owner_phone": _s(row.get("Phone 1") or row.get("Owner Phone") or row.get("Phone")),
-            "lp_property_id": _s(row.get("Property Id") or row.get("Property ID") or row.get("Id")),
-            "fips": _s(row.get("County Code (FIPS)") or row.get("Parcel Fips") or row.get("Fips")),
+            "lp_property_id": _s(row.get("Property Id") or row.get("Property ID") or row.get("propertyID") or row.get("Id")),
+            "fips": _s(row.get("Parcel FIPS") or row.get("County Code (FIPS)") or row.get("Parcel Fips") or row.get("FIPS") or row.get("Fips")),
             "land_locked": _s(row.get("Land Locked")),
             "fema_coverage": _f(row.get("FEMA Flood Coverage") or row.get("Fema Flood Coverage")),
             "wetlands_coverage": _f(row.get("Wetlands Coverage")),
