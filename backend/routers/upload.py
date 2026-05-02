@@ -635,18 +635,38 @@ async def upload_comps(
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Could not parse CSV: {e}")
 
-    print(f"[comps] File read: {len(df)} rows, columns: {list(df.columns[:20])}", flush=True)
-    # Log coordinate column detection
+    print(f"[comps] File read: {len(df)} rows, ALL columns: {list(df.columns)}", flush=True)
+
+    # Acreage column detection
+    _acre_cols = [c for c in df.columns if 'acre' in c.lower() or 'area' in c.lower()]
+    print(f"[comps] Acreage columns: {_acre_cols}", flush=True)
+
+    # Coordinate column detection
     _coord_cols = [c for c in df.columns if c.lower() in ('latitude','longitude','lat','lon','lng','x','y')]
     print(f"[comps] Coordinate columns detected: {_coord_cols}", flush=True)
-    if _coord_cols:
-        _sample = df[_coord_cols].head(3).to_dict('records')
-        print(f"[comps] Coordinate sample (first 3 rows): {_sample}", flush=True)
 
-    # Log first 5 raw sale prices for diagnosis
+    # First 5 raw sale prices
     _sp_col = next((c for c in ("Current Sale Price", "Close Price", "Sold Price", "sale_price") if c in df.columns), None)
     if _sp_col:
         print(f"[comps] First 5 '{_sp_col}' values: {list(df[_sp_col].head(5))}", flush=True)
+
+    # Dump first 5 raw rows before any processing
+    for _ri, (_, _rrow) in enumerate(df.head(5).iterrows()):
+        print(f"[comps] RAW ROW {_ri}: {dict(_rrow)}", flush=True)
+
+    # Per-row accept/reject trace for first 20 rows
+    print("[comps] --- 20-row decision trace ---", flush=True)
+    for _ri, (_, _rrow) in enumerate(df.head(20).iterrows()):
+        _p  = parse_price(_fv(_rrow, "Current Sale Price", "Close Price", "Sold Price", "sale_price"))
+        _ac = parse_float(_fv(_rrow, "Lot Acres", "Approximate Acres", "Calc Acreage", "Acreage", "Acres", "acreage")) or 0.0
+        _co = str(_fv(_rrow, "Parcel County", "Parcel Address County", "County", "county") or "").strip()
+        _dt = parse_date(_fv(_rrow, "Current Sale Recording Date", "Close Date", "Sold Date", "sale_date"))
+        _verdict = "ACCEPT" if (_p > 0 and _ac > 0) else "REJECT"
+        _reason  = "" if _verdict == "ACCEPT" else (
+            "no_price" if _p <= 0 else "no_acreage"
+        )
+        print(f"  Row {_ri}: price={_p} acreage={_ac} county={_co!r} date={_dt} → {_verdict} {_reason}", flush=True)
+    print("[comps] --- end trace ---", flush=True)
 
     rows = []
     skipped_no_price = 0
