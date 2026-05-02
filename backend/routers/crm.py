@@ -994,12 +994,22 @@ async def send_campaign_mail_drop(campaign_id: str, body: dict = Body(default={}
         buf = _io.StringIO()
         headers = [
             "Owner Full Name", "Owner First Name", "Owner Last Name",
-            "Mail Address", "Mail City", "Mail State", "Mail Zip",
-            "APN", "County", "State", "Acreage", "Offer Price",
-            "Campaign Code",
+            "Mailing Address", "Mailing City", "Mailing State", "Mailing Zip",
+            "Property Address", "Property City", "Property State", "Property Zip",
+            "APN", "County", "State", "Acreage",
+            "Campaign Code", "Offer Price", "Status",
         ]
         writer = _csv.writer(buf)
         writer.writerow(headers)
+
+        def _fmtp(v) -> str:
+            if v is None or v == "":
+                return ""
+            try:
+                return f"{float(v):.2f}"
+            except (TypeError, ValueError):
+                return str(v)
+
         for p in properties:
             writer.writerow([
                 p.get("owner_full_name", ""),
@@ -1009,12 +1019,17 @@ async def send_campaign_mail_drop(campaign_id: str, body: dict = Body(default={}
                 p.get("owner_mailing_city", ""),
                 p.get("owner_mailing_state", ""),
                 p.get("owner_mailing_zip", ""),
+                p.get("property_address", ""),
+                p.get("property_city", ""),
+                p.get("state", ""),
+                p.get("property_zip", ""),
                 p.get("apn", ""),
                 p.get("county", ""),
                 p.get("state", ""),
                 p.get("acreage", ""),
-                p.get("offer_price", ""),
                 p.get("campaign_code", ""),
+                _fmtp(p.get("offer_price")),
+                p.get("status", "lead"),
             ])
         csv_content = buf.getvalue()
         record_count = len(properties)
@@ -1854,12 +1869,16 @@ async def export_properties_csv(
             "Mailing Address", "Mailing City", "Mailing State", "Mailing Zip",
             "Property Address", "Property City", "Property State", "Property Zip",
             "APN", "County", "State", "Acreage",
-            "Campaign Code", "Offer Price", "Confidence Level", "Pricing Method",
-            "Comp 1 Address", "Comp 1 Price", "Comp 1 Acreage", "Comp 1 Date",
-            "Comp 2 Address", "Comp 2 Price", "Comp 2 Acreage", "Comp 2 Date",
-            "Comp 3 Address", "Comp 3 Price", "Comp 3 Acreage", "Comp 3 Date",
-            "Status",
+            "Campaign Code", "Offer Price", "Status",
         ]
+
+        def _fmt_price(v) -> str:
+            if v is None or v == "":
+                return ""
+            try:
+                return f"{float(v):.2f}"
+            except (TypeError, ValueError):
+                return str(v)
 
         def _row_values(row: dict) -> list:
             full_name = row.get("owner_full_name") or ""
@@ -1882,21 +1901,7 @@ async def export_properties_csv(
                 row.get("state") or "",
                 row.get("acreage") or "",
                 row.get("campaign_code") or "",
-                row.get("offer_price") or "",
-                row.get("confidence_level") or "",
-                row.get("pricing_method_used") or "",
-                row.get("comp_1_address") or "",
-                row.get("comp1_price") or "",
-                row.get("comp1_acreage") or "",
-                row.get("comp_1_date") or "",
-                row.get("comp_2_address") or "",
-                row.get("comp2_price") or "",
-                row.get("comp2_acreage") or "",
-                row.get("comp_2_date") or "",
-                row.get("comp_3_address") or "",
-                row.get("comp3_price") or "",
-                row.get("comp3_acreage") or "",
-                row.get("comp_3_date") or "",
+                _fmt_price(row.get("offer_price")),
                 row.get("status") or "",
             ]
 

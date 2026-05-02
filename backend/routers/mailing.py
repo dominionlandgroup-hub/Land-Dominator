@@ -33,22 +33,9 @@ OUTPUT_HEADERS = [
     "County",
     "State",
     "Acreage",
+    "Campaign Code",
     "Offer Price",
-    "Confidence Level",
-    "Pricing Method",
-    "Comp 1 Address",
-    "Comp 1 Price",
-    "Comp 1 Acreage",
-    "Comp 1 Date",
-    "Comp 2 Address",
-    "Comp 2 Price",
-    "Comp 2 Acreage",
-    "Comp 2 Date",
-    "Comp 3 Address",
-    "Comp 3 Price",
-    "Comp 3 Acreage",
-    "Comp 3 Date",
-    "Pricing Flag",
+    "Status",
 ]
 
 
@@ -398,23 +385,10 @@ def _build_csv(parcels: list[MatchedParcel]) -> bytes:
             p.apn or "",
             p.parcel_county or "",
             p.parcel_state or "",
-            p.lot_acres if p.lot_acres is not None else "",
+            f"{p.lot_acres:.2f}" if p.lot_acres is not None else "",
+            "",  # Campaign Code — not available in match result context
             _fmt_currency(p.suggested_offer_mid),
-            p.confidence or "",
-            p.pricing_method or "",
-            p.comp_1_address or "",
-            _fmt_currency(p.comp_1_price),
-            f"{p.comp_1_acres:.2f}" if p.comp_1_acres is not None else "",
-            p.comp_1_date or "",
-            p.comp_2_address or "",
-            _fmt_currency(p.comp_2_price),
-            f"{p.comp_2_acres:.2f}" if p.comp_2_acres is not None else "",
-            p.comp_2_date or "",
-            p.comp_3_address or "",
-            _fmt_currency(p.comp_3_price),
-            f"{p.comp_3_acres:.2f}" if p.comp_3_acres is not None else "",
-            p.comp_3_date or "",
-            p.pricing_flag or "",
+            "",  # Status — lead by default
         ])
 
     return buf.getvalue().encode("utf-8")

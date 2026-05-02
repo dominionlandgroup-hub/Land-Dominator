@@ -251,11 +251,10 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
     const selected = properties.filter(p => selectedIds.has(p.id))
     const headers = [
       'Owner Full Name', 'Owner First Name', 'Owner Last Name',
-      'Mailing Address Line 1', 'Mailing City', 'Mailing State', 'Mailing Zip',
+      'Mailing Address', 'Mailing City', 'Mailing State', 'Mailing Zip',
+      'Property Address', 'Property City', 'Property State', 'Property Zip',
       'APN', 'County', 'State', 'Acreage',
-      'Campaign Code', 'Offer Price', 'LP Estimate',
-      'Comp Based Offer', 'Recommended Offer', 'Confidence Level',
-      'Status',
+      'Campaign Code', 'Offer Price', 'Status',
     ]
     const rows = selected.map(p => [
       p.owner_full_name ?? '',
@@ -265,16 +264,16 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
       p.owner_mailing_city ?? '',
       p.owner_mailing_state ?? '',
       p.owner_mailing_zip ?? '',
+      (p as any).property_address ?? '',
+      (p as any).property_city ?? '',
+      p.state ?? '',
+      (p as any).property_zip ?? '',
       p.apn ?? '',
       p.county ?? '',
       p.state ?? '',
       p.acreage?.toFixed(2) ?? '',
       p.campaign_code ?? '',
       p.offer_price != null ? Number(p.offer_price).toFixed(2) : '',
-      p.lp_estimate != null ? Number(p.lp_estimate).toFixed(2) : '',
-      p.comp_based_offer != null ? Number(p.comp_based_offer).toFixed(2) : '',
-      p.recommended_offer != null ? Number(p.recommended_offer).toFixed(2) : '',
-      p.confidence_level ?? '',
       p.status ?? 'lead',
     ])
     const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
