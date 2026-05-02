@@ -329,7 +329,7 @@ function TopMarketsCard({ zipStats, comps }: { zipStats: ZipStats[]; comps: Comp
             >
               <span className="text-xs font-bold" style={{ color: '#9CA3AF' }}>{i + 1}</span>
               <div className="w-2 h-2 rounded-full" style={{ background: dot }} />
-              <span className="font-mono font-semibold text-sm" style={{ color: '#4F46E5' }}>{z.zip_code}</span>
+              <span className="font-mono font-semibold text-sm" style={{ color: '#4F46E5' }}>{fmtZip(z.zip_code)}</span>
               <span className="text-xs text-right font-medium" style={{ color: '#111827' }}>{z.sales_count.toLocaleString()}</span>
               <span className="text-xs text-right" style={{ color: '#4F46E5' }}>
                 {z.median_price_per_acre != null ? `$${Math.round(z.median_price_per_acre).toLocaleString()}` : '—'}
@@ -356,7 +356,7 @@ function TopMarketsCard({ zipStats, comps }: { zipStats: ZipStats[]; comps: Comp
               </button>
               {showOutliers && (
                 <p className="mt-1 font-mono text-[10px] leading-relaxed" style={{ color: '#6B7280' }}>
-                  {[...outlierSet].join(', ')}
+                  {[...outlierSet].map(fmtZip).join(', ')}
                 </p>
               )}
             </div>
@@ -369,7 +369,7 @@ function TopMarketsCard({ zipStats, comps }: { zipStats: ZipStats[]; comps: Comp
               </button>
               {showThin && (
                 <p className="mt-1 font-mono text-[10px] leading-relaxed" style={{ color: '#6B7280' }}>
-                  {thinZips.join(', ')}
+                  {thinZips.map(fmtZip).join(', ')}
                 </p>
               )}
             </div>
@@ -452,7 +452,7 @@ function CollapsibleZipTable({ zipStats }: { zipStats: ZipStats[] }) {
                 className="grid items-center px-4 py-2"
                 style={{ gridTemplateColumns: '1fr 70px 100px 90px', background: i % 2 === 0 ? '#FFFFFF' : '#F9FAFB', borderBottom: i < filtered.length - 1 ? '1px solid #F3F4F6' : 'none' }}
               >
-                <span className="font-mono text-xs font-semibold" style={{ color: '#4F46E5' }}>{z.zip_code}</span>
+                <span className="font-mono text-xs font-semibold" style={{ color: '#4F46E5' }}>{fmtZip(z.zip_code)}</span>
                 <span className="text-xs text-right" style={{ color: '#111827' }}>{z.sales_count.toLocaleString()}</span>
                 <span className="text-xs text-right" style={{ color: '#4F46E5' }}>
                   {z.max_sale_price ? `$${Math.round(z.max_sale_price).toLocaleString()}` : '—'}
@@ -475,6 +475,10 @@ const SQFT_PER_ACRE = 43560
 
 function fmtSqft(acres: number): string {
   return `${Math.round(acres * SQFT_PER_ACRE).toLocaleString()} sq ft (${acres} ac)`
+}
+
+function fmtZip(z: string): string {
+  return z.replace(/\.0$/, '').trim()
 }
 
 function BuyBoxRecipe({
@@ -511,7 +515,7 @@ function BuyBoxRecipe({
     .filter(z => !bbOutlierCodes.has(z.zip_code) && z.sales_count >= 5)
     .sort((a, b) => b.sales_count - a.sales_count)
     .slice(0, 20)
-    .map(z => z.zip_code)
+    .map(z => fmtZip(z.zip_code))
   const sortedCounties = [...topCounties].sort((a, b) => a.localeCompare(b))
 
   // Land quality — data-driven from sold comps, with industry-standard floors/ceilings
@@ -562,21 +566,25 @@ function BuyBoxRecipe({
     : 'Data not available in comps — recommend 30 ft minimum'
 
   const acres = comps.map(c => c.lot_acres).filter(v => Number.isFinite(v) && v > 0).sort((a, b) => a - b)
-  const minAcre = acres.length > 0 ? Math.max(0.1, Math.floor(percentile(acres, 25) * 10) / 10) : 0.5
-  const maxAcre = acres.length > 0 ? Math.ceil(percentile(acres, 75) * 10) / 10 : 5
-  const minSqft = Math.round(minAcre * SQFT_PER_ACRE)
-  const maxSqft = Math.round(maxAcre * SQFT_PER_ACRE)
+  // 25th/75th percentile — shown as secondary "Middle 50% of sales" info only
+  const p25Acre = acres.length > 0 ? Math.max(0.1, Math.floor(percentile(acres, 25) * 10) / 10) : 0.3
+  const p75Acre = acres.length > 0 ? Math.ceil(percentile(acres, 75) * 10) / 10 : 1.0
+  const middle50Label = `${p25Acre}–${p75Acre} acres`
 
-  let sweetLabel = `${minAcre}–${maxAcre} acres`
+  // Sweet spot = recommended pull range (min/max lot size for Land Portal filter)
+  let sweetMin = 0.1
+  let sweetMax = 0.5
   if (sweetSpot) {
     const b = sweetSpot.bucket
-    if (b === '0-0.5') sweetLabel = '0.1–0.5 acres (4,356–21,780 sq ft)'
-    else if (b === '0.5-1') sweetLabel = '0.5–1 acres (21,780–43,560 sq ft)'
-    else if (b === '1-2') sweetLabel = '1–2 acres'
-    else if (b === '2-5') sweetLabel = '2–5 acres'
-    else if (b === '5-10') sweetLabel = '5–10 acres'
-    else if (b === '10+') sweetLabel = '10–40 acres'
+    if (b === '0-0.5')      { sweetMin = 0.1;  sweetMax = 0.5  }
+    else if (b === '0.5-1') { sweetMin = 0.5;  sweetMax = 1.0  }
+    else if (b === '1-2')   { sweetMin = 1.0;  sweetMax = 2.0  }
+    else if (b === '2-5')   { sweetMin = 2.0;  sweetMax = 5.0  }
+    else if (b === '5-10')  { sweetMin = 5.0;  sweetMax = 10.0 }
+    else if (b === '10+')   { sweetMin = 10.0; sweetMax = 40.0 }
   }
+  const minSqft = Math.round(sweetMin * SQFT_PER_ACRE)
+  const maxSqft = Math.round(sweetMax * SQFT_PER_ACRE)
 
   const recipeText = [
     '=== LAND PORTAL BUY BOX ===',
@@ -600,9 +608,9 @@ function BuyBoxRecipe({
     '   ✗ Improved/Built lots',
     '',
     '3. LOT SIZE',
-    `   Min: ${minSqft.toLocaleString()} sq ft (${minAcre} acres)`,
-    `   Max: ${maxSqft.toLocaleString()} sq ft (${maxAcre} acres)`,
-    `   Sweet spot: ${sweetLabel}`,
+    `   Min: ${minSqft.toLocaleString()} sq ft (${sweetMin} acres)`,
+    `   Max: ${maxSqft.toLocaleString()} sq ft (${sweetMax} acres)`,
+    `   Middle 50% of sales: ${middle50Label}`,
     '',
     '4. LAND QUALITY',
     `   Buildability: ${buildabilityLabel}`,
@@ -635,7 +643,7 @@ function BuyBoxRecipe({
         `Buy Box — ${topZips.slice(0, 3).join(', ')}${topZips.length > 3 ? '…' : ''}`,
         { cost_per_piece: 0.55, weekly_budget: 500, send_day: 'Tuesday' }
       )
-      await saveBuyBox({ min_acreage: minAcre, max_acreage: maxAcre, cost_per_piece: 0.55, weekly_budget: 500 })
+      await saveBuyBox({ min_acreage: sweetMin, max_acreage: sweetMax, cost_per_piece: 0.55, weekly_budget: 500 })
       setBuilt(true)
       setTimeout(() => setBuilt(false), 3000)
     } catch (e) {
@@ -673,9 +681,9 @@ ${sec('2. Property Type',
   check('Mobile Home', false) + check('Improved/Built lots', false)
 )}
 ${sec('3. Lot Size',
-  row('Min lot size', `${minSqft.toLocaleString()} sq ft (${minAcre} acres)`) +
-  row('Max lot size', `${maxSqft.toLocaleString()} sq ft (${maxAcre} acres)`) +
-  row('Sweet spot', sweetLabel)
+  row('Min lot size', `${minSqft.toLocaleString()} sq ft (${sweetMin} acres)`) +
+  row('Max lot size', `${maxSqft.toLocaleString()} sq ft (${sweetMax} acres)`) +
+  `<div style="color:#9B8AAE;font-size:11px;margin-top:6px">Middle 50% of sales: ${middle50Label}</div>`
 )}
 ${sec('4. Land Quality',
   row('Buildability minimum', buildabilityLabel) + (slopeLabel ? row('Maximum slope', slopeLabel) : '') + (wetlandsLabel ? row('Wetlands coverage', wetlandsLabel) : '') +
@@ -782,15 +790,14 @@ ${sec('6. Owner',
           <div className="space-y-2 text-xs">
             <div className="flex justify-between">
               <span style={{ color: '#6B7280' }}>Min lot size</span>
-              <span style={{ color: '#111827', fontWeight: 600 }}>{fmtSqft(minAcre)}</span>
+              <span style={{ color: '#111827', fontWeight: 600 }}>{fmtSqft(sweetMin)}</span>
             </div>
             <div className="flex justify-between">
               <span style={{ color: '#6B7280' }}>Max lot size</span>
-              <span style={{ color: '#111827', fontWeight: 600 }}>{fmtSqft(maxAcre)}</span>
+              <span style={{ color: '#111827', fontWeight: 600 }}>{fmtSqft(sweetMax)}</span>
             </div>
-            <div className="mt-2 pt-2 flex justify-between" style={{ borderTop: '1px solid #E5E7EB' }}>
-              <span style={{ color: '#6B7280' }}>Sweet spot</span>
-              <span style={{ color: '#4F46E5', fontWeight: 600 }}>{sweetLabel}</span>
+            <div className="mt-2 pt-2" style={{ borderTop: '1px solid #E5E7EB' }}>
+              <span style={{ color: '#9CA3AF', fontSize: '10px' }}>Middle 50% of sales: {middle50Label}</span>
             </div>
           </div>
         </div>
