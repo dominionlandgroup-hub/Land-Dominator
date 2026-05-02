@@ -6,6 +6,8 @@ Multiple files can be uploaded and merged (append mode, APN-deduped).
 import asyncio
 import io
 import csv
+import json
+import math
 import uuid
 import time
 from datetime import datetime, timezone
@@ -13,13 +15,32 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 from fastapi import APIRouter, UploadFile, File, HTTPException, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from models.schemas import UploadResponse, CompInventoryResponse, CompInventoryItem
 from services.csv_parser import parse_csv
 from storage.session_store import store_comps, store_targets, get_comps
 
 router = APIRouter(prefix="/upload", tags=["upload"])
+
+
+def _clean_for_json(obj):
+    """Recursively convert numpy scalars / NaN / Inf to JSON-safe Python types."""
+    if isinstance(obj, dict):
+        return {k: _clean_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_clean_for_json(v) for v in obj]
+    if isinstance(obj, (np.integer,)):
+        return int(obj)
+    if isinstance(obj, (np.floating,)):
+        f = float(obj)
+        return None if (math.isnan(f) or math.isinf(f)) else f
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
+        return None
+    return obj
+
 
 # ── DB migration SQL ─────────────────────────────────────────────────────────
 
@@ -641,7 +662,7 @@ async def upload_comps(
         print(f"[comps] WARNING: valid_rows is empty — nothing to save. Check CSV column names.", flush=True)
         print(f"[comps] DataFrame columns present: {list(df.columns)}", flush=True)
 
-    return JSONResponse({
+    payload = _clean_for_json({
         "status": "ok",
         "saved": saved,
         "parsed": all_rows,
@@ -658,6 +679,7 @@ async def upload_comps(
         "deduped_count": 0,
         "geocoded_count": 0,
     })
+    return Response(content=json.dumps(payload), media_type="application/json")
 
 
 # ── Upload targets ─────────────────────────────────────────────────────────────
