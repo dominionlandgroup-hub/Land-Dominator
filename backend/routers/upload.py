@@ -667,6 +667,14 @@ async def upload_comps(
             row.get("buyer_name") or ""
         ).strip()
         price_per_acre = sale_price / acreage if acreage > 0 else 0.0
+        if _logged_rows <= 3 and sale_price > 0 and acreage > 0:
+            print(f"sale_price: {sale_price}, acreage: {acreage}, ppa: {price_per_acre:.2f}", flush=True)
+
+        # Filter mega sales (commercial transactions) and extreme outliers at ingestion
+        if sale_price > 5_000_000:
+            continue
+        if acreage > 0 and price_per_acre > 2_000_000:
+            continue
 
         if sale_price > 0 and acreage > 0:
             rows.append({

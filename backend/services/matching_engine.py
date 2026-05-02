@@ -864,12 +864,19 @@ def calculate_offer_price(
         else:
             retail_estimate = float(np.median(prices))
 
+    print(
+        f"[pricing] n={len(prices)} comps | prices=[{','.join(f'${p:,.0f}' for p in sorted(prices)[:5])}{'...' if len(prices)>5 else ''}]"
+        f" | ppas=[{','.join(f'${p:,.0f}' for p in sorted(ppas)[:5])}{'...' if len(ppas)>5 else ''}]"
+        f" | retail={retail_estimate:,.2f} | tlp={tlp_estimate}",
+        flush=True,
+    )
     # Client-confirmed 60/65/70 percentages (updated March 2026)
     if tlp_estimate and tlp_estimate > 0 and retail_estimate > tlp_estimate * 2.0:
         retail_estimate = tlp_estimate
     offer_low = retail_estimate * LOW_PCT
     offer_mid = retail_estimate * MID_PCT
     offer_high = retail_estimate * HIGH_PCT
+    print(f"[pricing] offer_low=${offer_low:,.2f} offer_mid=${offer_mid:,.2f} offer_high=${offer_high:,.2f}", flush=True)
 
     # Confidence based on comp count
     n = len(comps)
