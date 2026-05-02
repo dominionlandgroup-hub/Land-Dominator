@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { clearAllProperties, getBuyBox, saveBuyBox } from '../api/crm'
+import { clearAllProperties, fixPropertyNames, getBuyBox, saveBuyBox } from '../api/crm'
 import type { BuyBox } from '../types/crm'
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
@@ -54,6 +54,11 @@ export default function SettingsPage() {
   const [clearCount, setClearCount] = useState<number | null>(null)
   const [clearError, setClearError] = useState<string | null>(null)
 
+  // Fix names
+  const [fixingNames, setFixingNames] = useState(false)
+  const [fixNamesResult, setFixNamesResult] = useState<{ fixed: number; total: number } | null>(null)
+  const [fixNamesError, setFixNamesError] = useState<string | null>(null)
+
   useEffect(() => {
     getBuyBox()
       .then(b => { if (b && Object.keys(b).length > 0) setBox(b) })
@@ -87,6 +92,17 @@ export default function SettingsPage() {
       const err = e as { response?: { data?: { detail?: string } } }
       setClearError(err?.response?.data?.detail ?? 'Failed to clear properties.')
     } finally { setClearing(false) }
+  }
+
+  async function handleFixNames() {
+    setFixingNames(true); setFixNamesError(null); setFixNamesResult(null)
+    try {
+      const result = await fixPropertyNames()
+      setFixNamesResult(result)
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { detail?: string } } }
+      setFixNamesError(err?.response?.data?.detail ?? 'Failed to fix names.')
+    } finally { setFixingNames(false) }
   }
 
   return (
@@ -200,6 +216,34 @@ export default function SettingsPage() {
                 </svg>
               </div>
             ))}
+          </div>
+        </section>
+
+        {/* Data Tools */}
+        <section>
+          <h2 className="text-sm font-bold uppercase tracking-wider mb-3" style={{ color: '#5C2977' }}>Data Tools</h2>
+          <div className="rounded-lg px-5 py-4" style={{ background: '#FFFFFF', border: '1px solid #E8E0F0', boxShadow: '0 1px 3px rgba(92,41,119,0.08)' }}>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-semibold text-sm" style={{ color: '#1A0A2E' }}>Fix Owner Names</p>
+                <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>
+                  Reformat any backwards LP names (e.g. "FOSTER DAVID" → "David Foster") across all property records.
+                </p>
+                {fixNamesResult && (
+                  <p className="text-xs mt-1 font-semibold" style={{ color: '#059669' }}>
+                    ✓ Fixed {fixNamesResult.fixed.toLocaleString()} of {fixNamesResult.total.toLocaleString()} records.
+                  </p>
+                )}
+                {fixNamesError && <p className="text-xs mt-1 font-semibold" style={{ color: '#DC2626' }}>{fixNamesError}</p>}
+              </div>
+              <button
+                className="ml-4 btn-secondary flex-none text-sm"
+                onClick={handleFixNames}
+                disabled={fixingNames}
+              >
+                {fixingNames ? 'Fixing…' : 'Fix Names'}
+              </button>
+            </div>
           </div>
         </section>
 

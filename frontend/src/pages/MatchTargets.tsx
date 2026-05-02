@@ -578,7 +578,8 @@ export default function MatchTargets() {
                 { label: 'Within 0.50mi', key: '0.50mi', color: '#059669' },
                 { label: 'Within 1 mile', key: '1mi', color: '#059669' },
                 { label: 'Within 2 miles', key: '2mi', color: '#16A34A' },
-                { label: 'Within 3 miles (rural)', key: '3mi', color: '#D97706' },
+                { label: 'Within 3 miles', key: '3mi', color: '#D97706' },
+                { label: 'Same ZIP', key: 'ZIP', color: '#2563EB' },
                 { label: 'LP fallback', key: 'LP_FALLBACK', color: '#5C2977' },
                 { label: 'No data', key: 'NO_DATA', color: '#9B8AAE' },
               ].filter(r => pb[r.key] > 0)

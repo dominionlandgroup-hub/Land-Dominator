@@ -111,6 +111,12 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
     refreshStats()
   }, [])
 
+  useEffect(() => {
+    if (!mailSuccess) return
+    const t = setTimeout(() => setMailSuccess(null), 5000)
+    return () => clearTimeout(t)
+  }, [mailSuccess])
+
   async function refreshStats() {
     try {
       const data = await getCrmCampaign(campaign.id)
@@ -301,7 +307,7 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
     setMailSuccess(null)
     try {
       const result = await sendCampaignMailDrop(campaign.id, mailHouseEmail || undefined)
-      setMailSuccess(`Mail drop sent to ${result.mail_house_email}. ${result.record_count.toLocaleString()} records mailed.`)
+      setMailSuccess(`✓ Mail drop sent successfully. ${result.record_count.toLocaleString()} records mailed to ${result.mail_house_email}`)
       setShowMailModal(false)
       refreshStats()
     } catch (e: unknown) {
@@ -871,9 +877,9 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
 
       {/* Mail success banner */}
       {mailSuccess && (
-        <div className="fixed top-4 right-4 z-50 rounded-xl px-5 py-3 shadow-lg text-sm font-medium" style={{ background: '#2D7A4F', color: '#fff', maxWidth: 420 }}>
-          {mailSuccess}
-          <button onClick={() => setMailSuccess(null)} className="ml-4 text-white opacity-70 hover:opacity-100">×</button>
+        <div className="fixed top-4 right-4 z-50 rounded-xl px-5 py-3 shadow-lg text-sm font-medium flex items-center gap-4" style={{ background: '#2D7A4F', color: '#fff', maxWidth: 480 }}>
+          <span className="flex-1">{mailSuccess}</span>
+          <button onClick={() => setMailSuccess(null)} className="text-white opacity-70 hover:opacity-100 flex-none text-lg leading-none" style={{ lineHeight: 1 }}>×</button>
         </div>
       )}
 

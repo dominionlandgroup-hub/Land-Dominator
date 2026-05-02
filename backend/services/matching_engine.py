@@ -1347,10 +1347,29 @@ def run_matching(
         radius_label = None
         same_street_used = False
 
+        # Precompute zip for this target (used in both coord and no-coord paths)
+        _t_zip_str = str(t_zips[ti]).split('.')[0].strip()
+
         if row_distances is None:
             matched_mask = np.zeros(len(vc), dtype=bool)
             if debug:
-                print(f"[DEBUG {target_apn}] No row_distances - skipping", flush=True)
+                print(f"[DEBUG {target_apn}] No row_distances - trying ZIP fallback", flush=True)
+            # ZIP fallback for targets without coordinates
+            if _t_zip_str and _t_zip_str not in ('nan', 'None', ''):
+                _zip_mask_no_coord = np.array([str(z).split('.')[0].strip() == _t_zip_str for z in comp_zips])
+                if has_acres:
+                    _band_lo, _band_hi, band_label = get_acreage_band(float(target_acres))
+                    _band_mask_no_coord = band_masks_dict.get(band_label, np.zeros(len(vc), dtype=bool))
+                    _zip_band = _zip_mask_no_coord & _band_mask_no_coord
+                    if int(_zip_band.sum()) >= 1:
+                        matched_mask = _zip_band
+                        radius_label = 'ZIP'
+                    elif int(_zip_mask_no_coord.sum()) >= 2:
+                        matched_mask = _zip_mask_no_coord
+                        radius_label = 'ZIP'
+                elif int(_zip_mask_no_coord.sum()) >= 1:
+                    matched_mask = _zip_mask_no_coord
+                    radius_label = 'ZIP'
         else:
             if has_acres:
                 band_low, band_high, band_label = get_acreage_band(float(target_acres))
@@ -1463,21 +1482,35 @@ def run_matching(
                         radius_label = label
                     # n == 0: continue without updating
 
-            # County-awareness guard: if nearby comps are all from different counties,
-            # treat as no local comps and avoid forced pricing.
-            if matched_mask.sum() > 0 and target_county_raw:
+            # County-awareness guard: only reject cross-county comps when we have ≥5 comps
+            # (sparse areas with 1-4 comps often span county borders legitimately).
+            if matched_mask.sum() >= 5 and target_county_raw:
                 nearby_counties = comp_counties[matched_mask]
-                target_county_key = target_county_raw.split()[0]
-                nearby_counties_non_empty = [c for c in nearby_counties if c]
-                has_local = any(target_county_key in c for c in nearby_counties_non_empty)
-                # Only enforce county guard when comp county data exists.
-                if nearby_counties_non_empty and not has_local:
+                target_county_key = target_county_raw.strip().lower().split()[0]
+                nearby_counties_clean = [c.strip().lower() for c in nearby_counties if c and c.strip()]
+                has_local = any(target_county_key in c for c in nearby_counties_clean)
+                if nearby_counties_clean and not has_local:
                     matched_mask = np.zeros(len(vc), dtype=bool)
                     radius_label = 'NO_COMPS'
                     cross_county_match = True
 
-            if debug and radius_label == 'NO_COMPS':
-                print(f"[DEBUG {target_apn}] NO_COMPS - no comps within 2mi", flush=True)
+            # ZIP fallback: if radius search found nothing, try same-ZIP comps
+            if matched_mask.sum() == 0 and _t_zip_str and _t_zip_str not in ('nan', 'None', ''):
+                _zip_fallback_mask = np.array([str(z).split('.')[0].strip() == _t_zip_str for z in comp_zips])
+                if has_acres:
+                    _zip_band_fallback = _zip_fallback_mask & band_mask
+                    if int(_zip_band_fallback.sum()) >= 1:
+                        matched_mask = _zip_band_fallback
+                        radius_label = 'ZIP'
+                    elif int(_zip_fallback_mask.sum()) >= 2:
+                        matched_mask = _zip_fallback_mask
+                        radius_label = 'ZIP'
+                elif int(_zip_fallback_mask.sum()) >= 1:
+                    matched_mask = _zip_fallback_mask
+                    radius_label = 'ZIP'
+
+            if debug and matched_mask.sum() == 0:
+                print(f"[DEBUG {target_apn}] NO_COMPS - no comps within 3mi or same ZIP", flush=True)
 
             # ── Acreage similarity filter (band-specific thresholds) ──
             # Micro/nano bands: lots under 0.5ac vary widely, use looser threshold
@@ -1549,7 +1582,7 @@ def run_matching(
                                 flush=True,
                             )
 
-            # No fallback beyond 2 miles — NO_COMPS if nothing found in radius steps
+            # No fallback beyond 3 miles for distance-based matching (ZIP fallback handles rest)
 
         n_matched = int(matched_mask.sum())
         t_zip = t_zips[ti]
@@ -1582,9 +1615,25 @@ def run_matching(
         else:
             matched_comps_df = pd.DataFrame()
 
+        # LLC comp pricing: prefer LLC/corporate buyer comps when ≥2 available
+        _llc_buyer_col = next(
+            (c for c in ('Current Sale Buyer 1 Full Name', 'Buyer Name', 'Grantee Name') if c in matched_comps_df.columns),
+            None,
+        )
+        pricing_subset = matched_comps_df
+        llc_pricing_used = False
+        if _llc_buyer_col and len(matched_comps_df) >= 2:
+            _buyer_names = matched_comps_df[_llc_buyer_col].fillna('').str.upper()
+            _llc_keywords = ['LLC', 'CORP', 'INC', 'LTD', 'TRUST', 'REALTY', 'PROPERTIES', 'LAND CO', 'HOLDINGS', 'INVESTMENT']
+            _is_llc = _buyer_names.apply(lambda x: any(kw in x for kw in _llc_keywords))
+            _llc_df = matched_comps_df[_is_llc]
+            if len(_llc_df) >= 2:
+                pricing_subset = _llc_df
+                llc_pricing_used = True
+
         pricing = calculate_offer_price(
             target_acres=float(target_acres) if has_acres else 0.0,
-            matched_comps_df=matched_comps_df,
+            matched_comps_df=pricing_subset,
             tlp_estimate=tlp_val,
             acreage_band_label=band_label,
             radius_label=radius_label,
@@ -1620,7 +1669,7 @@ def run_matching(
         # Use lp_estimate × pricing percentages as fallback pricing
         if pricing['pricing_flag'] == 'NO_COMPS' and tlp_val and tlp_val > 0:
             lp_retail = float(tlp_val)
-            _lp_reason = _no_match_pre_reason or 'No comps within 2 miles'
+            _lp_reason = _no_match_pre_reason or 'No comps within 3 miles or same ZIP'
             pricing.update({
                 'pricing_flag': 'LP_FALLBACK',
                 'pricing_source': 'LP_FALLBACK',
@@ -1636,7 +1685,13 @@ def run_matching(
 
         # Set human-readable no_match_reason for records that remain unpriced
         if pricing.get('pricing_flag') == 'NO_COMPS' and not pricing.get('no_match_reason'):
-            pricing['no_match_reason'] = _no_match_pre_reason or 'No comps within 2 miles'
+            pricing['no_match_reason'] = _no_match_pre_reason or 'No comps within 3 miles or same ZIP'
+
+        # Track LLC vs all-buyer pricing source
+        if llc_pricing_used and pricing.get('pricing_flag') == 'MATCHED':
+            pricing['pricing_source'] = 'LLC_PRICED'
+        elif pricing.get('pricing_flag') == 'MATCHED' and not pricing.get('pricing_source'):
+            pricing['pricing_source'] = 'ALL_BUYER_PRICED'
 
         if debug:
             print(f"[DEBUG {target_apn}] PRICING RESULT:", flush=True)
@@ -1993,7 +2048,7 @@ def run_matching(
         print(f"[match] Uncovered counties: {uncovered_counties}", flush=True)
 
     # ── Pricing method breakdown ──────────────────────────────────────────
-    _breakdown_keys = ['0.25mi', '0.50mi', '1mi', '2mi', '3mi', 'LP_FALLBACK', 'NO_DATA']
+    _breakdown_keys = ['0.25mi', '0.50mi', '1mi', '2mi', '3mi', 'ZIP', 'LP_FALLBACK', 'NO_DATA']
     pricing_breakdown: dict = {k: 0 for k in _breakdown_keys}
     county_median_count = 0
     for _r in results:
@@ -2022,10 +2077,12 @@ def run_matching(
     low_offer_count   = sum(1 for r in results if r.get("pricing_flag") == "LOW_OFFER")
     low_value_count   = sum(1 for r in results if r.get("pricing_flag") == "LOW_VALUE")
     unpriced_count    = sum(1 for r in results if r.get("pricing_flag") in ("NO_COMPS", None))
-    mailable_count    = matched_count  # LP_FALLBACK is reference only, not mailable
+    llc_priced_count  = sum(1 for r in results if r.get("pricing_source") == "LLC_PRICED")
+    zip_matched_count = sum(1 for r in results if r.get("pricing_flag") == "MATCHED" and r.get("radius_label") == "ZIP")
+    mailable_count    = matched_count + lp_fallback_count
 
-    # Match rate warning
-    match_rate_pct = round(matched_count / total_targets * 100) if total_targets > 0 else 0
+    # Match rate warning (mailable = MATCHED + LP_FALLBACK)
+    match_rate_pct = round(mailable_count / total_targets * 100) if total_targets > 0 else 0
     if match_rate_pct < 80 and total_targets > 0:
         unmatched_zips: dict[str, int] = {}
         for r in results:
@@ -2070,6 +2127,8 @@ def run_matching(
         "low_value_count": low_value_count,
         "unpriced_count": unpriced_count,
         "county_median_count": county_median_count,
+        "llc_priced_count": llc_priced_count,
+        "zip_matched_count": zip_matched_count,
         "smart_floor_recommendation": smart_floor_recommendation,
         "results": results,
         "warnings": warnings,

@@ -953,23 +953,39 @@ async def send_campaign_mail_drop(campaign_id: str, body: dict = Body(default={}
         campaign = r.data[0]
 
         # Optionally update mail_house_email from request body
-        mail_house_email = body.get("mail_house_email") or campaign.get("mail_house_email", "")
+        mail_house_email = (
+            body.get("mail_house_email")
+            or campaign.get("mail_house_email", "")
+            or os.getenv("MAIL_HOUSE_EMAIL", "")
+        )
         if body.get("mail_house_email"):
             sb.table("crm_campaigns").update({"mail_house_email": mail_house_email, "updated_at": _now()}).eq("id", campaign_id).execute()
 
         if not mail_house_email:
-            raise HTTPException(status_code=400, detail="mail_house_email is required. Set it in campaign settings or provide it in the request.")
+            raise HTTPException(status_code=400, detail="mail_house_email is required. Set it in campaign settings, request body, or MAIL_HOUSE_EMAIL env var.")
 
-        # Get unmailed lead properties in this campaign
-        props_r = (
-            sb.table("crm_properties")
-            .select("*")
-            .eq("campaign_id", campaign_id)
-            .execute()
-        )
-        properties = props_r.data or []
+        # Get lead properties in this campaign (all pages — Supabase default cap is 1000)
+        properties: list[dict] = []
+        batch_size = 1000
+        offset = 0
+        while True:
+            props_r = (
+                sb.table("crm_properties")
+                .select("*")
+                .eq("campaign_id", campaign_id)
+                .eq("status", "lead")
+                .range(offset, offset + batch_size - 1)
+                .execute()
+            )
+            batch = props_r.data or []
+            properties.extend(batch)
+            if len(batch) < batch_size:
+                break
+            offset += batch_size
+
+        print(f"[mail-drop] Mailing {len(properties)} lead records to {mail_house_email}", flush=True)
         if not properties:
-            raise HTTPException(status_code=400, detail="No properties found in this campaign to mail.")
+            raise HTTPException(status_code=400, detail="No lead properties found in this campaign to mail.")
 
         # Build CSV
         import csv as _csv
@@ -1009,22 +1025,54 @@ async def send_campaign_mail_drop(campaign_id: str, body: dict = Body(default={}
             raise HTTPException(status_code=503, detail="SENDGRID_API_KEY not configured. Add it to Railway environment variables.")
 
         import base64 as _base64
+        from datetime import datetime as _dt
         campaign_name = campaign.get("name", campaign_id)
+        date_str = _dt.now().strftime("%Y-%m-%d")
         encoded_csv = _base64.b64encode(csv_content.encode("utf-8")).decode("utf-8")
+        plain_body = (
+            f"Hi,\n\n"
+            f"Please find attached the mailing list for the following campaign:\n\n"
+            f"  Campaign: {campaign_name}\n"
+            f"  Date: {date_str}\n"
+            f"  Records: {record_count}\n\n"
+            f"The attached CSV contains owner name, mailing address, APN, acreage, and offer price for each lead.\n\n"
+            f"Estimated cost: ${record_count * float(campaign.get('cost_per_piece') or 0.55):.2f} "
+            f"(@ ${float(campaign.get('cost_per_piece') or 0.55):.2f}/piece)\n\n"
+            f"Please process this mail drop at your earliest convenience.\n\n"
+            f"Thank you,\n"
+            f"Dominion Land Group\n"
+            f"dominionlandgroup@gmail.com\n"
+        )
+        html_body = f"""<html><body style="font-family:Arial,sans-serif;color:#1A0A2E;max-width:600px;margin:0 auto;padding:24px">
+<p style="font-size:16px">Hi,</p>
+<p>Please find attached the mailing list for the following campaign:</p>
+<table style="border-collapse:collapse;margin:16px 0">
+  <tr><td style="padding:6px 16px 6px 0;color:#6B5B8A;font-weight:bold">Campaign:</td><td style="padding:6px 0"><strong>{campaign_name}</strong></td></tr>
+  <tr><td style="padding:6px 16px 6px 0;color:#6B5B8A;font-weight:bold">Date:</td><td style="padding:6px 0">{date_str}</td></tr>
+  <tr><td style="padding:6px 16px 6px 0;color:#6B5B8A;font-weight:bold">Records:</td><td style="padding:6px 0"><strong>{record_count:,}</strong></td></tr>
+  <tr><td style="padding:6px 16px 6px 0;color:#6B5B8A;font-weight:bold">Est. Cost:</td><td style="padding:6px 0">${record_count * float(campaign.get('cost_per_piece') or 0.55):.2f} @ ${float(campaign.get('cost_per_piece') or 0.55):.2f}/piece</td></tr>
+</table>
+<p>The attached CSV contains owner name, mailing address, APN, acreage, and offer price for each lead.</p>
+<p>Please process this mail drop at your earliest convenience.</p>
+<p style="margin-top:24px">Thank you,<br><strong>Dominion Land Group</strong><br><a href="mailto:dominionlandgroup@gmail.com">dominionlandgroup@gmail.com</a></p>
+</body></html>"""
         payload = {
             "personalizations": [{"to": [{"email": mail_house_email}]}],
-            "from": {"email": from_email},
-            "subject": f"Mail Drop: {campaign_name} — {record_count} Records",
-            "content": [{"type": "text/plain", "value": (
-                f"Please find attached the mailing list for campaign: {campaign_name}\n\n"
-                f"Records: {record_count}\n"
-                f"Generated: {_now()}\n\n"
-                "This list was generated automatically by Land Dominator."
-            )}],
+            "from": {"email": from_email, "name": "Dominion Land Group"},
+            "reply_to": {"email": "dominionlandgroup@gmail.com", "name": "Dominion Land Group"},
+            "subject": f"Mail Drop - {campaign_name} - {date_str} - {record_count} Records",
+            "headers": {
+                "List-Unsubscribe": "<mailto:dominionlandgroup@gmail.com?subject=Unsubscribe>",
+                "X-Mailer": "Land Dominator CRM",
+            },
+            "content": [
+                {"type": "text/plain", "value": plain_body},
+                {"type": "text/html", "value": html_body},
+            ],
             "attachments": [{
                 "content": encoded_csv,
                 "type": "text/csv",
-                "filename": f"{campaign_name.replace(' ', '-').lower()}-{record_count}-records.csv",
+                "filename": f"{campaign_name.replace(' ', '-').lower()}-{date_str}-{record_count}-records.csv",
                 "disposition": "attachment",
             }],
         }
@@ -1276,11 +1324,44 @@ async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)
                 detail=f"Insert failed — 0 of {len(rows)} records written. First error: {all_warnings[0] if all_warnings else 'unknown'}. Run POST /crm/db-migrate to add missing columns."
             )
 
+        # Post-insert name fix: catch any remaining backwards names in this campaign
+        names_fixed = 0
+        try:
+            camp_recs = sb.table("crm_properties").select("id,owner_full_name,owner_first_name,owner_last_name").eq("campaign_id", campaign_id).execute()
+            for rec in (camp_recs.data or []):
+                raw = rec.get("owner_full_name") or ""
+                if not raw:
+                    continue
+                clean = re.sub(r"[,&]", " ", raw).strip()
+                is_all_caps = len(clean) > 3 and clean == clean.upper() and " " in clean
+                has_comma = "," in raw
+                if not is_all_caps and not has_comma:
+                    continue
+                reformatted = reformat_name(raw)
+                if reformatted == raw:
+                    continue
+                primary = re.split(r"\s*&\s*", reformatted)[0].strip()
+                parts = primary.split()
+                first = parts[0] if parts else ""
+                last = parts[-1] if len(parts) >= 2 else ""
+                sb.table("crm_properties").update({
+                    "owner_full_name": reformatted,
+                    "owner_first_name": first,
+                    "owner_last_name": last,
+                    "updated_at": _now(),
+                }).eq("id", rec["id"]).execute()
+                names_fixed += 1
+        except Exception as ne:
+            print(f"[add-match-results] post-insert name fix error (non-fatal): {ne}", flush=True)
+
+        print(f"[add-match-results] Post-insert name fix: {names_fixed} names corrected", flush=True)
+
         return {
             "imported": imported,
             "total": len(results),
             "campaign_id": campaign_id,
             "warnings": all_warnings[:5],
+            "names_fixed": names_fixed,
         }
     except HTTPException:
         raise
@@ -1920,6 +2001,54 @@ async def pull_lp_data_for_property(property_id: str) -> dict:
 
     updated = sb.table("crm_properties").select("*").eq("id", property_id).execute()
     return updated.data[0] if updated.data else prop
+
+
+@router.get("/properties/fix-names-now")
+async def fix_property_names() -> dict:
+    """One-time (and on-demand) fix for LP 'LAST FIRST' owner names already stored in DB."""
+    try:
+        sb = get_supabase()
+        records: list[dict] = []
+        batch_size = 1000
+        offset = 0
+        while True:
+            r = sb.table("crm_properties").select("id,owner_full_name,owner_first_name,owner_last_name").range(offset, offset + batch_size - 1).execute()
+            batch = r.data or []
+            records.extend(batch)
+            if len(batch) < batch_size:
+                break
+            offset += batch_size
+
+        fixed = 0
+        for rec in records:
+            raw = rec.get("owner_full_name") or ""
+            if not raw:
+                continue
+            clean = re.sub(r"[,&]", " ", raw).strip()
+            is_all_caps = len(clean) > 3 and clean == clean.upper() and " " in clean
+            has_comma = "," in raw
+            if not is_all_caps and not has_comma:
+                continue
+            reformatted = reformat_name(raw)
+            if reformatted == raw:
+                continue
+            primary = re.split(r"\s*&\s*", reformatted)[0].strip()
+            parts = primary.split()
+            first = parts[0] if parts else ""
+            last = parts[-1] if len(parts) >= 2 else ""
+            sb.table("crm_properties").update({
+                "owner_full_name": reformatted,
+                "owner_first_name": first,
+                "owner_last_name": last,
+                "updated_at": _now(),
+            }).eq("id", rec["id"]).execute()
+            fixed += 1
+            print(f"[fix-names] '{raw}' → '{reformatted}'", flush=True)
+
+        print(f"[fix-names] Fixed {fixed}/{len(records)} records", flush=True)
+        return {"fixed": fixed, "total": len(records)}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @router.get("/properties/{property_id}", response_model=Property)

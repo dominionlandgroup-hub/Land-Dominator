@@ -41,6 +41,11 @@ export async function clearAllProperties(): Promise<{ deleted: boolean; count: n
   return data
 }
 
+export async function fixPropertyNames(): Promise<{ fixed: number; total: number }> {
+  const { data } = await api.get<{ fixed: number; total: number }>('/crm/properties/fix-names-now')
+  return data
+}
+
 export async function createProperty(body: Partial<CRMProperty>): Promise<CRMProperty> {
   const { data } = await api.post<CRMProperty>('/crm/properties', body)
   return data
