@@ -392,6 +392,43 @@ def _safe_float(val: Any) -> "float | None":
         return None
 
 
+# ── Industry-standard floors and ceilings for land quality recommendations ────
+#
+# These prevent the buy box from suggesting values that are commercially
+# unworkable regardless of what the comp data shows.
+#
+_LAND_QUALITY_BOUNDS = {
+    # (floor, ceiling) — None means no bound on that side
+    "buildability": (60.0, 100.0),   # <60% is hard to sell to builders
+    "slope":        (5.0,  15.0),    # >15% significantly limits buildability
+    "wetlands":     (0.0,  10.0),    # >10% wetlands is essentially unusable
+    "road_frontage":(25.0, 200.0),   # <25 ft = landlocked; >200 ft = overspecified
+}
+
+
+def _apply_bounds(
+    raw_value: "float | None",
+    floor: "float | None",
+    ceiling: "float | None",
+) -> "tuple[float | None, bool, bool]":
+    """
+    Clamp raw_value to [floor, ceiling].
+    Returns (clamped_value, floor_applied, ceiling_applied).
+    """
+    if raw_value is None:
+        return None, False, False
+    floored = False
+    ceilinged = False
+    v = raw_value
+    if floor is not None and v < floor:
+        v = floor
+        floored = True
+    if ceiling is not None and v > ceiling:
+        v = ceiling
+        ceilinged = True
+    return v, floored, ceilinged
+
+
 def compute_land_quality_stats(df: pd.DataFrame) -> Dict[str, Any]:
     """Derive data-driven land quality thresholds from sold comp data.
 
@@ -399,6 +436,10 @@ def compute_land_quality_stats(df: pd.DataFrame) -> Dict[str, Any]:
     the number of comps that had data for each field. When a column is absent
     or has no valid rows the count is 0 and the value is None (caller shows
     a sensible default instead).
+
+    Floors and ceilings from _LAND_QUALITY_BOUNDS are applied to each
+    recommendation. When a bound is hit, *_adjusted=True and *_raw_value
+    carries the original comp-derived number so the UI can display a note.
     """
 
     def _pct(series: pd.Series, pct: float) -> "float | None":
@@ -418,38 +459,56 @@ def compute_land_quality_stats(df: pd.DataFrame) -> Dict[str, Any]:
     def _count(series: pd.Series) -> int:
         return int(series.dropna().pipe(lambda s: s[np.isfinite(s)]).shape[0])
 
-    # Buildability — column: 'Buildability total (%)'
+    # ── Buildability ──────────────────────────────────────────────────────────
     build_col = pd.to_numeric(df.get("Buildability total (%)"), errors="coerce") if "Buildability total (%)" in df.columns else pd.Series(dtype=float)
     build_median = _median(build_col)
     build_count = _count(build_col)
-    # Round down to nearest 10 for the minimum recommendation
-    build_min: "float | None" = (max(0.0, (build_median // 10) * 10)) if build_median is not None else None
+    # Round down to nearest 10 before applying floor
+    build_raw: "float | None" = (max(0.0, (build_median // 10) * 10)) if build_median is not None else None
+    build_floor, build_ceil = _LAND_QUALITY_BOUNDS["buildability"]
+    build_min, build_floor_applied, build_ceil_applied = _apply_bounds(build_raw, build_floor, build_ceil)
 
-    # Road Frontage — column: 'Road Frontage'
+    # ── Road Frontage ─────────────────────────────────────────────────────────
     rf_col = pd.to_numeric(df.get("Road Frontage"), errors="coerce") if "Road Frontage" in df.columns else pd.Series(dtype=float)
-    rf_p25 = _pct(rf_col, 25)
+    rf_p25_raw = _pct(rf_col, 25)
     rf_count = _count(rf_col)
+    rf_floor, rf_ceil = _LAND_QUALITY_BOUNDS["road_frontage"]
+    rf_p25, rf_floor_applied, rf_ceil_applied = _apply_bounds(rf_p25_raw, rf_floor, rf_ceil)
 
-    # Slope — column: 'Slope AVG' (LP canonical) or legacy variants
+    # ── Slope ─────────────────────────────────────────────────────────────────
     slope_col_name = next((c for c in ["Slope AVG", "Slope", "Average Slope", "Slope (%)", "Avg Slope"] if c in df.columns), None)
     slope_col = pd.to_numeric(df[slope_col_name], errors="coerce") if slope_col_name else pd.Series(dtype=float)
-    slope_p75 = _pct(slope_col, 75)
+    slope_p75_raw = _pct(slope_col, 75)
     slope_count = _count(slope_col)
+    slope_floor, slope_ceil = _LAND_QUALITY_BOUNDS["slope"]
+    slope_p75, slope_floor_applied, slope_ceil_applied = _apply_bounds(slope_p75_raw, slope_floor, slope_ceil)
 
-    # Wetlands — column: 'Wetlands Coverage' or 'FEMA Flood Coverage' (proxy)
+    # ── Wetlands ──────────────────────────────────────────────────────────────
     wet_col_name = next((c for c in ["Wetlands Coverage", "Wetlands (%)", "Wetland Coverage"] if c in df.columns), None)
     wet_col = pd.to_numeric(df[wet_col_name], errors="coerce") if wet_col_name else pd.Series(dtype=float)
-    wetlands_p75 = _pct(wet_col, 75)
+    wetlands_p75_raw = _pct(wet_col, 75)
     wetlands_count = _count(wet_col)
+    wet_floor, wet_ceil = _LAND_QUALITY_BOUNDS["wetlands"]
+    wetlands_p75, wet_floor_applied, wet_ceil_applied = _apply_bounds(wetlands_p75_raw, wet_floor, wet_ceil)
 
     return {
-        "buildability_min": build_min,
+        # Recommended values (already clamped)
+        "buildability_min":    build_min,
         "buildability_median": build_median,
-        "buildability_count": build_count,
-        "road_frontage_p25": rf_p25,
+        "buildability_count":  build_count,
+        "road_frontage_p25":   rf_p25,
         "road_frontage_count": rf_count,
-        "slope_p75": slope_p75,
-        "slope_count": slope_count,
-        "wetlands_p75": wetlands_p75,
-        "wetlands_count": wetlands_count,
+        "slope_p75":           slope_p75,
+        "slope_count":         slope_count,
+        "wetlands_p75":        wetlands_p75,
+        "wetlands_count":      wetlands_count,
+        # Raw comp-derived values (before clamping) — used for UI adjustment notes
+        "buildability_raw":       build_raw,
+        "buildability_adjusted":  build_floor_applied or build_ceil_applied,
+        "road_frontage_raw":      rf_p25_raw,
+        "road_frontage_adjusted": rf_floor_applied or rf_ceil_applied,
+        "slope_raw":              slope_p75_raw,
+        "slope_adjusted":         slope_floor_applied or slope_ceil_applied,
+        "wetlands_raw":           wetlands_p75_raw,
+        "wetlands_adjusted":      wet_floor_applied or wet_ceil_applied,
     }

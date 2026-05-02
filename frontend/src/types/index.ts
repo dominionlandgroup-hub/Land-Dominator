@@ -46,6 +46,15 @@ export interface LandQualityStats {
   slope_count: number
   wetlands_p75: number | null
   wetlands_count: number
+  // Raw comp values before floor/ceiling clamping
+  buildability_raw?: number | null
+  buildability_adjusted?: boolean
+  road_frontage_raw?: number | null
+  road_frontage_adjusted?: boolean
+  slope_raw?: number | null
+  slope_adjusted?: boolean
+  wetlands_raw?: number | null
+  wetlands_adjusted?: boolean
 }
 
 export interface DashboardData {

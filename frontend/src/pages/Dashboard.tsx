@@ -410,33 +410,51 @@ function BuyBoxRecipe({
     .map(z => z.zip_code)
   const sortedCounties = [...topCounties].sort((a, b) => a.localeCompare(b))
 
-  // Land quality — data-driven from sold comps, with fallbacks
-  const buildabilityMin = landQuality?.buildability_count
-    ? Math.round((landQuality.buildability_min ?? 80) / 10) * 10
-    : 80
+  // Land quality — data-driven from sold comps, with industry-standard floors/ceilings
   const buildabilityCount = landQuality?.buildability_count ?? 0
+  const buildabilityMin = buildabilityCount > 0
+    ? Math.round((landQuality!.buildability_min ?? 80) / 10) * 10
+    : 80
+  const buildabilityAdjusted = landQuality?.buildability_adjusted ?? false
+  const buildabilityRaw = landQuality?.buildability_raw != null
+    ? Math.round((landQuality.buildability_raw / 10)) * 10
+    : null
   const buildabilityLabel = buildabilityCount > 0
-    ? `${buildabilityMin}% minimum (based on ${buildabilityCount} comps)`
-    : '80% minimum (default)'
+    ? buildabilityAdjusted && buildabilityRaw != null
+      ? `${buildabilityMin}% minimum (comp median was ${buildabilityRaw}% — floor applied)`
+      : `${buildabilityMin}% minimum (based on ${buildabilityCount} comps)`
+    : '60% minimum (industry standard — no comp data)'
 
   const slopeCount = landQuality?.slope_count ?? 0
   const slopeMax = slopeCount > 0 ? Math.round(landQuality!.slope_p75 ?? 10) : null
+  const slopeAdjusted = landQuality?.slope_adjusted ?? false
+  const slopeRaw = landQuality?.slope_raw != null ? Math.round(landQuality.slope_raw) : null
   const slopeLabel = slopeCount > 0 && slopeMax != null
-    ? `${slopeMax}% max (based on ${slopeCount} comps)`
+    ? slopeAdjusted && slopeRaw != null
+      ? `${slopeMax}% max (comp data showed ${slopeRaw}% — ceiling applied)`
+      : `${slopeMax}% max (based on ${slopeCount} comps)`
     : null
 
   const wetlandsCount = landQuality?.wetlands_count ?? 0
   const wetlandsMax = wetlandsCount > 0 ? Math.round(landQuality!.wetlands_p75 ?? 5) : null
+  const wetlandsAdjusted = landQuality?.wetlands_adjusted ?? false
+  const wetlandsRaw = landQuality?.wetlands_raw != null ? Math.round(landQuality.wetlands_raw) : null
   const wetlandsLabel = wetlandsCount > 0 && wetlandsMax != null
-    ? `Less than ${wetlandsMax}% (based on ${wetlandsCount} comps)`
+    ? wetlandsAdjusted && wetlandsRaw != null
+      ? `Less than ${wetlandsMax}% (comp data showed ${wetlandsRaw}% — ceiling applied)`
+      : `Less than ${wetlandsMax}% (based on ${wetlandsCount} comps)`
     : null
 
-  const roadFrontageMin = landQuality?.road_frontage_count
-    ? Math.round(landQuality.road_frontage_p25 ?? 30)
-    : null
   const roadFrontageCount = landQuality?.road_frontage_count ?? 0
+  const roadFrontageMin = roadFrontageCount > 0
+    ? Math.round(landQuality!.road_frontage_p25 ?? 30)
+    : null
+  const roadFrontageAdjusted = landQuality?.road_frontage_adjusted ?? false
+  const roadFrontageRaw = landQuality?.road_frontage_raw != null ? Math.round(landQuality.road_frontage_raw) : null
   const roadFrontageLabel = roadFrontageCount > 0 && roadFrontageMin != null
-    ? `Minimum ${roadFrontageMin} ft (based on ${roadFrontageCount} comps)`
+    ? roadFrontageAdjusted && roadFrontageRaw != null
+      ? `Minimum ${roadFrontageMin} ft (comp data showed ${roadFrontageRaw} ft — floor applied)`
+      : `Minimum ${roadFrontageMin} ft (based on ${roadFrontageCount} comps)`
     : 'Data not available in comps — recommend 30 ft minimum'
 
   const acres = comps.map(c => c.lot_acres).filter(v => Number.isFinite(v) && v > 0).sort((a, b) => a - b)
@@ -677,12 +695,12 @@ ${sec('6. Owner',
         <div className="rounded-xl p-4" style={cardStyle}>
           {hdr('4 · Land Quality')}
           <div className="space-y-2 text-xs">
-            <div className="flex justify-between gap-2"><span style={{ color: '#9CA3AF', flexShrink: 0 }}>Buildability minimum</span><span style={{ color: '#10B981', fontWeight: 600, textAlign: 'right' }}>{buildabilityLabel}</span></div>
-            {slopeLabel && <div className="flex justify-between gap-2"><span style={{ color: '#6B7280', flexShrink: 0 }}>Maximum slope</span><span style={{ color: '#111827', fontWeight: 600, textAlign: 'right' }}>{slopeLabel}</span></div>}
-            {wetlandsLabel && <div className="flex justify-between gap-2"><span style={{ color: '#6B7280', flexShrink: 0 }}>Wetlands coverage</span><span style={{ color: '#111827', fontWeight: 600, textAlign: 'right' }}>{wetlandsLabel}</span></div>}
+            <LQRow label="Buildability minimum" value={buildabilityLabel} highlight adjusted={buildabilityAdjusted} />
+            {slopeLabel && <LQRow label="Maximum slope" value={slopeLabel} adjusted={slopeAdjusted} />}
+            {wetlandsLabel && <LQRow label="Wetlands coverage" value={wetlandsLabel} adjusted={wetlandsAdjusted} />}
             <div className="flex gap-2"><span style={{ color: '#EF4444', fontWeight: 700 }}>✗</span><span style={{ color: '#9CA3AF' }}>FEMA flood zones (exclude all)</span></div>
             <div className="flex gap-2"><span style={{ color: '#EF4444', fontWeight: 700 }}>✗</span><span style={{ color: '#9CA3AF' }}>Landlocked parcels (exclude)</span></div>
-            <div className="flex justify-between gap-2"><span style={{ color: '#9CA3AF', flexShrink: 0 }}>Road frontage</span><span style={{ color: '#10B981', fontWeight: 600, textAlign: 'right' }}>{roadFrontageLabel}</span></div>
+            <LQRow label="Road frontage" value={roadFrontageLabel} highlight adjusted={roadFrontageAdjusted} />
           </div>
         </div>
 
@@ -745,6 +763,43 @@ function SummaryCard({ label, value, sub, icon, accent }: {
       </div>
       <p className="text-2xl font-bold mb-0.5" style={{ color: accent === '#5C2977' ? '#4F46E5' : accent }}>{value}</p>
       {sub && <p className="text-xs" style={{ color: '#6B7280' }}>{sub}</p>}
+    </div>
+  )
+}
+
+// Land Quality row — shows amber "adjusted" note when floor/ceiling was applied
+function LQRow({
+  label,
+  value,
+  highlight,
+  adjusted,
+}: {
+  label: string
+  value: string
+  highlight?: boolean
+  adjusted?: boolean
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <div className="flex justify-between gap-2">
+        <span style={{ color: '#9CA3AF', flexShrink: 0 }}>{label}</span>
+        <span style={{ color: highlight ? '#10B981' : '#111827', fontWeight: 600, textAlign: 'right' }}>
+          {value}
+        </span>
+      </div>
+      {adjusted && (
+        <div
+          style={{
+            fontSize: 10, color: '#D97706', textAlign: 'right',
+            background: 'rgba(217,119,6,0.06)',
+            border: '1px solid rgba(217,119,6,0.15)',
+            borderRadius: 4, padding: '1px 6px',
+            alignSelf: 'flex-end',
+          }}
+        >
+          ⚠ adjusted from comp data — industry standard applied
+        </div>
+      )}
     </div>
   )
 }
