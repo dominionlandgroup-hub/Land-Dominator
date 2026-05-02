@@ -577,12 +577,40 @@ def parse_float(val) -> "float | None":
         return None
 
 
+def _fv(row, *keys):
+    """Return first non-NaN, non-empty value by trying keys in order (NaN-safe)."""
+    for key in keys:
+        val = row.get(key)
+        if val is None:
+            continue
+        if str(val).strip().lower() in ('', 'none', 'nan'):
+            continue
+        return val
+    return None
+
+
 def parse_date(val) -> "str | None":
-    """Convert date value to string; returns None for missing/NaN."""
+    """Parse date to ISO string. Handles 2-digit years (e.g. 3/2/26 → 2026-03-02)."""
     if val is None:
         return None
     s = str(val).strip()
-    return s if s.lower() not in ('nan', 'none', '') else None
+    if s.lower() in ('nan', 'none', ''):
+        return None
+    from datetime import datetime as _dt
+    for fmt in ('%m/%d/%y', '%m/%d/%Y', '%Y-%m-%d', '%d/%m/%y', '%d-%m-%Y', '%m-%d-%Y'):
+        try:
+            return _dt.strptime(s, fmt).date().isoformat()
+        except ValueError:
+            continue
+    # Last resort: let pandas parse it
+    try:
+        import pandas as _pd
+        ts = _pd.to_datetime(s, dayfirst=False, errors='coerce')
+        if _pd.notna(ts):
+            return ts.date().isoformat()
+    except Exception:
+        pass
+    return None
 
 
 # ── Upload comps (single or first-of-many) ────────────────────────────────────
@@ -615,69 +643,55 @@ async def upload_comps(
         _sample = df[_coord_cols].head(3).to_dict('records')
         print(f"[comps] Coordinate sample (first 3 rows): {_sample}", flush=True)
 
+    # Log first 5 raw sale prices for diagnosis
+    _sp_col = next((c for c in ("Current Sale Price", "Close Price", "Sold Price", "sale_price") if c in df.columns), None)
+    if _sp_col:
+        print(f"[comps] First 5 '{_sp_col}' values: {list(df[_sp_col].head(5))}", flush=True)
+
     rows = []
+    skipped_no_price = 0
+    skipped_no_acreage = 0
+    skipped_mega_sale = 0
     _logged_rows = 0
     for _, row in df.iterrows():
-        sale_price = parse_price(
-            row.get("Current Sale Price") or
-            row.get("Close Price") or
-            row.get("Sold Price") or
-            row.get("sale_price") or 0
-        )
-        acreage = parse_float(
-            row.get("Lot Acres") or
-            row.get("Approximate Acres") or
-            row.get("Calc Acreage") or
-            row.get("Acreage") or
-            row.get("Acres") or
-            row.get("acreage") or 0
-        ) or 0.0
-        county = str(
-            row.get("Parcel County") or
-            row.get("Parcel Address County") or
-            row.get("County") or
-            row.get("county") or ""
-        ).lower().strip().replace(" county", "").replace("county", "").strip()
-        state = str(
-            row.get("Parcel State") or
-            row.get("State") or
-            row.get("state") or "TN"
-        ).upper().strip()
-        zip_code = str(
-            row.get("Parcel Zip") or
-            row.get("Zip Code") or
-            row.get("Postal Code") or
-            row.get("zip_code") or ""
-        ).strip().replace(".0", "")
-        sale_date = parse_date(
-            row.get("Current Sale Recording Date") or
-            row.get("Close Date") or
-            row.get("Sold Date") or
-            row.get("sale_date")
-        )
+        sale_price = parse_price(_fv(row, "Current Sale Price", "Close Price", "Sold Price", "sale_price"))
+        acreage = parse_float(_fv(row, "Lot Acres", "Approximate Acres", "Calc Acreage", "Acreage", "Acres", "acreage")) or 0.0
+        county = str(_fv(row, "Parcel County", "Parcel Address County", "County", "county") or "").lower().strip().replace(" county", "").replace("county", "").strip()
+        state = str(_fv(row, "Parcel State", "State", "state") or "TN").upper().strip()
+        zip_code = str(_fv(row, "Parcel Zip", "Zip Code", "Postal Code", "zip_code") or "").strip()
+        if zip_code.endswith('.0'):
+            zip_code = zip_code[:-2]
+        sale_date = parse_date(_fv(row, "Current Sale Recording Date", "Close Date", "Sold Date", "sale_date"))
         lat = _parse_coord(row, "Latitude", "latitude", "LAT", "lat", "Y", "y")
         lon = _parse_coord(row, "Longitude", "longitude", "LON", "lon", "LNG", "lng", "X", "x")
-        apn = str(row.get("APN") or row.get("Parcel Number") or row.get("apn") or "").strip()
+        apn = str(_fv(row, "APN", "Parcel Number", "apn") or "").strip()
         if _logged_rows < 3:
             print(f"Row lat/lon: raw_lat={row.get('Latitude')!r} raw_lon={row.get('Longitude')!r} → {lat} / {lon}", flush=True)
+            print(f"sale_price: {sale_price}, acreage: {acreage}, date: {sale_date}", flush=True)
             _logged_rows += 1
-        land_use = str(row.get("Land Use") or row.get("land_use") or "").strip()
-        buyer_name = str(
-            row.get("Current Sale Buyer 1 Full Name") or
-            row.get("buyer_name") or ""
-        ).strip()
+        land_use = str(_fv(row, "Land Use", "land_use") or "").strip()
+        buyer_name = str(_fv(row, "Current Sale Buyer 1 Full Name", "buyer_name") or "").strip()
         price_per_acre = sale_price / acreage if acreage > 0 else 0.0
-        if _logged_rows <= 3 and sale_price > 0 and acreage > 0:
-            print(f"sale_price: {sale_price}, acreage: {acreage}, ppa: {price_per_acre:.2f}", flush=True)
 
-        # Filter mega sales (commercial transactions) and extreme outliers at ingestion
+        # Skip rows without a valid sale price (not a sold comp)
+        if sale_price <= 0:
+            skipped_no_price += 1
+            continue
+
+        # Skip rows without valid acreage
+        if acreage <= 0:
+            skipped_no_acreage += 1
+            continue
+
+        # Filter mega sales (commercial transactions) and extreme PPA outliers
         if sale_price > 5_000_000:
+            skipped_mega_sale += 1
             continue
-        if acreage > 0 and price_per_acre > 2_000_000:
+        if price_per_acre > 2_000_000:
+            skipped_mega_sale += 1
             continue
 
-        if sale_price > 0 and acreage > 0:
-            rows.append({
+        rows.append({
                 "county":        county or None,
                 "state":         state or None,
                 "acreage":       float(acreage),
@@ -697,7 +711,11 @@ async def upload_comps(
             })
 
     geo_count = sum(1 for r in rows if r.get("latitude") and r.get("longitude"))
-    print(f"[comps] Valid rows to save: {len(rows)} of {len(df)} | with coordinates: {geo_count}", flush=True)
+    print(
+        f"[comps] Valid rows: {len(rows)} of {len(df)} | coords: {geo_count} | "
+        f"Skipped: price={skipped_no_price}, acreage={skipped_no_acreage}, mega={skipped_mega_sale}",
+        flush=True,
+    )
 
     # APN dedup — skip rows whose APN is already in DB
     deduped_count = 0
@@ -1165,3 +1183,24 @@ async def fix_coordinates(file: UploadFile = File(...)):
         "updated": updated,
         "skipped_no_match": skipped,
     }
+
+
+@router.post("/comps/fix-zip-codes")
+async def fix_zip_codes_in_db():
+    """Remove .0 suffix from zip_code values in crm_sold_comps (e.g. '37601.0' → '37601')."""
+    from services.supabase_client import get_supabase
+    sb = get_supabase()
+    try:
+        res = sb.table("crm_sold_comps").select("id,zip_code").like("zip_code", "%.0").execute()
+        rows = res.data or []
+        updated = 0
+        for row in rows:
+            raw = row.get("zip_code") or ""
+            cleaned = raw[:-2] if raw.endswith(".0") else raw
+            if cleaned != raw:
+                sb.table("crm_sold_comps").update({"zip_code": cleaned}).eq("id", row["id"]).execute()
+                updated += 1
+        print(f"[fix-zips] Updated {updated} of {len(rows)} rows", flush=True)
+        return {"checked": len(rows), "updated": updated}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
