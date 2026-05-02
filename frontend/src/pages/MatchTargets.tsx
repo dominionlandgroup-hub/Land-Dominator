@@ -281,7 +281,13 @@ export default function MatchTargets() {
               <p className="text-sm font-medium" style={{ color: '#10B981' }}>
                 Using {(dbCompsCount ?? compsStats.valid_rows).toLocaleString()} sold comps from database
               </p>
-              <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>Upload new comps on the Upload Comps page to refresh</p>
+              <button
+                className="text-xs mt-0.5"
+                style={{ color: '#4F46E5', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
+                onClick={() => setCurrentPage('upload-comps')}
+              >
+                + Add more comps
+              </button>
             </div>
           </div>
         </div>
@@ -712,7 +718,11 @@ export default function MatchTargets() {
                         {cd.uncovered_counties.length > 0 && (
                           <p className="text-[10px]" style={{ color: '#EF4444' }}>
                             No comps for: <span className="font-semibold">{cd.uncovered_counties.slice(0, 8).join(', ')}{cd.uncovered_counties.length > 8 ? ` +${cd.uncovered_counties.length - 8} more` : ''}</span>
-                            {' '}— upload comps from these counties to increase match rate
+                            {' '}—{' '}
+                            <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4F46E5', textDecoration: 'underline', fontSize: 'inherit', padding: 0 }} onClick={() => setCurrentPage('upload-comps')}>
+                              upload comps
+                            </button>
+                            {' '}from these counties to increase match rate
                           </p>
                         )}
                       </div>
@@ -726,13 +736,20 @@ export default function MatchTargets() {
                     </p>
                     {uncoveredZips.length > 0 && uncoveredZips.length <= 20 && (
                       <p className="text-[10px]" style={{ color: '#60A5FA' }}>
-                        To increase match rate, upload more comps from:{' '}
-                        <span className="font-mono">{uncoveredZips.join(', ')}</span>
+                        To increase match rate,{' '}
+                        <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#60A5FA', textDecoration: 'underline', fontSize: 'inherit', padding: 0 }} onClick={() => setCurrentPage('upload-comps')}>
+                          upload more comps
+                        </button>
+                        {' '}from: <span className="font-mono">{uncoveredZips.join(', ')}</span>
                       </p>
                     )}
                     {uncoveredZips.length > 20 && (
                       <p className="text-[10px]" style={{ color: '#60A5FA' }}>
-                        {uncoveredZips.length} ZIPs have no matched records — upload more comps from these areas to increase match rate
+                        {uncoveredZips.length} ZIPs have no matched records —{' '}
+                        <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#60A5FA', textDecoration: 'underline', fontSize: 'inherit', padding: 0 }} onClick={() => setCurrentPage('upload-comps')}>
+                          upload more comps
+                        </button>
+                        {' '}from these areas to increase match rate
                       </p>
                     )}
                   </div>

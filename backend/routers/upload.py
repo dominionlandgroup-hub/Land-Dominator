@@ -658,10 +658,42 @@ async def upload_comps(
 
     print(f"[comps] Valid rows to save: {len(rows)} of {len(df)}", flush=True)
 
+    # APN dedup — skip rows whose APN is already in DB
+    deduped_count = 0
+    if rows:
+        apns_in_upload = [r["apn"] for r in rows if r.get("apn")]
+        if apns_in_upload:
+            try:
+                from services.supabase_client import get_supabase as _gsb
+                _sb = _gsb()
+                existing_apns: set[str] = set()
+                for i in range(0, len(apns_in_upload), 500):
+                    batch = apns_in_upload[i:i + 500]
+                    res = _sb.table("crm_sold_comps").select("apn").in_("apn", batch).execute()
+                    for r in (res.data or []):
+                        if r.get("apn"):
+                            existing_apns.add(r["apn"])
+                before = len(rows)
+                rows = [r for r in rows if not r.get("apn") or r["apn"] not in existing_apns]
+                deduped_count = before - len(rows)
+                if deduped_count:
+                    print(f"[comps] APN dedup: skipped {deduped_count} rows already in DB", flush=True)
+            except Exception as _e:
+                print(f"[comps] APN dedup check failed (continuing without dedup): {_e}", flush=True)
+
     if not rows:
         print(f"[comps] No valid rows. Columns present: {list(df.columns)}", flush=True)
         session_id = str(uuid.uuid4())
         store_comps(session_id, df)
+        # Still fetch DB total for accurate display
+        db_total = 0
+        try:
+            from services.supabase_client import get_supabase as _gsb2
+            _sb2 = _gsb2()
+            _ct = _sb2.table("crm_sold_comps").select("id", count="exact").execute()
+            db_total = _ct.count or 0
+        except Exception:
+            pass
         return Response(
             content=json.dumps({
                 "status": "ok",
@@ -676,8 +708,9 @@ async def upload_comps(
                 "preview": [],
                 "saved_to_db": 0,
                 "detected_format": _detect_format(df),
-                "deduped_count": 0,
+                "deduped_count": deduped_count,
                 "geocoded_count": 0,
+                "db_total": db_total,
             }),
             media_type="application/json"
         )
@@ -722,6 +755,15 @@ async def upload_comps(
         _tb.print_exc()
         errors.append(str(outer_exc))
 
+    # Fetch real DB total after insert
+    db_total = 0
+    try:
+        count_res = supabase.table("crm_sold_comps").select("id", count="exact").execute()
+        db_total = count_res.count or 0
+        print(f"[comps] DB total after insert: {db_total}", flush=True)
+    except Exception:
+        pass
+
     # Build a safe preview (first 5 rows, string-only values)
     preview_cols = {
         "APN", "Parcel County", "County", "Parcel State", "State",
@@ -741,15 +783,16 @@ async def upload_comps(
             "parsed": len(df),
             "session_id": session_id,
             "total_rows": len(df),
-            "valid_rows": len(rows),
+            "valid_rows": len(rows) + deduped_count,
             "columns_found": list(df.columns),
             "missing_columns": [],
             "preview": preview,
             "uploaded_at": uploaded_at,
             "saved_to_db": saved,
             "detected_format": detected_format,
-            "deduped_count": 0,
+            "deduped_count": deduped_count,
             "geocoded_count": 0,
+            "db_total": db_total,
             "errors": errors[:5],
         }),
         media_type="application/json"

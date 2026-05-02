@@ -64,6 +64,8 @@ function UploadResultRow({ result }: { result: FileUploadResult }) {
   }
   const s = result.stats!
   const fmt = s.detected_format ?? 'land_portal'
+  const newSaved = s.saved_to_db ?? s.valid_rows
+  const dbTotal = s.db_total
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid #F3F4F6' }}>
       <span style={{ color: '#059669', fontSize: 14, flexShrink: 0 }}>✓</span>
@@ -72,16 +74,16 @@ function UploadResultRow({ result }: { result: FileUploadResult }) {
         {result.filename}
       </span>
       <span style={{ fontSize: 12, color: '#059669', fontWeight: 600, whiteSpace: 'nowrap' }}>
-        {(s.saved_to_db ?? s.valid_rows).toLocaleString()} saved
+        +{newSaved.toLocaleString()} added
       </span>
       {(s.deduped_count ?? 0) > 0 && (
         <span style={{ fontSize: 11, color: '#9CA3AF', whiteSpace: 'nowrap' }}>
-          {s.deduped_count} deduped
+          {s.deduped_count} dupes skipped
         </span>
       )}
-      {(s.geocoded_count ?? 0) > 0 && (
-        <span style={{ fontSize: 11, color: '#0891B2', whiteSpace: 'nowrap' }}>
-          {s.geocoded_count} geocoded
+      {dbTotal != null && (
+        <span style={{ fontSize: 11, color: '#4F46E5', fontWeight: 600, whiteSpace: 'nowrap' }}>
+          Total: {dbTotal.toLocaleString()} in DB
         </span>
       )}
     </div>
@@ -96,18 +98,17 @@ function InventoryTable({
   onClearAll,
   onClearState,
   onClearFile,
-  onRefresh,
+  onAddMore,
 }: {
   items: CompInventoryItem[]
   total: number
   onClearAll: () => void
   onClearState: (state: string) => void
   onClearFile: (filename: string) => void
-  onRefresh: () => void
+  onAddMore: () => void
 }) {
   const [clearAllConfirm, setClearAllConfirm] = useState(false)
 
-  // Unique states across all files
   const allStates = [...new Set(items.flatMap(i => i.states))].sort()
 
   function fmtDate(iso: string | null): string {
@@ -126,6 +127,7 @@ function InventoryTable({
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '12px 16px', background: '#F9FAFB', borderBottom: '1px solid #E5E7EB',
+          flexWrap: 'wrap', gap: 8,
         }}
       >
         <div>
@@ -136,7 +138,19 @@ function InventoryTable({
             {total.toLocaleString()} total comps · {items.length} file{items.length !== 1 ? 's' : ''}
           </span>
         </div>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          {/* Add More Comps */}
+          <button
+            onClick={onAddMore}
+            style={{
+              padding: '5px 12px', fontSize: 12, fontWeight: 600,
+              background: '#4F46E5', color: '#fff',
+              border: 'none', borderRadius: 6, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 5,
+            }}
+          >
+            <span style={{ fontSize: 14 }}>+</span> Add More Comps
+          </button>
           {/* Clear by state */}
           {allStates.map(st => (
             <button
@@ -152,29 +166,39 @@ function InventoryTable({
             </button>
           ))}
           {/* Clear all */}
-          <button
-            onClick={() => {
-              if (!clearAllConfirm) { setClearAllConfirm(true); return }
-              onClearAll()
-              setClearAllConfirm(false)
-            }}
-            style={{
-              padding: '4px 10px', fontSize: 11, fontWeight: 600,
-              background: clearAllConfirm ? '#FEF2F2' : 'transparent',
-              color: clearAllConfirm ? '#DC2626' : '#DC2626',
-              border: `1px solid ${clearAllConfirm ? '#DC2626' : '#FCA5A5'}`,
-              borderRadius: 5, cursor: 'pointer',
-            }}
-          >
-            {clearAllConfirm ? 'Confirm Clear All' : 'Clear All Comps'}
-          </button>
-          {clearAllConfirm && (
+          {!clearAllConfirm ? (
             <button
-              onClick={() => setClearAllConfirm(false)}
-              style={{ padding: '4px 8px', fontSize: 11, background: 'transparent', color: '#9CA3AF', border: '1px solid #E5E7EB', borderRadius: 5, cursor: 'pointer' }}
+              onClick={() => setClearAllConfirm(true)}
+              style={{
+                padding: '4px 10px', fontSize: 11, fontWeight: 600,
+                background: 'transparent', color: '#DC2626',
+                border: '1px solid #FCA5A5', borderRadius: 5, cursor: 'pointer',
+              }}
             >
-              Cancel
+              Clear All Comps
             </button>
+          ) : (
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              <span style={{ fontSize: 11, color: '#DC2626', fontWeight: 600 }}>
+                Delete all {total.toLocaleString()} comps?
+              </span>
+              <button
+                onClick={() => { onClearAll(); setClearAllConfirm(false) }}
+                style={{
+                  padding: '4px 10px', fontSize: 11, fontWeight: 700,
+                  background: '#DC2626', color: '#fff',
+                  border: 'none', borderRadius: 5, cursor: 'pointer',
+                }}
+              >
+                Yes, Delete All
+              </button>
+              <button
+                onClick={() => setClearAllConfirm(false)}
+                style={{ padding: '4px 8px', fontSize: 11, background: 'transparent', color: '#9CA3AF', border: '1px solid #E5E7EB', borderRadius: 5, cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -235,7 +259,7 @@ function InventoryTable({
               {total.toLocaleString()}
             </td>
             <td colSpan={3} style={{ padding: '8px 12px', fontSize: 11, color: '#9CA3AF' }}>
-              comps in database
+              unique comps in database
             </td>
           </tr>
         </tfoot>
@@ -259,6 +283,7 @@ export default function UploadComps() {
   const [uploadResults, setUploadResults] = useState<FileUploadResult[]>([])
   const [inventory, setInventory] = useState<{ items: CompInventoryItem[]; total_comps: number } | null>(null)
   const [loadingInventory, setLoadingInventory] = useState(false)
+  const [showDropZone, setShowDropZone] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   async function loadInventory() {
@@ -277,21 +302,34 @@ export default function UploadComps() {
     loadInventory()
   }, [])
 
+  const hasInventory = (inventory?.total_comps ?? 0) > 0
+
+  // Show drop zone initially when no comps exist; otherwise hidden until "Add More Comps" clicked
+  useEffect(() => {
+    if (!loadingInventory && !hasInventory) {
+      setShowDropZone(true)
+    }
+  }, [loadingInventory, hasInventory])
+
+  function handleAddMore() {
+    setShowDropZone(true)
+    // Small delay so the drop zone renders before we click the input
+    setTimeout(() => fileInputRef.current?.click(), 50)
+  }
+
   async function handleFiles(files: FileList | File[]) {
     const fileArr = Array.from(files).filter(f => f.name.toLowerCase().endsWith('.csv'))
     if (!fileArr.length) return
 
-    // Initialize all as uploading
     const initial: FileUploadResult[] = fileArr.map(f => ({
       filename: f.name,
       status: 'uploading',
     }))
     setUploadResults(prev => [...initial, ...prev])
 
-    // Upload sequentially (avoids overwhelming the server)
     for (const file of fileArr) {
       try {
-        const stats = await uploadComps(file, true) // append mode
+        const stats = await uploadComps(file, true) // always append
         setUploadResults(prev =>
           prev.map(r =>
             r.filename === file.name && r.status === 'uploading'
@@ -299,7 +337,6 @@ export default function UploadComps() {
               : r,
           ),
         )
-        // Update global comps stats with last file uploaded
         setCompsStats(stats)
         setDashboardData(null)
       } catch (e: unknown) {
@@ -316,7 +353,6 @@ export default function UploadComps() {
       }
     }
 
-    // Refresh inventory after all uploads
     await loadInventory()
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
@@ -332,6 +368,7 @@ export default function UploadComps() {
     setCompsStats(null)
     setDashboardData(null)
     setUploadResults([])
+    setShowDropZone(true)
   }
 
   async function handleClearState(state: string) {
@@ -344,8 +381,6 @@ export default function UploadComps() {
     await loadInventory()
   }
 
-  const hasInventory = (inventory?.total_comps ?? 0) > 0
-
   return (
     <div className="flex flex-col min-h-screen">
       {/* Page header */}
@@ -355,7 +390,7 @@ export default function UploadComps() {
             Upload Sold Comps
           </h1>
           <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>
-            Step 1 of 5 — Land Portal or MLS format · Upload multiple files · Append to existing inventory
+            Land Portal or MLS format · Upload multiple files · Appends to existing inventory
           </p>
         </div>
         {compsStats && (
@@ -376,10 +411,11 @@ export default function UploadComps() {
               onClearAll={handleClearAll}
               onClearState={handleClearState}
               onClearFile={handleClearFile}
-              onRefresh={loadInventory}
+              onAddMore={handleAddMore}
             />
           </div>
         )}
+
         {!hasInventory && !loadingInventory && (
           <div
             style={{
@@ -391,40 +427,58 @@ export default function UploadComps() {
           </div>
         )}
 
-        {/* Drop zone */}
-        <div
-          onDrop={handleDrop}
-          onDragOver={e => e.preventDefault()}
-          onClick={() => fileInputRef.current?.click()}
-          style={{
-            border: '2px dashed #C7D2FE',
-            borderRadius: 10,
-            padding: '32px 24px',
-            textAlign: 'center',
-            cursor: 'pointer',
-            background: '#F5F3FF',
-            marginBottom: 16,
-            transition: 'border-color 0.15s',
-          }}
-          onMouseEnter={e => (e.currentTarget.style.borderColor = '#4F46E5')}
-          onMouseLeave={e => (e.currentTarget.style.borderColor = '#C7D2FE')}
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv"
-            multiple
-            style={{ display: 'none' }}
-            onChange={e => e.target.files && handleFiles(e.target.files)}
-          />
-          <div style={{ fontSize: 28, marginBottom: 8 }}>📂</div>
-          <p style={{ fontWeight: 600, fontSize: 14, color: '#4F46E5', margin: '0 0 4px' }}>
-            Drop CSV files here or click to browse
-          </p>
-          <p style={{ fontSize: 12, color: '#6B7280', margin: 0 }}>
-            Accepts Land Portal exports, MLS exports, or generic CSV · Multiple files supported · Will append to existing comps
-          </p>
-        </div>
+        {/* Hidden file input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".csv"
+          multiple
+          style={{ display: 'none' }}
+          onChange={e => e.target.files && handleFiles(e.target.files)}
+        />
+
+        {/* Drop zone — always shown when no inventory, toggled when inventory exists */}
+        {showDropZone && (
+          <div
+            onDrop={handleDrop}
+            onDragOver={e => e.preventDefault()}
+            onClick={() => fileInputRef.current?.click()}
+            style={{
+              border: '2px dashed #C7D2FE',
+              borderRadius: 10,
+              padding: '32px 24px',
+              textAlign: 'center',
+              cursor: 'pointer',
+              background: '#F5F3FF',
+              marginBottom: 16,
+              transition: 'border-color 0.15s',
+              position: 'relative',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.borderColor = '#4F46E5')}
+            onMouseLeave={e => (e.currentTarget.style.borderColor = '#C7D2FE')}
+          >
+            {hasInventory && (
+              <button
+                onClick={e => { e.stopPropagation(); setShowDropZone(false) }}
+                style={{
+                  position: 'absolute', top: 8, right: 8,
+                  background: 'transparent', border: 'none', cursor: 'pointer',
+                  fontSize: 16, color: '#9CA3AF', lineHeight: 1,
+                }}
+                title="Close"
+              >
+                ×
+              </button>
+            )}
+            <div style={{ fontSize: 28, marginBottom: 8 }}>📂</div>
+            <p style={{ fontWeight: 600, fontSize: 14, color: '#4F46E5', margin: '0 0 4px' }}>
+              {hasInventory ? 'Drop CSV files here or click to browse' : 'Drop CSV files here or click to browse'}
+            </p>
+            <p style={{ fontSize: 12, color: '#6B7280', margin: 0 }}>
+              Accepts Land Portal exports, MLS exports, or generic CSV · Multiple files supported · Appends to existing comps · Duplicate APNs automatically skipped
+            </p>
+          </div>
+        )}
 
         {/* Upload results */}
         {uploadResults.length > 0 && (
@@ -478,7 +532,6 @@ export default function UploadComps() {
               />
             </div>
 
-            {/* LP export steps */}
             <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid #F3F4F6' }}>
               <p style={{ fontWeight: 600, fontSize: 12, color: '#374151', marginBottom: 8 }}>Land Portal export steps:</p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 6 }}>
@@ -507,12 +560,11 @@ export default function UploadComps() {
             padding: '10px 14px', fontSize: 12, color: '#6B7280',
           }}
         >
-          <strong style={{ color: '#374151' }}>Merge strategy: </strong>
-          Files are appended to the comp database. Duplicate APNs are automatically skipped — Land Portal records take priority over MLS records for the same parcel. Use "Clear" buttons above to remove specific files or states before re-uploading.
+          <strong style={{ color: '#374151' }}>Deduplication: </strong>
+          Files are appended to the comp database. Duplicate APNs are automatically detected and skipped before inserting — you can safely re-upload the same file without creating duplicates. Use "Remove" next to each file to delete just those comps, or "Clear All Comps" to start fresh.
         </div>
       </div>
 
-      {/* CSS for spinner */}
       <style>{`
         @keyframes spin { to { transform: rotate(360deg) } }
       `}</style>

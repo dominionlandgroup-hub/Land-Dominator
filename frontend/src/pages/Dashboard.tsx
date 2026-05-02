@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useApp } from '../context/AppContext'
-import { fetchDashboard, getDbCompsCount } from '../api/client'
+import { fetchDashboard, getDbCompsCount, getCompsInventory, clearAllComps, clearCompsByFile, type CompInventoryItem } from '../api/client'
 import { createCrmCampaign, saveBuyBox } from '../api/crm'
 import LoadingSpinner from '../components/LoadingSpinner'
 import type { ZipStats, CompLocation, SweetSpot, LandQualityStats } from '../types'
@@ -12,10 +12,28 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [dbCompsCount, setDbCompsCount] = useState<number | null>(null)
+  const [inventory, setInventory] = useState<{ items: CompInventoryItem[]; total_comps: number } | null>(null)
+  const [clearAllConfirm, setClearAllConfirm] = useState(false)
 
   useEffect(() => {
     getDbCompsCount().then(setDbCompsCount).catch(() => {})
+    getCompsInventory().then(setInventory).catch(() => {})
   }, [])
+
+  async function handleClearAll() {
+    await clearAllComps()
+    setInventory(null)
+    setDbCompsCount(0)
+    setClearAllConfirm(false)
+    setDashboardData(null)
+  }
+
+  async function handleClearFile(filename: string) {
+    await clearCompsByFile(filename)
+    const inv = await getCompsInventory()
+    setInventory(inv)
+    setDbCompsCount(inv.total_comps)
+  }
 
   useEffect(() => {
     if (!compsStats) return
@@ -82,6 +100,87 @@ export default function Dashboard() {
       </div>
 
       <div className="p-8 max-w-[1400px] mx-auto w-full">
+
+        {/* ── Comp Inventory ───────────────────────────────────── */}
+        {inventory && inventory.items.length > 0 && (
+          <div className="mb-6 rounded-xl overflow-hidden" style={{ border: '1px solid #E5E7EB' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', background: '#F9FAFB', borderBottom: '1px solid #E5E7EB', flexWrap: 'wrap', gap: 8 }}>
+              <div>
+                <span style={{ fontWeight: 600, fontSize: 13, color: '#111827' }}>Comp Inventory</span>
+                <span style={{ marginLeft: 10, fontSize: 12, color: '#6B7280' }}>
+                  {(dbCompsCount ?? inventory.total_comps).toLocaleString()} total · {inventory.items.length} file{inventory.items.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <button
+                  onClick={() => setCurrentPage('upload-comps')}
+                  style={{ padding: '4px 12px', fontSize: 12, fontWeight: 600, background: '#4F46E5', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}
+                >
+                  + Add More Comps
+                </button>
+                {!clearAllConfirm ? (
+                  <button
+                    onClick={() => setClearAllConfirm(true)}
+                    style={{ padding: '4px 10px', fontSize: 11, fontWeight: 600, background: 'transparent', color: '#DC2626', border: '1px solid #FCA5A5', borderRadius: 5, cursor: 'pointer' }}
+                  >
+                    Clear All
+                  </button>
+                ) : (
+                  <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                    <span style={{ fontSize: 11, color: '#DC2626', fontWeight: 600 }}>
+                      Delete all {(dbCompsCount ?? inventory.total_comps).toLocaleString()} comps?
+                    </span>
+                    <button onClick={handleClearAll} style={{ padding: '4px 10px', fontSize: 11, fontWeight: 700, background: '#DC2626', color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer' }}>
+                      Yes
+                    </button>
+                    <button onClick={() => setClearAllConfirm(false)} style={{ padding: '4px 8px', fontSize: 11, background: 'transparent', color: '#9CA3AF', border: '1px solid #E5E7EB', borderRadius: 5, cursor: 'pointer' }}>
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, background: '#fff' }}>
+              <tbody>
+                {inventory.items.map((item, i) => (
+                  <tr key={item.filename} style={{ borderTop: i === 0 ? 'none' : '1px solid #F3F4F6' }}>
+                    <td style={{ padding: '7px 16px', color: '#374151', fontFamily: 'monospace', fontSize: 11, maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {item.filename}
+                    </td>
+                    <td style={{ padding: '7px 8px', fontWeight: 600, color: '#111827', whiteSpace: 'nowrap' }}>
+                      {item.record_count.toLocaleString()} comps
+                    </td>
+                    <td style={{ padding: '7px 8px', color: '#9CA3AF', whiteSpace: 'nowrap' }}>
+                      {item.uploaded_at ? new Date(item.uploaded_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}
+                    </td>
+                    <td style={{ padding: '7px 16px 7px 8px' }}>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        {item.states.map(s => (
+                          <span key={s} style={{ fontSize: 10, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'rgba(79,70,229,0.08)', color: '#4F46E5', border: '1px solid rgba(79,70,229,0.15)' }}>{s}</span>
+                        ))}
+                      </div>
+                    </td>
+                    <td style={{ padding: '7px 16px', textAlign: 'right' }}>
+                      <button
+                        onClick={() => handleClearFile(item.filename)}
+                        style={{ fontSize: 11, color: '#9CA3AF', background: 'transparent', border: '1px solid #E5E7EB', borderRadius: 4, padding: '2px 8px', cursor: 'pointer' }}
+                      >
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={{ borderTop: '2px solid #E5E7EB', background: '#F9FAFB' }}>
+                  <td style={{ padding: '7px 16px', fontWeight: 600, fontSize: 12, color: '#374151' }}>Total</td>
+                  <td style={{ padding: '7px 8px', fontWeight: 700, color: '#4F46E5' }}>{(dbCompsCount ?? inventory.total_comps).toLocaleString()} comps</td>
+                  <td colSpan={3} />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
 
         {/* ── Section 1: 4 Stat Cards ──────────────────────────── */}
         {dashboardData && (

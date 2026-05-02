@@ -12,6 +12,7 @@ export interface UploadStats {
   detected_format?: string   // land_portal | mls | generic
   deduped_count?: number
   geocoded_count?: number
+  db_total?: number
 }
 
 // ─── Dashboard ─────────────────────────────────────────────────────────────
