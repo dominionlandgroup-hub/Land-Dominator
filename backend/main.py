@@ -168,15 +168,15 @@ async def check_crm_schema() -> None:
             "  );\n"
         )
 
-    # Auto-migrate hillsborough_leads table
+    # Auto-migrate tampa_bay_leads table
     try:
         from services.supabase_client import get_supabase
         sb = get_supabase()
-        sb.table("hillsborough_leads").select("id").limit(1).execute()
+        sb.table("tampa_bay_leads").select("id").limit(1).execute()
     except Exception:
         print(
             "\n"
-            "NOTE: hillsborough_leads table missing. Call POST /lead-stacker/migrate to create it,\n"
+            "NOTE: tampa_bay_leads table missing. Call POST /lead-stacker/migrate to create it,\n"
             "or run the SQL from backend/routers/lead_stacker.py MIGRATION_SQL in Supabase.\n"
         )
 

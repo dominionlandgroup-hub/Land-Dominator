@@ -1,66 +1,37 @@
 import React, { useEffect, useRef, useState } from 'react'
 import {
+  getSchema,
   uploadSourceCSV,
   uploadMLSCSV,
   getLeadStackerStats,
   getLeads,
   exportLeadsUrl,
-  clearAllLeads,
-  clearSource,
+  clearLeads,
+  clearSignal,
+  type County,
   type SourceKey,
-  type HillsboroughLead,
+  type TampaBayLead,
   type LeadStackerStats,
   type UploadResult,
+  type SchemaInfo,
 } from '../api/leadStacker'
 
-// ── Constants ───────────────────────────────────────────────────────────────
+// ── Constants ────────────────────────────────────────────────────────────────
 
-const SOURCE_META: {
-  key: SourceKey
-  label: string
-  description: string
-  icon: string
-}[] = [
-  {
-    key: 'tax-deed',
-    label: 'Tax Deed',
-    description: 'Weekly Tax Deed Spreadsheet — hillsclerk.com',
-    icon: '⚖️',
-  },
-  {
-    key: 'lands-available',
-    label: 'Lands Available',
-    description: 'Lands Available for Taxes — hillsclerk.com Public Access',
-    icon: '🏚️',
-  },
-  {
-    key: 'lis-pendens',
-    label: 'Lis Pendens',
-    description: 'Monthly Lis Pendens CSV — hillsclerk.com',
-    icon: '📋',
-  },
-  {
-    key: 'foreclosure',
-    label: 'Foreclosure',
-    description: 'Mortgage Foreclosure — hillsborough.realforeclose.com',
-    icon: '🔨',
-  },
-  {
-    key: 'probate',
-    label: 'Probate',
-    description: 'Probate Cases — hillsclerk.com Case Search',
-    icon: '📜',
-  },
-  {
-    key: 'code-violation',
-    label: 'Code Violations',
-    description: 'Code Violation Records — Hillsborough County',
-    icon: '⚠️',
-  },
+const COUNTIES: { id: County; label: string; color: string }[] = [
+  { id: 'hillsborough', label: 'Hillsborough', color: '#4F46E5' },
+  { id: 'pinellas',     label: 'Pinellas',     color: '#0891B2' },
+  { id: 'pasco',        label: 'Pasco',        color: '#059669' },
 ]
 
+const COUNTY_COLOR: Record<string, string> = {
+  hillsborough: '#4F46E5',
+  pinellas: '#0891B2',
+  pasco: '#059669',
+}
+
 const SCORE_COLORS: Record<number, string> = {
-  1: '#4B5563',
+  1: '#9CA3AF',
   2: '#6B7280',
   3: '#D97706',
   4: '#F59E0B',
@@ -68,24 +39,25 @@ const SCORE_COLORS: Record<number, string> = {
   6: '#DC2626',
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+const SOURCE_ICONS: Record<string, string> = {
+  'tax-deed':        '⚖️',
+  'lands-available': '🏚️',
+  'lis-pendens':     '📋',
+  'foreclosure':     '🔨',
+  'probate':         '📜',
+  'code-violation':  '⚠️',
+}
+
+// ── Score badge ───────────────────────────────────────────────────────────────
 
 function ScoreBadge({ score }: { score: number }) {
-  const color = SCORE_COLORS[score] ?? '#4B5563'
   return (
     <span
       style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        width: 28,
-        height: 28,
-        borderRadius: '50%',
-        background: color,
-        color: '#fff',
-        fontSize: 12,
-        fontWeight: 700,
-        flexShrink: 0,
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        width: 28, height: 28, borderRadius: '50%',
+        background: SCORE_COLORS[score] ?? '#9CA3AF',
+        color: '#fff', fontSize: 12, fontWeight: 700, flexShrink: 0,
       }}
     >
       {score}
@@ -93,164 +65,152 @@ function ScoreBadge({ score }: { score: number }) {
   )
 }
 
-function SourceIcon({ lead }: { lead: HillsboroughLead }) {
-  const flags = [
-    { key: 'has_tax_deed',        label: 'TD', title: 'Tax Deed' },
-    { key: 'has_lands_available', label: 'LA', title: 'Lands Available' },
-    { key: 'has_lis_pendens',     label: 'LP', title: 'Lis Pendens' },
-    { key: 'has_foreclosure',     label: 'FC', title: 'Foreclosure' },
-    { key: 'has_probate',         label: 'PB', title: 'Probate' },
-    { key: 'has_code_violation',  label: 'CV', title: 'Code Violation' },
-  ] as const
+// ── Pain signal chips ─────────────────────────────────────────────────────────
+
+function SignalChips({
+  signals,
+  schema,
+}: {
+  signals: string[]
+  schema: SchemaInfo | null
+}) {
   return (
     <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-      {flags.map(f => {
-        const active = (lead as unknown as Record<string, boolean>)[f.key]
+      {signals.map(sig => {
+        const [county, source] = sig.split(':', 2)
+        const label = schema?.counties[county as County]?.[source as SourceKey]?.label ?? source
+        const short = label.split(/[\s/]/)[0].slice(0, 3).toUpperCase()
+        const color = COUNTY_COLOR[county] ?? '#4F46E5'
         return (
           <span
-            key={f.key}
-            title={f.title}
+            key={sig}
+            title={`${county.charAt(0).toUpperCase() + county.slice(1)}: ${label}`}
             style={{
-              fontSize: 9,
-              fontWeight: 700,
-              padding: '1px 4px',
-              borderRadius: 3,
-              background: active ? '#4F46E5' : '#F3F4F6',
-              color: active ? '#FFFFFF' : '#9CA3AF',
-              border: active ? '1px solid #4F46E5' : '1px solid #E5E7EB',
+              fontSize: 9, fontWeight: 700, padding: '1px 4px', borderRadius: 3,
+              background: `${color}1A`, color: color, border: `1px solid ${color}40`,
             }}
           >
-            {f.label}
+            {short}
           </span>
         )
       })}
-      {lead.on_mls && (
-        <span
-          title="On MLS"
-          style={{
-            fontSize: 9, fontWeight: 700, padding: '1px 4px', borderRadius: 3,
-            background: '#3B82F6', color: '#fff', border: '1px solid #3B82F6',
-          }}
-        >MLS</span>
-      )}
     </div>
   )
 }
 
-// ── Upload Card ──────────────────────────────────────────────────────────────
+// ── Source upload card ────────────────────────────────────────────────────────
 
 function SourceCard({
-  meta,
-  count,
+  county,
+  source,
+  label,
+  url,
+  signalKey,
+  signalCount,
   onUpload,
   onClear,
 }: {
-  meta: typeof SOURCE_META[number]
-  count: number
-  onUpload: (file: File) => Promise<void>
+  county: County
+  source: SourceKey
+  label: string
+  url: string
+  signalKey: string
+  signalCount: number
+  onUpload: (file: File) => Promise<UploadResult>
   onClear: () => Promise<void>
 }) {
-  const ref = useRef<HTMLInputElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<UploadResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const countyColor = COUNTY_COLOR[county]
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
-    setLoading(true)
-    setError(null)
-    setResult(null)
+    setLoading(true); setError(null); setResult(null)
     try {
-      await onUpload(file)
-      setResult({ source: meta.key, label: meta.label, total_in_csv: 0, inserted: 0, updated: 0, skipped: 0 })
+      const r = await onUpload(file)
+      setResult(r)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Upload failed')
     } finally {
       setLoading(false)
-      if (ref.current) ref.current.value = ''
+      if (fileRef.current) fileRef.current.value = ''
     }
   }
 
-  const hasData = count > 0
+  const hasData = signalCount > 0
 
   return (
     <div
       style={{
-        background: '#FFFFFF',
-        border: `1px solid ${hasData ? '#4F46E5' : '#E5E7EB'}`,
+        background: '#fff',
+        border: `1px solid ${hasData ? countyColor + '40' : '#E5E7EB'}`,
+        borderLeft: hasData ? `3px solid ${countyColor}` : '3px solid transparent',
         borderRadius: 8,
-        padding: 16,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 10,
+        padding: '12px 14px',
+        display: 'flex', flexDirection: 'column', gap: 8,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-        <span style={{ fontSize: 20, lineHeight: 1 }}>{meta.icon}</span>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+        <span style={{ fontSize: 18, lineHeight: 1.1 }}>{SOURCE_ICONS[source] ?? '📄'}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 600, color: '#111827', fontSize: 13 }}>{meta.label}</div>
-          <div style={{ fontSize: 11, color: '#6B7280', marginTop: 2, lineHeight: 1.4 }}>
-            {meta.description}
+          <div style={{ fontWeight: 600, color: '#111827', fontSize: 12 }}>{label}</div>
+          <div style={{ fontSize: 10, color: '#9CA3AF', marginTop: 1 }}>
+            {url}
           </div>
         </div>
         {hasData && (
           <span
             style={{
-              background: 'rgba(79,70,229,0.08)',
-              border: '1px solid rgba(79,70,229,0.2)',
-              color: '#4F46E5',
-              borderRadius: 4,
-              padding: '2px 8px',
-              fontSize: 11,
-              fontWeight: 700,
-              whiteSpace: 'nowrap',
+              background: `${countyColor}12`, border: `1px solid ${countyColor}30`,
+              color: countyColor, borderRadius: 4, padding: '1px 6px',
+              fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap',
             }}
           >
-            {count.toLocaleString()} leads
+            {signalCount.toLocaleString()}
           </span>
         )}
       </div>
 
       {error && (
-        <div style={{ fontSize: 11, color: '#F87171', background: 'rgba(239,68,68,0.1)', borderRadius: 4, padding: '4px 8px' }}>
+        <div style={{ fontSize: 10, color: '#DC2626', background: '#FEF2F2', borderRadius: 4, padding: '3px 6px' }}>
           {error}
         </div>
       )}
+      {result && (
+        <div style={{ fontSize: 10, color: '#059669', background: '#F0FDF4', borderRadius: 4, padding: '3px 6px' }}>
+          +{result.inserted} new · {result.updated} updated
+          {result.skipped_improved_land > 0 && (
+            <span style={{ color: '#6B7280' }}> · {result.skipped_improved_land} improved skipped</span>
+          )}
+        </div>
+      )}
 
-      <div style={{ display: 'flex', gap: 8 }}>
-        <input ref={ref} type="file" accept=".csv" style={{ display: 'none' }} onChange={handleFile} />
+      <div style={{ display: 'flex', gap: 6 }}>
+        <input ref={fileRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={handleFile} />
         <button
-          onClick={() => ref.current?.click()}
+          onClick={() => fileRef.current?.click()}
           disabled={loading}
           style={{
-            flex: 1,
-            padding: '7px 12px',
-            background: loading ? '#F3F4F6' : '#4F46E5',
-            color: loading ? '#9CA3AF' : '#FFFFFF',
-            border: 'none',
-            borderRadius: 6,
-            fontWeight: 600,
-            fontSize: 12,
-            cursor: loading ? 'not-allowed' : 'pointer',
+            flex: 1, padding: '5px 10px', borderRadius: 5, fontSize: 11, fontWeight: 600,
+            background: loading ? '#F3F4F6' : countyColor,
+            color: loading ? '#9CA3AF' : '#fff',
+            border: 'none', cursor: loading ? 'not-allowed' : 'pointer',
           }}
         >
-          {loading ? 'Uploading…' : hasData ? 'Re-Upload CSV' : 'Upload CSV'}
+          {loading ? 'Uploading…' : hasData ? 'Re-Upload' : 'Upload CSV'}
         </button>
         {hasData && (
           <button
             onClick={onClear}
             style={{
-              padding: '7px 10px',
-              background: 'transparent',
-              color: '#6B7280',
-              border: '1px solid #E5E7EB',
-              borderRadius: 6,
-              fontSize: 12,
-              cursor: 'pointer',
+              padding: '5px 8px', background: 'transparent', color: '#9CA3AF',
+              border: '1px solid #E5E7EB', borderRadius: 5, fontSize: 11, cursor: 'pointer',
             }}
           >
-            Clear
+            ✕
           </button>
         )}
       </div>
@@ -258,36 +218,36 @@ function SourceCard({
   )
 }
 
-// ── Main Page ────────────────────────────────────────────────────────────────
+// ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function LeadStacker() {
+  const [schema, setSchema] = useState<SchemaInfo | null>(null)
   const [stats, setStats] = useState<LeadStackerStats | null>(null)
-  const [leads, setLeads] = useState<HillsboroughLead[]>([])
+  const [leads, setLeads] = useState<TampaBayLead[]>([])
+  const [county, setCounty] = useState<County | 'all'>('all')
   const [minScore, setMinScore] = useState(1)
-  const [loadingStats, setLoadingStats] = useState(true)
   const [loadingLeads, setLoadingLeads] = useState(false)
   const [mlsFile, setMlsFile] = useState<File | null>(null)
   const [mlsLoading, setMlsLoading] = useState(false)
   const [mlsResult, setMlsResult] = useState<{ total_in_csv: number; matched_leads: number } | null>(null)
-  const [clearConfirm, setClearConfirm] = useState(false)
-  const [uploadResults, setUploadResults] = useState<Record<string, UploadResult>>({})
+  const [clearTarget, setClearTarget] = useState<string | null>(null)
   const mlsRef = useRef<HTMLInputElement>(null)
 
-  async function loadStats() {
+  async function refresh() {
     try {
       const s = await getLeadStackerStats()
       setStats(s)
-    } catch {
-      // Table may not exist yet
-    } finally {
-      setLoadingStats(false)
-    }
+    } catch { /* table may not exist yet */ }
   }
 
   async function loadLeads() {
     setLoadingLeads(true)
     try {
-      const res = await getLeads({ minScore, limit: 500 })
+      const res = await getLeads({
+        county: county === 'all' ? undefined : county,
+        minScore,
+        limit: 1000,
+      })
       setLeads(res.leads)
     } catch {
       setLeads([])
@@ -297,130 +257,104 @@ export default function LeadStacker() {
   }
 
   useEffect(() => {
-    loadStats()
+    getSchema().then(setSchema).catch(() => null)
+    refresh()
   }, [])
 
   useEffect(() => {
     loadLeads()
-  }, [minScore]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [county, minScore]) // eslint-disable-line
 
-  async function handleSourceUpload(source: SourceKey, file: File) {
-    const result = await uploadSourceCSV(source, file)
-    setUploadResults(prev => ({ ...prev, [source]: result }))
-    await loadStats()
+  async function handleUpload(c: County, s: SourceKey, file: File): Promise<UploadResult> {
+    const result = await uploadSourceCSV(c, s, file)
+    await refresh()
+    await loadLeads()
+    return result
+  }
+
+  async function handleClearSignal(c: County, s: SourceKey) {
+    await clearSignal(c, s)
+    await refresh()
     await loadLeads()
   }
 
-  async function handleSourceClear(source: SourceKey) {
-    await clearSource(source)
-    await loadStats()
+  async function handleClearCounty(c: County) {
+    if (clearTarget !== c) { setClearTarget(c); return }
+    await clearLeads(c)
+    setClearTarget(null)
+    await refresh()
     await loadLeads()
   }
 
   async function handleMLSUpload() {
     if (!mlsFile) return
     setMlsLoading(true)
-    setMlsResult(null)
     try {
       const r = await uploadMLSCSV(mlsFile)
       setMlsResult(r)
-      await loadStats()
+      await refresh()
       await loadLeads()
-    } catch {
-      // ignore
-    } finally {
+    } catch { /* ignore */ } finally {
       setMlsLoading(false)
       setMlsFile(null)
       if (mlsRef.current) mlsRef.current.value = ''
     }
   }
 
-  async function handleClearAll() {
-    if (!clearConfirm) { setClearConfirm(true); return }
-    await clearAllLeads()
-    setClearConfirm(false)
-    setUploadResults({})
-    await loadStats()
-    await loadLeads()
-  }
-
   const totalLeads = stats?.total ?? 0
-  const highValue = stats?.high_value ?? 0
+
+  // Build signal count map: "hillsborough:tax-deed" → count
+  const signalCounts = stats?.signal_counts ?? {}
 
   return (
-    <div style={{ padding: 24, maxWidth: 1200, margin: '0 auto' }}>
+    <div style={{ padding: '24px 28px', maxWidth: 1300, margin: '0 auto' }}>
 
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, gap: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#4F46E5' }} />
-            <h1 style={{ fontSize: 20, fontWeight: 700, color: '#111827', margin: 0 }}>
-              Hillsborough Lead Stacker
-            </h1>
-          </div>
-          <p style={{ fontSize: 13, color: '#6B7280', marginTop: 4 }}>
-            Cross-reference 6 county distress signals · Score 1-6 · Export for BatchLeads skip trace
+          <h1 style={{ fontSize: 20, fontWeight: 700, color: '#111827', margin: 0 }}>
+            Tampa Bay Lead Stacker
+          </h1>
+          <p style={{ fontSize: 13, color: '#6B7280', margin: '4px 0 0' }}>
+            Hillsborough · Pinellas · Pasco — cross-reference distress signals, score 1-6, export to BatchLeads
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <a
-            href={exportLeadsUrl(minScore)}
+            href={exportLeadsUrl(minScore, county)}
             download
             style={{
-              padding: '8px 16px',
-              background: '#4F46E5',
-              color: '#FFFFFF',
-              borderRadius: 6,
-              fontWeight: 700,
-              fontSize: 13,
-              textDecoration: 'none',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              opacity: totalLeads === 0 ? 0.5 : 1,
+              padding: '8px 16px', background: '#4F46E5', color: '#fff',
+              borderRadius: 6, fontWeight: 700, fontSize: 13, textDecoration: 'none',
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              opacity: totalLeads === 0 ? 0.4 : 1,
               pointerEvents: totalLeads === 0 ? 'none' : 'auto',
             }}
           >
             ↓ Export BatchLeads CSV
           </a>
-          <button
-            onClick={handleClearAll}
-            style={{
-              padding: '8px 14px',
-              background: 'transparent',
-              color: clearConfirm ? '#EF4444' : '#6B7280',
-              border: `1px solid ${clearConfirm ? '#EF4444' : '#374151'}`,
-              borderRadius: 6,
-              fontSize: 13,
-              cursor: 'pointer',
-              fontWeight: 600,
-            }}
-          >
-            {clearConfirm ? 'Confirm Clear All' : 'Clear All'}
-          </button>
-          {clearConfirm && (
-            <button
-              onClick={() => setClearConfirm(false)}
-              style={{ padding: '8px 10px', background: 'transparent', color: '#6B7280', border: '1px solid #374151', borderRadius: 6, fontSize: 13, cursor: 'pointer' }}
-            >
-              Cancel
-            </button>
-          )}
         </div>
       </div>
 
-      {/* Stats bar */}
+      {/* Stats row */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-          gap: 12,
+          gridTemplateColumns: 'auto auto auto auto repeat(6, auto)',
+          gap: 10,
           marginBottom: 24,
+          overflowX: 'auto',
         }}
       >
-        <StatCard label="Total Leads" value={totalLeads.toLocaleString()} gold />
-        <StatCard label="High Value (4-6)" value={highValue.toLocaleString()} />
+        <StatCard label="Total Leads" value={totalLeads.toLocaleString()} primary />
+        {COUNTIES.map(c => (
+          <StatCard
+            key={c.id}
+            label={c.label}
+            value={(stats?.county_counts[c.id] ?? 0).toLocaleString()}
+            color={c.color}
+          />
+        ))}
         {[6, 5, 4, 3, 2, 1].map(s => (
           <StatCard
             key={s}
@@ -431,87 +365,52 @@ export default function LeadStacker() {
         ))}
       </div>
 
-      {/* Source upload grid */}
-      <h2 style={{ fontSize: 13, fontWeight: 700, color: '#9CA3AF', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>
-        Data Sources
-      </h2>
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-          gap: 12,
-          marginBottom: 24,
-        }}
-      >
-        {SOURCE_META.map(meta => (
-          <SourceCard
-            key={meta.key}
-            meta={meta}
-            count={stats?.source_counts[meta.key] ?? 0}
-            onUpload={file => handleSourceUpload(meta.key, file)}
-            onClear={() => handleSourceClear(meta.key)}
+      {/* County tabs + source upload cards */}
+      <div style={{ marginBottom: 24 }}>
+        {COUNTIES.map(cInfo => (
+          <CountySection
+            key={cInfo.id}
+            county={cInfo.id}
+            color={cInfo.color}
+            schema={schema}
+            signalCounts={signalCounts}
+            onUpload={handleUpload}
+            onClearSignal={handleClearSignal}
+            onClearAll={handleClearCounty}
+            clearTarget={clearTarget}
+            setClearTarget={setClearTarget}
           />
         ))}
       </div>
 
-      {/* Upload result feedback */}
-      {Object.values(uploadResults).length > 0 && (
-        <div
-          style={{
-            background: 'rgba(79,70,229,0.04)',
-            border: '1px solid rgba(79,70,229,0.15)',
-            borderRadius: 8,
-            padding: '12px 16px',
-            marginBottom: 24,
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: 16,
-          }}
-        >
-          {Object.values(uploadResults).map(r => (
-            <div key={r.source} style={{ fontSize: 12, color: '#4F46E5' }}>
-              <strong>{r.label}:</strong> {r.inserted} new · {r.updated} updated
-              {r.skipped > 0 && <span style={{ color: '#6B7280' }}> · {r.skipped} skipped (no parcel ID)</span>}
-            </div>
-          ))}
-        </div>
-      )}
-
       {/* MLS cross-reference */}
       <div
         style={{
-          background: '#FFFFFF',
-          border: '1px solid #E5E7EB',
-          borderRadius: 8,
-          padding: 16,
-          marginBottom: 24,
+          background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8,
+          padding: '14px 16px', marginBottom: 24,
         }}
       >
-        <h3 style={{ fontSize: 13, fontWeight: 700, color: '#111827', margin: '0 0 6px 0' }}>
-          MLS Cross-Reference
-        </h3>
-        <p style={{ fontSize: 12, color: '#6B7280', margin: '0 0 12px 0' }}>
-          Upload an MLS export CSV. Leads matching by parcel ID will be flagged — useful for finding sellers already
-          trying to list.
-        </p>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+          <div>
+            <div style={{ fontWeight: 600, color: '#111827', fontSize: 13 }}>MLS Cross-Reference</div>
+            <div style={{ fontSize: 11, color: '#6B7280', marginTop: 2 }}>
+              Upload MLS export CSV — matches against all three counties by parcel ID or owner name
+            </div>
+          </div>
+          {(stats?.mls_cross_referenced ?? 0) > 0 && !mlsResult && (
+            <span style={{ fontSize: 12, color: '#6B7280' }}>
+              {stats?.mls_cross_referenced} leads flagged as on MLS
+            </span>
+          )}
+        </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <input
-            ref={mlsRef}
-            type="file"
-            accept=".csv"
-            style={{ display: 'none' }}
-            onChange={e => setMlsFile(e.target.files?.[0] ?? null)}
-          />
+          <input ref={mlsRef} type="file" accept=".csv" style={{ display: 'none' }}
+            onChange={e => setMlsFile(e.target.files?.[0] ?? null)} />
           <button
             onClick={() => mlsRef.current?.click()}
             style={{
-              padding: '7px 14px',
-              background: '#F3F4F6',
-              color: '#374151',
-              border: '1px solid #E5E7EB',
-              borderRadius: 6,
-              fontSize: 12,
-              cursor: 'pointer',
+              padding: '6px 12px', background: '#F9FAFB', color: '#374151',
+              border: '1px solid #D1D5DB', borderRadius: 6, fontSize: 12, cursor: 'pointer',
             }}
           >
             {mlsFile ? mlsFile.name : 'Choose MLS CSV…'}
@@ -521,13 +420,8 @@ export default function LeadStacker() {
               onClick={handleMLSUpload}
               disabled={mlsLoading}
               style={{
-                padding: '7px 14px',
-                background: '#3B82F6',
-                color: '#fff',
-                border: 'none',
-                borderRadius: 6,
-                fontWeight: 600,
-                fontSize: 12,
+                padding: '6px 14px', background: '#2563EB', color: '#fff',
+                border: 'none', borderRadius: 6, fontWeight: 600, fontSize: 12,
                 cursor: mlsLoading ? 'not-allowed' : 'pointer',
               }}
             >
@@ -535,135 +429,179 @@ export default function LeadStacker() {
             </button>
           )}
           {mlsResult && (
-            <span style={{ fontSize: 12, color: '#10B981' }}>
-              ✓ {mlsResult.matched_leads} leads matched from {mlsResult.total_in_csv} MLS records
-            </span>
-          )}
-          {(stats?.mls_cross_referenced ?? 0) > 0 && !mlsResult && (
-            <span style={{ fontSize: 12, color: '#6B7280' }}>
-              {stats?.mls_cross_referenced} leads currently flagged as on MLS
+            <span style={{ fontSize: 12, color: '#059669' }}>
+              ✓ {mlsResult.matched_leads} leads matched from {mlsResult.total_in_csv.toLocaleString()} MLS records
             </span>
           )}
         </div>
       </div>
 
       {/* Lead table */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <h2 style={{ fontSize: 13, fontWeight: 700, color: '#9CA3AF', letterSpacing: '0.08em', textTransform: 'uppercase', margin: 0 }}>
-          Leads {totalLeads > 0 && `— ${leads.length.toLocaleString()} shown`}
-        </h2>
-        {/* Score filter tabs */}
-        <div style={{ display: 'flex', gap: 4 }}>
-          {[
-            { label: 'All', value: 1 },
-            { label: 'Score 3+', value: 3 },
-            { label: 'Score 4+', value: 4 },
-            { label: 'Score 5+', value: 5 },
-            { label: 'Score 6', value: 6 },
-          ].map(tab => (
-            <button
-              key={tab.value}
-              onClick={() => setMinScore(tab.value)}
-              style={{
-                padding: '5px 10px',
-                background: minScore === tab.value ? 'rgba(79,70,229,0.08)' : 'transparent',
-                color: minScore === tab.value ? '#4F46E5' : '#6B7280',
-                border: `1px solid ${minScore === tab.value ? '#4F46E5' : '#E5E7EB'}`,
-                borderRadius: 5,
-                fontSize: 11,
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {/* County filter */}
+          <div style={{ display: 'flex', gap: 4 }}>
+            {(['all', ...COUNTIES.map(c => c.id)] as (County | 'all')[]).map(c => {
+              const active = county === c
+              const color = c === 'all' ? '#4F46E5' : (COUNTY_COLOR[c] ?? '#4F46E5')
+              return (
+                <button
+                  key={c}
+                  onClick={() => setCounty(c)}
+                  style={{
+                    padding: '4px 10px', borderRadius: 5, fontSize: 11, fontWeight: 600,
+                    background: active ? `${color}12` : 'transparent',
+                    color: active ? color : '#9CA3AF',
+                    border: `1px solid ${active ? color + '40' : '#E5E7EB'}`,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {c === 'all' ? 'All Counties' : c.charAt(0).toUpperCase() + c.slice(1)}
+                  {c !== 'all' && stats && (
+                    <span style={{ marginLeft: 4, fontSize: 10, opacity: 0.8 }}>
+                      {(stats.county_counts[c as County] ?? 0).toLocaleString()}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+
+          <div style={{ width: 1, height: 18, background: '#E5E7EB', margin: '0 4px' }} />
+
+          {/* Score filter */}
+          <div style={{ display: 'flex', gap: 4 }}>
+            {[
+              { label: 'All', v: 1 },
+              { label: '3+', v: 3 },
+              { label: '4+', v: 4 },
+              { label: '5+', v: 5 },
+              { label: '6', v: 6 },
+            ].map(tab => (
+              <button
+                key={tab.v}
+                onClick={() => setMinScore(tab.v)}
+                style={{
+                  padding: '4px 8px', borderRadius: 5, fontSize: 11, fontWeight: 600,
+                  background: minScore === tab.v ? '#F0F0FF' : 'transparent',
+                  color: minScore === tab.v ? '#4F46E5' : '#9CA3AF',
+                  border: `1px solid ${minScore === tab.v ? '#C7D2FE' : '#E5E7EB'}`,
+                  cursor: 'pointer',
+                }}
+              >
+                Score {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
+
+        <span style={{ fontSize: 12, color: '#9CA3AF' }}>
+          {loadingLeads ? 'Loading…' : `${leads.length.toLocaleString()} leads shown`}
+        </span>
       </div>
 
-      {loadingLeads ? (
-        <div style={{ textAlign: 'center', padding: 40, color: '#6B7280', fontSize: 13 }}>Loading leads…</div>
-      ) : leads.length === 0 ? (
+      {/* Table */}
+      {leads.length === 0 && !loadingLeads ? (
         <div
           style={{
-            textAlign: 'center',
-            padding: '48px 24px',
-            background: '#FFFFFF',
-            border: '1px solid #E5E7EB',
-            borderRadius: 8,
-            color: '#6B7280',
-            fontSize: 13,
+            textAlign: 'center', padding: '48px 24px',
+            background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8,
+            color: '#9CA3AF', fontSize: 13,
           }}
         >
           {totalLeads === 0
             ? 'No leads yet. Upload CSVs from one or more sources to begin.'
-            : `No leads with score ${minScore}+. Try a lower threshold.`}
+            : `No leads match the current filters.`}
         </div>
       ) : (
-        <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, overflow: 'hidden' }}>
+        <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, overflow: 'hidden' }}>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
                 <tr style={{ background: '#F9FAFB', borderBottom: '1px solid #E5E7EB' }}>
                   <Th>Score</Th>
+                  <Th>County</Th>
                   <Th>Parcel ID</Th>
                   <Th>Owner</Th>
                   <Th>Property Address</Th>
-                  <Th>Zip</Th>
-                  <Th>Sources</Th>
-                  <Th>MLS Price</Th>
+                  <Th>Acres</Th>
+                  <Th>Signals</Th>
+                  <Th>MLS</Th>
                 </tr>
               </thead>
               <tbody>
-                {leads.map((lead, i) => (
-                  <tr
-                    key={lead.id}
-                    style={{
-                      background: i % 2 === 0 ? '#FFFFFF' : '#F9FAFB',
-                      borderTop: '1px solid #F3F4F6',
-                    }}
-                  >
-                    <Td>
-                      <ScoreBadge score={lead.score} />
-                    </Td>
-                    <Td>
-                      <span style={{ fontFamily: 'monospace', color: '#374151', fontSize: 11 }}>
-                        {lead.parcel_id || '—'}
-                      </span>
-                    </Td>
-                    <Td>
-                      <div style={{ color: '#111827' }}>{lead.owner_name || '—'}</div>
-                      {lead.mail_city && (
-                        <div style={{ color: '#6B7280', fontSize: 10 }}>
-                          {[lead.mail_city, lead.mail_state].filter(Boolean).join(', ')}
-                        </div>
-                      )}
-                    </Td>
-                    <Td>
-                      <span style={{ color: '#374151' }}>{lead.property_address || '—'}</span>
-                    </Td>
-                    <Td>
-                      <span style={{ color: '#9CA3AF' }}>{lead.property_zip || '—'}</span>
-                    </Td>
-                    <Td>
-                      <SourceIcon lead={lead} />
-                    </Td>
-                    <Td>
-                      {lead.mls_list_price ? (
-                        <span style={{ color: '#3B82F6', fontWeight: 600 }}>
-                          ${lead.mls_list_price.toLocaleString()}
-                          {lead.mls_days_on_market != null && (
-                            <span style={{ fontWeight: 400, color: '#6B7280', marginLeft: 4 }}>
-                              {lead.mls_days_on_market}d
-                            </span>
-                          )}
+                {leads.map((lead, i) => {
+                  const countyColor = COUNTY_COLOR[lead.county] ?? '#4F46E5'
+                  return (
+                    <tr
+                      key={lead.id}
+                      style={{
+                        background: i % 2 === 0 ? '#fff' : '#FAFAFA',
+                        borderTop: '1px solid #F3F4F6',
+                      }}
+                    >
+                      <Td>
+                        <ScoreBadge score={lead.score} />
+                      </Td>
+                      <Td>
+                        <span
+                          style={{
+                            fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
+                            background: `${countyColor}12`, color: countyColor,
+                            border: `1px solid ${countyColor}30`,
+                          }}
+                        >
+                          {lead.county.charAt(0).toUpperCase() + lead.county.slice(1)}
                         </span>
-                      ) : (
-                        <span style={{ color: '#9CA3AF' }}>—</span>
-                      )}
-                    </Td>
-                  </tr>
-                ))}
+                      </Td>
+                      <Td>
+                        <span style={{ fontFamily: 'monospace', color: '#374151', fontSize: 11 }}>
+                          {lead.parcel_id || '—'}
+                        </span>
+                      </Td>
+                      <Td>
+                        <div style={{ color: '#111827', fontWeight: 500 }}>{lead.owner_name || '—'}</div>
+                        {(lead.mail_city || lead.mail_state) && (
+                          <div style={{ fontSize: 10, color: '#9CA3AF', marginTop: 1 }}>
+                            {[lead.mail_city, lead.mail_state].filter(Boolean).join(', ')}
+                          </div>
+                        )}
+                      </Td>
+                      <Td>
+                        <div style={{ color: '#374151' }}>{lead.property_address || '—'}</div>
+                        {lead.property_city && (
+                          <div style={{ fontSize: 10, color: '#9CA3AF' }}>
+                            {lead.property_city}, FL {lead.property_zip}
+                          </div>
+                        )}
+                      </Td>
+                      <Td>
+                        <span style={{ color: lead.lot_acres ? '#374151' : '#D1D5DB' }}>
+                          {lead.lot_acres != null ? `${lead.lot_acres.toFixed(2)} ac` : '—'}
+                        </span>
+                      </Td>
+                      <Td>
+                        <SignalChips signals={lead.pain_signals || []} schema={schema} />
+                      </Td>
+                      <Td>
+                        {lead.on_mls && lead.mls_list_price ? (
+                          <span style={{ color: '#2563EB', fontWeight: 600 }}>
+                            ${lead.mls_list_price.toLocaleString()}
+                            {lead.mls_days_on_market != null && (
+                              <span style={{ fontWeight: 400, color: '#9CA3AF', marginLeft: 4 }}>
+                                {lead.mls_days_on_market}d
+                              </span>
+                            )}
+                          </span>
+                        ) : lead.on_mls ? (
+                          <span style={{ fontSize: 10, color: '#2563EB' }}>Listed</span>
+                        ) : (
+                          <span style={{ color: '#E5E7EB' }}>—</span>
+                        )}
+                      </Td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -673,20 +611,147 @@ export default function LeadStacker() {
   )
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+// ── County section ────────────────────────────────────────────────────────────
+
+function CountySection({
+  county,
+  color,
+  schema,
+  signalCounts,
+  onUpload,
+  onClearSignal,
+  onClearAll,
+  clearTarget,
+  setClearTarget,
+}: {
+  county: County
+  color: string
+  schema: SchemaInfo | null
+  signalCounts: Record<string, number>
+  onUpload: (c: County, s: SourceKey, f: File) => Promise<UploadResult>
+  onClearSignal: (c: County, s: SourceKey) => Promise<void>
+  onClearAll: (c: County) => Promise<void>
+  clearTarget: string | null
+  setClearTarget: (v: string | null) => void
+}) {
+  const [open, setOpen] = useState(true)
+  const sources = schema?.counties[county] ?? {}
+  const countySources = Object.entries(sources) as [SourceKey, { label: string; url: string }][]
+
+  const totalForCounty = countySources.reduce(
+    (sum, [src]) => sum + (signalCounts[`${county}:${src}`] ?? 0),
+    0,
+  )
+
+  return (
+    <div
+      style={{
+        marginBottom: 12,
+        border: '1px solid #E5E7EB',
+        borderRadius: 10,
+        overflow: 'hidden',
+        background: '#fff',
+      }}
+    >
+      {/* County header */}
+      <div
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '10px 14px',
+          background: `${color}08`,
+          borderBottom: open ? '1px solid #E5E7EB' : 'none',
+          cursor: 'pointer',
+        }}
+        onClick={() => setOpen(v => !v)}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: color }} />
+          <span style={{ fontWeight: 700, fontSize: 13, color: '#111827' }}>
+            {county.charAt(0).toUpperCase() + county.slice(1)} County
+          </span>
+          {totalForCounty > 0 && (
+            <span
+              style={{
+                background: `${color}15`, border: `1px solid ${color}30`,
+                color: color, borderRadius: 4, padding: '1px 8px',
+                fontSize: 11, fontWeight: 700,
+              }}
+            >
+              {totalForCounty.toLocaleString()} leads
+            </span>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }} onClick={e => e.stopPropagation()}>
+          {totalForCounty > 0 && (
+            <>
+              <button
+                onClick={() => onClearAll(county)}
+                style={{
+                  padding: '3px 10px', fontSize: 11, fontWeight: 600,
+                  background: 'transparent',
+                  color: clearTarget === county ? '#DC2626' : '#9CA3AF',
+                  border: `1px solid ${clearTarget === county ? '#DC2626' : '#E5E7EB'}`,
+                  borderRadius: 5, cursor: 'pointer',
+                }}
+              >
+                {clearTarget === county ? 'Confirm Clear' : 'Clear County'}
+              </button>
+              {clearTarget === county && (
+                <button
+                  onClick={() => setClearTarget(null)}
+                  style={{
+                    padding: '3px 8px', fontSize: 11,
+                    background: 'transparent', color: '#9CA3AF',
+                    border: '1px solid #E5E7EB', borderRadius: 5, cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+              )}
+            </>
+          )}
+          <span style={{ fontSize: 12, color: '#9CA3AF' }}>{open ? '▲' : '▼'}</span>
+        </div>
+      </div>
+
+      {/* Source cards grid */}
+      {open && (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+            gap: 10,
+            padding: 12,
+          }}
+        >
+          {countySources.map(([src, meta]) => (
+            <SourceCard
+              key={src}
+              county={county}
+              source={src}
+              label={meta.label}
+              url={meta.url}
+              signalKey={`${county}:${src}`}
+              signalCount={signalCounts[`${county}:${src}`] ?? 0}
+              onUpload={f => onUpload(county, src, f)}
+              onClear={() => onClearSignal(county, src)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Layout primitives ─────────────────────────────────────────────────────────
 
 function Th({ children }: { children: React.ReactNode }) {
   return (
     <th
       style={{
-        padding: '8px 12px',
-        textAlign: 'left',
-        fontWeight: 600,
-        fontSize: 10,
-        letterSpacing: '0.08em',
-        textTransform: 'uppercase',
-        color: '#6B7280',
-        whiteSpace: 'nowrap',
+        padding: '7px 12px', textAlign: 'left', fontWeight: 600,
+        fontSize: 10, letterSpacing: '0.07em', textTransform: 'uppercase',
+        color: '#9CA3AF', whiteSpace: 'nowrap',
       }}
     >
       {children}
@@ -695,45 +760,33 @@ function Th({ children }: { children: React.ReactNode }) {
 }
 
 function Td({ children }: { children: React.ReactNode }) {
-  return (
-    <td style={{ padding: '8px 12px', verticalAlign: 'middle' }}>
-      {children}
-    </td>
-  )
+  return <td style={{ padding: '7px 12px', verticalAlign: 'middle' }}>{children}</td>
 }
 
 function StatCard({
   label,
   value,
-  gold,
+  primary,
   color,
 }: {
   label: string
   value: string
-  gold?: boolean
+  primary?: boolean
   color?: string
 }) {
+  const c = primary ? '#4F46E5' : (color ?? '#374151')
   return (
     <div
       style={{
-        background: '#FFFFFF',
-        border: `1px solid ${gold ? 'rgba(79,70,229,0.3)' : '#E5E7EB'}`,
-        borderRadius: 8,
-        padding: '12px 14px',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+        background: '#fff',
+        border: `1px solid ${primary ? '#C7D2FE' : '#E5E7EB'}`,
+        borderRadius: 8, padding: '10px 14px', minWidth: 90,
       }}
     >
-      <div
-        style={{
-          fontSize: 18,
-          fontWeight: 700,
-          color: gold ? '#4F46E5' : color ?? '#111827',
-          fontVariantNumeric: 'tabular-nums',
-        }}
-      >
+      <div style={{ fontSize: 17, fontWeight: 700, color: c, fontVariantNumeric: 'tabular-nums' }}>
         {value}
       </div>
-      <div style={{ fontSize: 10, color: '#6B7280', marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+      <div style={{ fontSize: 10, color: '#9CA3AF', marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
         {label}
       </div>
     </div>
