@@ -210,6 +210,7 @@ COMP_SEARCH_STEPS = [
     (0.50, '0.50mi'),
     (1.00, '1mi'),
     (2.00, '2mi'),
+    (3.00, '3mi'),
 ]
 
 # Minimum comps before stopping radius expansion; accept 1 at final step
@@ -1461,24 +1462,6 @@ def run_matching(
                         matched_mask = trial_mask
                         radius_label = label
                     # n == 0: continue without updating
-
-                # Rural-only 3mi step — only for lots > 0.5 acres
-                # Urban/micro lots (≤0.5ac) hard cap at 2mi; rural properties are more spread out
-                if matched_mask.sum() == 0 and has_acres and float(target_acres) > 0.5:
-                    trial_3mi = band_mask & (row_distances <= 3.0)
-                    n3 = int(trial_3mi.sum())
-                    if adj_bands and n3 < _MIN_COMPS_TO_STOP:
-                        for adj_label in adj_bands:
-                            adj_mask = band_masks_dict.get(adj_label, np.zeros(len(vc), dtype=bool))
-                            trial_3mi = trial_3mi | (adj_mask & (row_distances <= 3.0))
-                            n3 = int(trial_3mi.sum())
-                            if n3 >= _MIN_COMPS_TO_STOP:
-                                break
-                    if n3 >= 1:
-                        matched_mask = trial_3mi
-                        radius_label = '3mi'
-                        if debug:
-                            print(f"[DEBUG {target_apn}] RURAL 3mi: {n3} comps (acreage={target_acres:.2f}ac > 0.5)", flush=True)
 
             # County-awareness guard: if nearby comps are all from different counties,
             # treat as no local comps and avoid forced pricing.
