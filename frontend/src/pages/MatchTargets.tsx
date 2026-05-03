@@ -119,6 +119,8 @@ export default function MatchTargets() {
   const [mailingSuccess, setMailingSuccess] = useState<string | null>(null)
   const [mailingError, setMailingError] = useState<string | null>(null)
   const [mailingExportType, setMailingExportType] = useState<'mailable' | 'matched'>('matched')
+  const [excludeSlowMarkets, setExcludeSlowMarkets] = useState<boolean>(true)
+  const [includeSlowInMailing, setIncludeSlowInMailing] = useState<boolean>(false)
   const [mailingDone, setMailingDone] = useState(false)
   const [showUnmatched, setShowUnmatched] = useState(false)
 
@@ -272,6 +274,30 @@ export default function MatchTargets() {
   if (minOfferFloor) filterParts.push(`Offer floor $${Number(minOfferFloor).toLocaleString()}`)
   if (minLpEstimate) filterParts.push(`Min retail $${Number(minLpEstimate).toLocaleString()}`)
   filterParts.push(`${offerPct.toFixed(1)}% offer`)
+  if (excludeSlowMarkets && listingsStats?.zip_velocity) filterParts.push('Exclude slow markets')
+
+  const slowMarketZips = React.useMemo(() => {
+    if (!matchResult || !listingsStats?.zip_velocity) return [] as { zip: string; months: number }[]
+    const seen = new Set<string>()
+    const out: { zip: string; months: number }[] = []
+    for (const r of matchResult.results) {
+      const vel = listingsStats.zip_velocity[r.parcel_zip]
+      if (vel?.velocity_label === 'SLOW' && r.parcel_zip && !seen.has(r.parcel_zip)) {
+        seen.add(r.parcel_zip)
+        out.push({ zip: r.parcel_zip, months: vel.months_supply })
+      }
+    }
+    return out.sort((a, b) => b.months - a.months)
+  }, [matchResult, listingsStats])
+
+  const displayedResults = React.useMemo(() => {
+    if (!matchResult) return [] as import('../types').MatchedParcel[]
+    if (!excludeSlowMarkets || !listingsStats?.zip_velocity) return matchResult.results
+    return matchResult.results.filter(r => {
+      const vel = listingsStats.zip_velocity?.[r.parcel_zip]
+      return !vel || vel.velocity_label !== 'SLOW'
+    })
+  }, [matchResult, excludeSlowMarkets, listingsStats])
   const filterSummary = filterParts.length > 0
     ? `Active filters: ${filterParts.join(' · ')}`
     : 'No filters active — matching all targets'
@@ -356,14 +382,15 @@ export default function MatchTargets() {
       ),
     },
     {
-      key: 'parcel_zip', header: 'Market Supply', defaultHidden: true,
+      key: '_vel', header: 'Market', defaultHidden: false,
       render: (_, row) => {
         const vel = listingsStats?.zip_velocity?.[row.parcel_zip]
-        if (!vel) return <span style={{ color: '#9CA3AF' }}>—</span>
+        if (!vel) return <span style={{ color: '#9CA3AF', fontSize: 10 }}>—</span>
+        const isSlow = vel.velocity_label === 'SLOW'
         const color = vel.velocity_label === 'HOT' ? '#DC2626' : vel.velocity_label === 'BALANCED' ? '#D97706' : '#6B7280'
         return (
           <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 5px', borderRadius: 4, color, background: `${color}12`, border: `1px solid ${color}30` }}>
-            {vel.velocity_label} {vel.months_supply}mo
+            {isSlow ? '⚠️ ' : ''}{vel.velocity_label} {vel.months_supply}mo
           </span>
         )
       },
@@ -573,6 +600,23 @@ export default function MatchTargets() {
               </p>
             )}
           </div>
+
+          {/* 7. Slow Market Filter */}
+          {listingsStats?.zip_velocity && (
+            <div className="mt-5 pt-5" style={{ borderTop: '1px solid #E5E7EB' }}>
+              <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>Slow Market Filter</p>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={excludeSlowMarkets}
+                  onChange={e => setExcludeSlowMarkets(e.target.checked)}
+                  style={{ accentColor: '#4F46E5', width: 14, height: 14 }}
+                />
+                <span className="text-xs" style={{ color: '#374151' }}>Exclude slow markets (6+ months supply)</span>
+              </label>
+              <p className="text-[10px] mt-1.5" style={{ color: '#9CA3AF' }}>Based on active listings velocity data — DO NOT MAIL recommended</p>
+            </div>
+          )}
         </div>
 
         {/* ── Active Filters Summary ──────────────────────────── */}
@@ -1006,11 +1050,39 @@ export default function MatchTargets() {
               })}
             </div>
 
+            {/* Slow market warnings */}
+            {slowMarketZips.length > 0 && !excludeSlowMarkets && (
+              <div className="mb-4 p-3 rounded-lg" style={{ background: 'rgba(107,114,128,0.08)', border: '1px solid rgba(107,114,128,0.2)' }}>
+                <p className="text-xs font-semibold mb-2" style={{ color: '#374151' }}>⚠️ Oversupplied Markets in Results:</p>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {slowMarketZips.map(({ zip, months }) => (
+                    <span key={zip} style={{ fontSize: 11, fontFamily: 'monospace', padding: '2px 7px', borderRadius: 4, background: '#F3F4F6', color: '#6B7280', border: '1px solid #E5E7EB' }}>
+                      ⚠️ {zip} — {months}mo supply — oversupplied market
+                    </span>
+                  ))}
+                </div>
+                <p className="text-[10px]" style={{ color: '#9CA3AF' }}>Enable "Exclude slow markets" filter to remove these from results and mailing</p>
+              </div>
+            )}
+            {slowMarketZips.length > 0 && excludeSlowMarkets && (
+              <div className="mb-4 px-3 py-2 rounded-lg flex items-center gap-2" style={{ background: 'rgba(107,114,128,0.06)', border: '1px solid rgba(107,114,128,0.15)' }}>
+                <span style={{ fontSize: 13 }}>🚫</span>
+                <p className="text-xs" style={{ color: '#6B7280' }}>
+                  <strong>{slowMarketZips.length} slow-market ZIP{slowMarketZips.length !== 1 ? 's' : ''} excluded</strong> — DO NOT MAIL: {slowMarketZips.slice(0, 5).map(s => `${s.zip} (${s.months}mo)`).join(', ')}{slowMarketZips.length > 5 ? ` +${slowMarketZips.length - 5} more` : ''}
+                </p>
+              </div>
+            )}
+
             <div className="card">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="font-semibold" style={{ color: '#111827' }}>
                   Matched Parcels
                   <span className="text-sm font-normal ml-2" style={{ color: '#9CA3AF' }}>sorted by score</span>
+                  {excludeSlowMarkets && slowMarketZips.length > 0 && (
+                    <span className="ml-2 text-xs font-normal px-2 py-0.5 rounded-full" style={{ background: 'rgba(107,114,128,0.1)', color: '#6B7280' }}>
+                      slow markets excluded
+                    </span>
+                  )}
                 </h2>
                 <div className="inline-flex gap-1">
                   <button className={`toggle-btn${resultView === 'table' ? ' active' : ''}`} onClick={() => setResultView('table')}>Table</button>
@@ -1020,14 +1092,14 @@ export default function MatchTargets() {
               {resultView === 'table' ? (
                 <DataTable<MatchedParcel>
                   columns={cols}
-                  data={matchResult.results}
+                  data={displayedResults}
                   pageSize={50}
                   emptyMessage="No parcels matched with current filters"
                   searchable
                   searchKeys={['apn', 'owner_name', 'parcel_zip', 'parcel_city']}
                 />
               ) : (
-                <MatchMap targets={matchResult.results} comps={dashboardData?.comp_locations ?? []} radiusMiles={1} />
+                <MatchMap targets={displayedResults} comps={dashboardData?.comp_locations ?? []} radiusMiles={1} />
               )}
             </div>
 
@@ -1045,15 +1117,39 @@ export default function MatchTargets() {
               Insert match results into a CRM campaign as leads.
             </p>
 
-            <div className="flex flex-col gap-1 mb-3">
-              <label className="label-caps">Records to add</label>
-              <div className="rounded-lg px-3 py-2 text-sm font-medium" style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', color: '#10B981' }}>
-                ✓ {(matchResult.matched_count ?? 0).toLocaleString()} Comp-Matched Records
-              </div>
-              <p className="text-[10px] mt-0.5" style={{ color: '#10B981' }}>
-                Only records priced from local sold comps — LP Fallback records are excluded
-              </p>
-            </div>
+            {(() => {
+              const slowCount = slowMarketZips.reduce((n, { zip }) => {
+                return n + matchResult.results.filter(r => r.parcel_zip === zip && r.pricing_flag === 'MATCHED').length
+              }, 0)
+              const exportCount = (matchResult.matched_count ?? 0) - (!includeSlowInMailing ? slowCount : 0)
+              return (
+                <div className="flex flex-col gap-1 mb-3">
+                  <label className="label-caps">Records to add</label>
+                  <div className="rounded-lg px-3 py-2 text-sm font-medium" style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', color: '#10B981' }}>
+                    ✓ {exportCount.toLocaleString()} Comp-Matched Records
+                  </div>
+                  <p className="text-[10px] mt-0.5" style={{ color: '#10B981' }}>
+                    Only records priced from local sold comps — LP Fallback records are excluded
+                  </p>
+                  {slowCount > 0 && listingsStats?.zip_velocity && (
+                    <div className="mt-2 rounded-lg px-3 py-2" style={{ background: 'rgba(107,114,128,0.08)', border: '1px solid rgba(107,114,128,0.2)' }}>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={includeSlowInMailing}
+                          onChange={e => setIncludeSlowInMailing(e.target.checked)}
+                          style={{ accentColor: '#4F46E5', width: 13, height: 13 }}
+                        />
+                        <span className="text-[11px]" style={{ color: '#374151' }}>Include slow markets ({slowCount.toLocaleString()} records from {slowMarketZips.length} oversupplied ZIPs)</span>
+                      </label>
+                      <p className="text-[10px] mt-1" style={{ color: '#9CA3AF' }}>
+                        {!includeSlowInMailing ? `🚫 Excluded by default — DO NOT MAIL: ${slowMarketZips.slice(0, 3).map(s => `${s.zip} (${s.months}mo)`).join(', ')}${slowMarketZips.length > 3 ? ` +${slowMarketZips.length - 3} more` : ''}` : '⚠️ Slow markets included — oversupplied, slower resale exit'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
 
             <div className="flex flex-col gap-1 mb-4">
               <label className="label-caps">Campaign</label>
@@ -1116,14 +1212,15 @@ export default function MatchTargets() {
                       campaignName = created.name
                       setMailingCampaigns(prev => [...prev, { id: created.campaign_id, name: created.name }])
                     }
-                    console.log('[MailingModal] matchResult.results count:', matchResult.results.length)
-                    console.log('[MailingModal] mailingExportType:', mailingExportType)
-                    console.log('[MailingModal] sample result:', matchResult.results[0])
+                    const slowZipSet = new Set(slowMarketZips.map(s => s.zip))
+                    const resultsForExport = (!includeSlowInMailing && listingsStats?.zip_velocity && slowZipSet.size > 0)
+                      ? matchResult.results.filter(r => !slowZipSet.has(r.parcel_zip))
+                      : matchResult.results
                     const result = await addMatchResultsToCampaign(
                       campaignId,
                       matchResult.match_id,
                       mailingExportType,
-                      matchResult.results,
+                      resultsForExport,
                       matchResult.offer_pct ?? offerPct,
                     )
                     setMailingSuccess(`${result.imported.toLocaleString()} records added to "${campaignName}" with pricing saved.`)

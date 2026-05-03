@@ -170,3 +170,22 @@ ALTER TABLE crm_properties
   ADD COLUMN IF NOT EXISTS owner_mailing_city   TEXT,
   ADD COLUMN IF NOT EXISTS owner_mailing_state  TEXT,
   ADD COLUMN IF NOT EXISTS owner_mailing_zip    TEXT;
+
+-- ── Active Listings (market velocity) ───────────────────────
+
+CREATE TABLE IF NOT EXISTS crm_active_listings (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  county      TEXT,
+  state       TEXT,
+  zip_code    TEXT,
+  acreage     NUMERIC,
+  list_price  NUMERIC,
+  dom         INTEGER,
+  status      TEXT,
+  apn         TEXT,
+  source      TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_active_listings_zip    ON crm_active_listings (zip_code);
+CREATE INDEX IF NOT EXISTS idx_active_listings_county ON crm_active_listings (county);
