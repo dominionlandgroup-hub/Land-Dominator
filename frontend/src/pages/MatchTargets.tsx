@@ -13,6 +13,13 @@ import MatchMap from '../components/MatchMap'
 import WelcomeScreen from './WelcomeScreen'
 
 const SQFT_PER_ACRE = 43560
+const CLOSING_COSTS = 2000
+
+function calcMatchFee(retailEstimate: number | null | undefined, offerMid: number | null | undefined): number | null {
+  if (!retailEstimate || !offerMid || offerMid <= 0) return null
+  const fee = Math.round(retailEstimate - offerMid - CLOSING_COSTS)
+  return fee > 0 ? fee : 0
+}
 
 function fmtPrice(v: number | null | undefined): string {
   if (v == null || isNaN(v as number)) return '—'
@@ -292,10 +299,18 @@ export default function MatchTargets() {
 
   const displayedResults = React.useMemo(() => {
     if (!matchResult) return [] as import('../types').MatchedParcel[]
-    if (!excludeSlowMarkets || !listingsStats?.zip_velocity) return matchResult.results
-    return matchResult.results.filter(r => {
-      const vel = listingsStats.zip_velocity?.[r.parcel_zip]
-      return !vel || vel.velocity_label !== 'SLOW'
+    let results = matchResult.results
+    if (excludeSlowMarkets && listingsStats?.zip_velocity) {
+      results = results.filter(r => {
+        const vel = listingsStats.zip_velocity?.[r.parcel_zip]
+        return !vel || vel.velocity_label !== 'SLOW'
+      })
+    }
+    // Default sort: highest estimated assignment fee first
+    return [...results].sort((a, b) => {
+      const fa = calcMatchFee(a.retail_estimate, a.suggested_offer_mid) ?? -1
+      const fb = calcMatchFee(b.retail_estimate, b.suggested_offer_mid) ?? -1
+      return fb - fa
     })
   }, [matchResult, excludeSlowMarkets, listingsStats])
   const filterSummary = filterParts.length > 0
@@ -365,6 +380,19 @@ export default function MatchTargets() {
       },
     },
     { key: 'suggested_offer_high', header: 'Offer High', align: 'right', render: (v) => <span className="text-xs" style={{ color: '#9CA3AF' }}>{fmtPrice(v as number)}</span> },
+    {
+      key: '_fee', header: 'Est. Fee', sortable: false, align: 'right',
+      render: (_, row) => {
+        const fee = calcMatchFee(row.retail_estimate, row.suggested_offer_mid)
+        if (fee == null) return <span style={{ color: '#9CA3AF', fontSize: 11 }}>—</span>
+        const color = fee >= 10000 ? '#059669' : fee >= 5000 ? '#D97706' : '#9CA3AF'
+        return (
+          <span style={{ fontSize: 12, fontWeight: 700, color }}>
+            {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(fee)}
+          </span>
+        )
+      },
+    },
     { key: 'median_comp_sale_price', header: 'Med. Comp $', align: 'right', defaultHidden: true, render: (v) => <span className="text-xs">{fmtPrice(v as number)}</span> },
     { key: 'median_ppa', header: 'Med. PPA', align: 'right', defaultHidden: true, render: (v) => <span className="text-xs">{fmtPrice(v as number)}</span> },
     { key: 'min_comp_price', header: 'Min Comp $', align: 'right', defaultHidden: true, render: (v) => <span className="text-xs">{fmtPrice(v as number)}</span> },

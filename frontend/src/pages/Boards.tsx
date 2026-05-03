@@ -5,6 +5,13 @@ import { useApp } from '../context/AppContext'
 
 const SELLER_STATUSES = ['prospect', 'interested', 'offer_sent', 'under_contract', 'closed_won']
 
+function calcFee(offerPrice: number | null | undefined, lpEstimate: number | null | undefined): number {
+  const offer = offerPrice ?? 0
+  if (offer <= 0) return 0
+  const retail = (lpEstimate && lpEstimate > 0) ? lpEstimate : offer / 0.525
+  return Math.max(0, Math.round(retail - offer - 2000))
+}
+
 interface BoardsProps {
   view: 'boards-seller' | 'boards-buyer' | 'boards-inventory'
 }
@@ -136,7 +143,7 @@ export default function Boards({ view }: BoardsProps) {
   // Pipeline value calculation — sum assignment_fee for all active (non-closed) records
   const activeStatuses = new Set(['prospect', 'interested', 'offer_sent', 'under_contract'])
   const activeProperties = properties.filter(p => p.status && activeStatuses.has(p.status))
-  const pipelineValue = activeProperties.reduce((sum, p) => sum + (p.assignment_fee ?? 5000), 0)
+  const pipelineValue = activeProperties.reduce((sum, p) => sum + calcFee(p.offer_price, p.lp_estimate), 0)
   const newLeadCount = properties.filter(p => p.status === 'prospect').length
 
   return (
@@ -164,7 +171,7 @@ export default function Boards({ view }: BoardsProps) {
             {columns.map(col => {
               const cards = propertiesForStatus(col.status)
               const isDragTarget = dragOverCol === col.status
-              const colValue = cards.reduce((sum, p) => sum + (p.assignment_fee ?? 5000), 0)
+              const colValue = cards.reduce((sum, p) => sum + calcFee(p.offer_price, p.lp_estimate), 0)
               return (
                 <div
                   key={col.status}
@@ -217,7 +224,7 @@ export default function Boards({ view }: BoardsProps) {
                     ) : cards.map(p => {
                       const isDragging = draggingId === p.id
                       const days = daysAgo(p.updated_at ?? p.created_at)
-                      const fee = p.assignment_fee ?? 5000
+                      const fee = calcFee(p.offer_price, p.lp_estimate)
                       const feeColor = fee >= 10000 ? '#059669' : fee >= 5000 ? '#D97706' : '#9B8AAE'
                       return (
                         <div

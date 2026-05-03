@@ -635,8 +635,41 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
             <div className="grid grid-cols-2 gap-4">
               <Field label="Campaign Code" field="campaign_code" />
               <CurrencyInput label="Offer Price" value={form.offer_price} onChange={v => set('offer_price', v)} />
-              <CurrencyInput label="Est. Assignment Fee" value={form.assignment_fee ?? 5000} onChange={v => set('assignment_fee', v)} />
             </div>
+            {(() => {
+              const offer = form.offer_price ?? 0
+              if (offer <= 0) return null
+              const retail = (form.lp_estimate && form.lp_estimate > 0) ? form.lp_estimate : offer / 0.525
+              const closing = 2000
+              const fee = Math.max(0, Math.round(retail - offer - closing))
+              return (
+                <div className="mt-4 rounded-xl p-4" style={{ background: '#F7F3FC', border: '1px solid #E8E0F0' }}>
+                  <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#9B8AAE' }}>Assignment Fee Breakdown</p>
+                  <div className="space-y-1.5">
+                    {[
+                      { label: 'LP Estimate (Retail)', value: retail, color: '#1A0A2E' },
+                      { label: 'Your Offer', value: -offer, color: '#DC2626' },
+                      { label: 'Est. Closing Costs', value: -closing, color: '#D97706' },
+                    ].map(({ label, value, color }) => (
+                      <div key={label} className="flex justify-between items-center">
+                        <span style={{ fontSize: 12, color: '#6B5B8A' }}>{label}</span>
+                        <span style={{ fontSize: 13, fontWeight: 600, color }}>
+                          {value < 0 ? '−' : ''}{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(Math.abs(value))}
+                        </span>
+                      </div>
+                    ))}
+                    <div style={{ borderTop: '1px solid #E8E0F0', paddingTop: 8, marginTop: 4 }}>
+                      <div className="flex justify-between items-center">
+                        <span style={{ fontSize: 13, fontWeight: 700, color: '#1A0A2E' }}>Est. Assignment Fee</span>
+                        <span style={{ fontSize: 16, fontWeight: 800, color: '#059669' }}>
+                          {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(fee)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
           </AccordionSection>
 
           {/* Due Diligence */}
