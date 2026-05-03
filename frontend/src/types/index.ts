@@ -46,6 +46,7 @@ export interface UploadStats {
 
 export interface ZipStats {
   zip_code: string
+  county?: string | null
   sales_count: number
   min_lot_size: number | null
   max_lot_size: number | null

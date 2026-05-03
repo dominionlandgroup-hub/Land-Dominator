@@ -333,7 +333,10 @@ function TopMarketsCard({ zipStats, comps, zipVelocity }: { zipStats: ZipStats[]
             >
               <span className="text-xs font-bold" style={{ color: '#9CA3AF' }}>{i + 1}</span>
               <div className="w-2 h-2 rounded-full" style={{ background: dot }} />
-              <span className="font-mono font-semibold text-sm" style={{ color: '#4F46E5' }}>{fmtZip(z.zip_code)}</span>
+              <div>
+                <span className="font-mono font-semibold text-sm" style={{ color: '#4F46E5' }}>{fmtZip(z.zip_code)}</span>
+                {z.county && <div className="text-[9px] mt-0.5 leading-none" style={{ color: '#9CA3AF' }}>{z.county}</div>}
+              </div>
               <span className="text-xs text-right font-medium" style={{ color: '#111827' }}>{z.sales_count.toLocaleString()}</span>
               <span className="text-xs text-right" style={{ color: '#4F46E5' }}>
                 {z.median_price_per_acre != null ? `$${Math.round(z.median_price_per_acre).toLocaleString()}` : '—'}
@@ -526,14 +529,54 @@ function BuyBoxRecipe({
       ? zipStats.filter(z => (z.median_price_per_acre ?? 0) > 3 * buyBoxMedianPpa).map(z => z.zip_code)
       : []
   )
-  const topZips = [...zipStats]
+  const sortedCounties = [...topCounties].sort((a, b) => a.localeCompare(b))
+  const recommendedCountySet = new Set(topCounties.map(c => c.toLowerCase().trim()))
+
+  // ZIP → county lookup built from comp data
+  const zipToCounty: Record<string, string> = {}
+  zipStats.forEach(z => { if (z.county) zipToCounty[fmtZip(z.zip_code)] = z.county })
+
+  // Top 20 ZIPs — only ZIPs whose county is in the recommended county list
+  const topZipItems = [...zipStats]
     .filter(z => !bbOutlierCodes.has(z.zip_code) && z.sales_count >= 5)
+    .filter(z => {
+      if (!z.county || recommendedCountySet.size === 0) return true
+      return recommendedCountySet.has(z.county.toLowerCase().trim())
+    })
     .sort((a, b) => b.sales_count - a.sales_count)
     .slice(0, 20)
-    .map(z => fmtZip(z.zip_code))
-  const sortedCounties = [...topCounties].sort((a, b) => a.localeCompare(b))
+    .map(z => ({ zip: fmtZip(z.zip_code), county: z.county ?? null }))
+
+  const topZips = topZipItems.map(z => z.zip)
+
+  // ZIPs outside recommended counties with strong sales → suggest adding
+  const suggestMap = new Map<string, { county: string; sales: number; topZip: string }>()
+  zipStats
+    .filter(z => !bbOutlierCodes.has(z.zip_code) && z.sales_count >= 10 && z.county)
+    .filter(z => recommendedCountySet.size > 0 && !recommendedCountySet.has(z.county!.toLowerCase().trim()))
+    .sort((a, b) => b.sales_count - a.sales_count)
+    .forEach(z => {
+      const key = z.county!.toLowerCase().trim()
+      if (!suggestMap.has(key)) {
+        suggestMap.set(key, { county: z.county!, sales: z.sales_count, topZip: fmtZip(z.zip_code) })
+      }
+    })
+  const suggestCounties = [...suggestMap.values()].slice(0, 3)
 
   // Land quality — data-driven from sold comps, with industry-standard floors/ceilings
+  const totalComps = comps.length
+  const _lqCov = (count: number) => {
+    if (totalComps === 0) return { sufficient: count > 0, high: false }
+    const p = count / totalComps
+    return { sufficient: p >= 0.20, high: p >= 0.80 }
+  }
+  const _lqCountLabel = (count: number) => {
+    const { sufficient, high } = _lqCov(count)
+    if (!sufficient) return null  // will show industry default
+    if (high) return null         // no count needed
+    return `based on ${count.toLocaleString()} comps — limited data`
+  }
+
   const buildabilityCount = landQuality?.buildability_count ?? 0
   const buildabilityMin = buildabilityCount > 0
     ? Math.round((landQuality!.buildability_min ?? 80) / 10) * 10
@@ -542,31 +585,40 @@ function BuyBoxRecipe({
   const buildabilityRaw = landQuality?.buildability_raw != null
     ? Math.round((landQuality.buildability_raw / 10)) * 10
     : null
-  const buildabilityLabel = buildabilityCount > 0
-    ? buildabilityAdjusted && buildabilityRaw != null
+  const _buildCov = _lqCov(buildabilityCount)
+  const buildabilityLabel = !_buildCov.sufficient
+    ? '60% minimum (industry standard — insufficient data)'
+    : buildabilityAdjusted && buildabilityRaw != null
       ? `${buildabilityMin}% minimum (comp median was ${buildabilityRaw}% — floor applied)`
-      : `${buildabilityMin}% minimum (based on ${buildabilityCount} comps)`
-    : '60% minimum (industry standard — no comp data)'
+      : _buildCov.high
+        ? `${buildabilityMin}% minimum`
+        : `${buildabilityMin}% minimum (${_lqCountLabel(buildabilityCount)})`
 
   const slopeCount = landQuality?.slope_count ?? 0
   const slopeMax = slopeCount > 0 ? Math.round(landQuality!.slope_p75 ?? 10) : null
   const slopeAdjusted = landQuality?.slope_adjusted ?? false
   const slopeRaw = landQuality?.slope_raw != null ? Math.round(landQuality.slope_raw) : null
-  const slopeLabel = slopeCount > 0 && slopeMax != null
-    ? slopeAdjusted && slopeRaw != null
+  const _slopeCov = _lqCov(slopeCount)
+  const slopeLabel = !_slopeCov.sufficient || slopeMax == null
+    ? null  // hide row — insufficient data
+    : slopeAdjusted && slopeRaw != null
       ? `${slopeMax}% max (comp data showed ${slopeRaw}% — ceiling applied)`
-      : `${slopeMax}% max (based on ${slopeCount} comps)`
-    : null
+      : _slopeCov.high
+        ? `${slopeMax}% max`
+        : `${slopeMax}% max (${_lqCountLabel(slopeCount)})`
 
   const wetlandsCount = landQuality?.wetlands_count ?? 0
   const wetlandsMax = wetlandsCount > 0 ? Math.round(landQuality!.wetlands_p75 ?? 5) : null
   const wetlandsAdjusted = landQuality?.wetlands_adjusted ?? false
   const wetlandsRaw = landQuality?.wetlands_raw != null ? Math.round(landQuality.wetlands_raw) : null
-  const wetlandsLabel = wetlandsCount > 0 && wetlandsMax != null
-    ? wetlandsAdjusted && wetlandsRaw != null
+  const _wetCov = _lqCov(wetlandsCount)
+  const wetlandsLabel = !_wetCov.sufficient || wetlandsMax == null
+    ? null  // hide row — insufficient data
+    : wetlandsAdjusted && wetlandsRaw != null
       ? `Less than ${wetlandsMax}% (comp data showed ${wetlandsRaw}% — ceiling applied)`
-      : `Less than ${wetlandsMax}% (based on ${wetlandsCount} comps)`
-    : null
+      : _wetCov.high
+        ? `Less than ${wetlandsMax}%`
+        : `Less than ${wetlandsMax}% (${_lqCountLabel(wetlandsCount)})`
 
   const roadFrontageCount = landQuality?.road_frontage_count ?? 0
   const roadFrontageMin = roadFrontageCount > 0
@@ -574,11 +626,18 @@ function BuyBoxRecipe({
     : null
   const roadFrontageAdjusted = landQuality?.road_frontage_adjusted ?? false
   const roadFrontageRaw = landQuality?.road_frontage_raw != null ? Math.round(landQuality.road_frontage_raw) : null
-  const roadFrontageLabel = roadFrontageCount > 0 && roadFrontageMin != null
-    ? roadFrontageAdjusted && roadFrontageRaw != null
+  const _rfCov = _lqCov(roadFrontageCount)
+  const roadFrontageLabel = !_rfCov.sufficient || roadFrontageMin == null
+    ? 'Recommend 30 ft minimum (industry standard — insufficient data)'
+    : roadFrontageAdjusted && roadFrontageRaw != null
       ? `Minimum ${roadFrontageMin} ft (comp data showed ${roadFrontageRaw} ft — floor applied)`
-      : `Minimum ${roadFrontageMin} ft (based on ${roadFrontageCount} comps)`
-    : 'Data not available in comps — recommend 30 ft minimum'
+      : _rfCov.high
+        ? `Minimum ${roadFrontageMin} ft`
+        : `Minimum ${roadFrontageMin} ft (${_lqCountLabel(roadFrontageCount)})`
+
+  // Which LQ fields have limited coverage (< 80%) — to show the footnote
+  const lqHasLimitedData = [buildabilityCount, slopeCount, wetlandsCount, roadFrontageCount]
+    .some(count => { const { sufficient, high } = _lqCov(count); return sufficient && !high })
 
   const acres = comps.map(c => c.lot_acres).filter(v => Number.isFinite(v) && v > 0).sort((a, b) => a - b)
 
@@ -639,7 +698,7 @@ function BuyBoxRecipe({
     topStates.length ? `   State: ${topStates.join(', ')}` : '',
     sortedCounties.length ? `   PULL BY COUNTY: ${sortedCounties.join(', ')} (Land Portal → Location → County)` : '',
     sortedCounties.length ? '   Why: County pulls capture more deals than ZIP filtering.' : '',
-    topZips.length ? `   Reference ZIPs (don't filter in LP): ${topZips.join(', ')}` : '',
+    topZipItems.length ? `   Reference ZIPs (only from buy box counties — don't filter in LP): ${topZipItems.map(z => z.county ? `${z.zip} (${z.county})` : z.zip).join(', ')}` : '',
     '',
     '2. PROPERTY TYPE',
     '   Land Portal → Property Type → Land Use — check ONLY:',
@@ -721,7 +780,7 @@ function BuyBoxRecipe({
 ${sec('1. Location — Pull by County (not ZIP)',
   (topStates.length ? row('State', topStates.join(', ')) : '') +
   (sortedCounties.length ? `<div style="color:#059669;font-weight:600;font-size:12px;margin-bottom:4px">Pull by County — Land Portal → Location → County</div><div style="margin:4px 0 8px">${sortedCounties.map(pill).join('')}</div><div style="background:#D1FAE5;border:1px solid rgba(5,150,105,0.2);border-radius:6px;padding:8px;font-size:11px;color:#059669;margin-bottom:8px"><strong>Why pull the whole county?</strong> ZIP codes cut across market boundaries — county pulls capture more deals and let the matching engine filter by comp strength.</div>` : '') +
-  `<div style="color:#9B8AAE;font-size:11px;margin-bottom:4px">Reference ZIPs — for context only (don't filter by ZIP in LP)</div><div style="margin:4px 0">${topZips.map(pill).join('')}</div>`
+  `<div style="color:#9B8AAE;font-size:11px;margin-bottom:4px">Reference ZIPs within buy box counties — for context only (don't filter by ZIP in LP)</div><div style="margin:4px 0">${topZipItems.map(z => pill(z.county ? `${z.zip} · ${z.county}` : z.zip)).join('')}</div>`
 )}
 ${sec('2. Property Type',
   `<p style="font-size:12px;color:#6B5B8A;margin-bottom:8px">Land Portal → Property Type → Land Use — check <strong>only</strong>:</p>` +
@@ -819,12 +878,24 @@ ${sec('6. Owner',
               </div>
             )}
             <div>
-              <p className="mb-1" style={{ color: '#6B7280' }}>Top 20 ZIPs — reference only · don't filter by ZIP in LP</p>
+              <p className="mb-1" style={{ color: '#6B7280' }}>Top ZIPs within buy box counties — reference only · don't filter by ZIP in LP</p>
               <div className="flex flex-wrap gap-1.5">
-                {topZips.map(z => (
-                  <span key={z} className="font-mono text-[11px] px-2 py-0.5 rounded" style={{ background: '#F3F4F6', color: '#6B7280', border: '1px solid #E5E7EB' }}>{z}</span>
+                {topZipItems.map(z => (
+                  <span key={z.zip} className="font-mono text-[11px] px-2 py-0.5 rounded" style={{ background: '#F3F4F6', color: '#6B7280', border: '1px solid #E5E7EB' }}>
+                    {z.zip}{z.county ? <span style={{ color: '#9CA3AF' }}> · {z.county}</span> : null}
+                  </span>
                 ))}
               </div>
+              {suggestCounties.length > 0 && (
+                <div className="mt-3 rounded-lg p-2.5" style={{ background: 'rgba(79,70,229,0.05)', border: '1px solid rgba(79,70,229,0.15)' }}>
+                  <p className="text-[10px] font-semibold mb-1.5" style={{ color: '#4F46E5' }}>Strong sales outside your buy box — consider adding:</p>
+                  {suggestCounties.map(s => (
+                    <p key={s.county} className="text-[10px] mb-0.5" style={{ color: '#6B7280' }}>
+                      → <span style={{ color: '#1A0A2E', fontWeight: 600 }}>{s.county}</span> — {s.sales} sales · top ZIP {s.topZip}
+                    </p>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -907,6 +978,11 @@ ${sec('6. Owner',
             <div className="flex gap-2"><span style={{ color: '#EF4444', fontWeight: 700 }}>✗</span><span style={{ color: '#9CA3AF' }}>FEMA flood zones (exclude all)</span></div>
             <div className="flex gap-2"><span style={{ color: '#EF4444', fontWeight: 700 }}>✗</span><span style={{ color: '#9CA3AF' }}>Landlocked parcels (exclude)</span></div>
             <LQRow label="Road frontage" value={roadFrontageLabel} highlight adjusted={roadFrontageAdjusted} />
+            {lqHasLimitedData && (
+              <p className="text-[9px] pt-1 border-t" style={{ color: '#9CA3AF', borderColor: '#F3F4F6' }}>
+                * Field counts vary — not all comps include every data point. Total comps: {totalComps.toLocaleString()}
+              </p>
+            )}
           </div>
         </div>
 
@@ -949,8 +1025,8 @@ ${sec('6. Owner',
                   {hotZips.length > 0 ? (
                     <div className="flex flex-wrap gap-1.5">
                       {hotZips.slice(0, 10).map(v => (
-                        <span key={v.zip} style={{ fontSize: 11, fontFamily: 'monospace', padding: '1px 6px', borderRadius: 4, background: 'rgba(220,38,38,0.08)', color: '#DC2626', border: '1px solid rgba(220,38,38,0.2)' }}>
-                          {v.zip} {v.months_supply}mo
+                        <span key={v.zip} style={{ fontSize: 11, fontFamily: 'monospace', padding: '2px 7px', borderRadius: 4, background: 'rgba(220,38,38,0.08)', color: '#DC2626', border: '1px solid rgba(220,38,38,0.2)' }}>
+                          {v.zip}{zipToCounty[v.zip] ? <span style={{ fontFamily: 'sans-serif', fontSize: 9, opacity: 0.8 }}> {zipToCounty[v.zip]}</span> : null} · {v.months_supply}mo
                         </span>
                       ))}
                     </div>
@@ -961,8 +1037,8 @@ ${sec('6. Owner',
                   {balancedZips.length > 0 ? (
                     <div className="flex flex-wrap gap-1.5">
                       {balancedZips.slice(0, 8).map(v => (
-                        <span key={v.zip} style={{ fontSize: 11, fontFamily: 'monospace', padding: '1px 6px', borderRadius: 4, background: 'rgba(217,119,6,0.08)', color: '#D97706', border: '1px solid rgba(217,119,6,0.2)' }}>
-                          {v.zip} {v.months_supply}mo
+                        <span key={v.zip} style={{ fontSize: 11, fontFamily: 'monospace', padding: '2px 7px', borderRadius: 4, background: 'rgba(217,119,6,0.08)', color: '#D97706', border: '1px solid rgba(217,119,6,0.2)' }}>
+                          {v.zip}{zipToCounty[v.zip] ? <span style={{ fontFamily: 'sans-serif', fontSize: 9, opacity: 0.8 }}> {zipToCounty[v.zip]}</span> : null} · {v.months_supply}mo
                         </span>
                       ))}
                     </div>
@@ -973,8 +1049,8 @@ ${sec('6. Owner',
                   {slowZips.length > 0 ? (
                     <div className="flex flex-wrap gap-1.5">
                       {slowZips.slice(0, 6).map(v => (
-                        <span key={v.zip} style={{ fontSize: 11, fontFamily: 'monospace', padding: '1px 6px', borderRadius: 4, background: '#F3F4F6', color: '#9CA3AF', border: '1px solid #E5E7EB' }}>
-                          {v.zip} {v.months_supply}mo
+                        <span key={v.zip} style={{ fontSize: 11, fontFamily: 'monospace', padding: '2px 7px', borderRadius: 4, background: '#F3F4F6', color: '#9CA3AF', border: '1px solid #E5E7EB' }}>
+                          {v.zip}{zipToCounty[v.zip] ? <span style={{ fontFamily: 'sans-serif', fontSize: 9 }}> {zipToCounty[v.zip]}</span> : null} · {v.months_supply}mo
                         </span>
                       ))}
                     </div>
@@ -988,8 +1064,8 @@ ${sec('6. Owner',
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {targetZips.slice(0, 15).map(v => (
-                      <span key={v.zip} style={{ fontSize: 11, fontFamily: 'monospace', padding: '1px 6px', borderRadius: 4, background: 'rgba(16,185,129,0.1)', color: '#059669', border: '1px solid rgba(16,185,129,0.2)' }}>
-                        {v.zip} ({v.months_supply}mo)
+                      <span key={v.zip} style={{ fontSize: 11, fontFamily: 'monospace', padding: '2px 7px', borderRadius: 4, background: 'rgba(16,185,129,0.1)', color: '#059669', border: '1px solid rgba(16,185,129,0.2)' }}>
+                        {v.zip}{zipToCounty[v.zip] ? <span style={{ fontFamily: 'sans-serif', fontSize: 9, opacity: 0.85 }}> {zipToCounty[v.zip]}</span> : null} · {v.months_supply}mo
                       </span>
                     ))}
                   </div>

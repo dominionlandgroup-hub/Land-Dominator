@@ -27,6 +27,11 @@ def compute_zip_stats(df: pd.DataFrame) -> List[Dict[str, Any]]:
 
     valid["price_per_acre"] = valid["Current Sale Price"] / valid["Lot Acres"]
 
+    county_col = next(
+        (c for c in ["Parcel County", "Parcel Address County", "County"] if c in valid.columns),
+        None,
+    )
+
     results: List[Dict[str, Any]] = []
 
     for zip_code, grp in valid.groupby("Parcel Zip"):
@@ -38,8 +43,16 @@ def compute_zip_stats(df: pd.DataFrame) -> List[Dict[str, Any]]:
         acres = grp["Lot Acres"]
         ppa = grp["price_per_acre"]
 
+        county = None
+        if county_col:
+            county_series = grp[county_col].dropna()
+            county_series = county_series[~county_series.astype(str).isin(["nan", "None", ""])]
+            if len(county_series) > 0:
+                county = str(county_series.mode().iloc[0])
+
         stats: Dict[str, Any] = {
             "zip_code": zc,
+            "county": county,
             "sales_count": len(grp),
             "min_lot_size": _safe_float(acres.min()),
             "max_lot_size": _safe_float(acres.max()),
