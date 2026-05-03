@@ -1,11 +1,16 @@
 """
 Matching engine endpoint — runs in a thread pool to avoid blocking the event loop.
 Includes /api/test-pricing for isolated QA verification.
+Large files (>5000 targets) run as background jobs with progress polling.
 """
 import asyncio
 import json
 import traceback
 import gc
+import math
+import threading
+import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
@@ -22,11 +27,59 @@ from services.matching_engine import (
     identify_premium_zips,
     COMP_SEARCH_STEPS,
 )
-from storage.session_store import get_targets, store_match
+from storage.session_store import get_targets, store_match, get_match
 
 router = APIRouter(prefix="/match", tags=["match"])
 
 _executor = ThreadPoolExecutor(max_workers=2)
+
+# ── Background job store ─────────────────────────────────────────────────────
+LARGE_FILE_THRESHOLD = 5000
+_jobs: dict = {}
+_jobs_lock = threading.Lock()
+_JOB_TTL = 3600  # clean up jobs older than 1 hour
+
+
+def _cleanup_old_jobs() -> None:
+    now = time.time()
+    with _jobs_lock:
+        stale = [jid for jid, j in _jobs.items() if now - j.get("created_at", 0) > _JOB_TTL]
+        for jid in stale:
+            del _jobs[jid]
+
+
+def _run_background_job(job_id: str, comps_df: pd.DataFrame, targets_df: pd.DataFrame, kwargs: dict) -> None:
+    def _progress(completed: int, total: int) -> None:
+        with _jobs_lock:
+            j = _jobs.get(job_id)
+            if j:
+                j["progress"] = completed
+                j["message"] = f"Matching… {completed:,} of {total:,} complete"
+
+    try:
+        result = run_matching(
+            comps_df=comps_df,
+            targets_df=targets_df,
+            progress_callback=_progress,
+            **kwargs,
+        )
+        store_match(result["match_id"], result)
+        with _jobs_lock:
+            j = _jobs.get(job_id)
+            if j:
+                j["status"] = "complete"
+                j["match_id"] = result["match_id"]
+                j["progress"] = j["total"]
+                j["message"] = "Complete"
+        print(f"[job/{job_id}] Done — {result['matched_count']} matched of {result['total_targets']}", flush=True)
+    except Exception:
+        tb = traceback.format_exc()
+        print(f"[job/{job_id}] ERROR:\n{tb}", flush=True)
+        with _jobs_lock:
+            j = _jobs.get(job_id)
+            if j:
+                j["status"] = "error"
+                j["error"] = tb[:600]
 
 
 def _load_comps_from_db(states: "list[str] | None" = None) -> "pd.DataFrame | None":
@@ -130,12 +183,88 @@ def _load_comps_from_db(states: "list[str] | None" = None) -> "pd.DataFrame | No
         return None
 
 
+def _build_match_kwargs(filters: MatchFilters, exclude_flood: bool, only_flood: bool, exclude_land_locked: bool, require_tlp_estimate: bool) -> dict:
+    return dict(
+        radius_miles=filters.radius_miles,
+        acreage_tolerance_pct=filters.acreage_tolerance_pct,
+        min_match_score=filters.min_match_score,
+        zip_filter=filters.zip_filter,
+        min_acreage=filters.min_acreage,
+        max_acreage=filters.max_acreage,
+        exclude_flood=exclude_flood,
+        only_flood=only_flood,
+        min_buildability=filters.min_buildability,
+        vacant_only=filters.vacant_only,
+        require_road_frontage=filters.require_road_frontage,
+        exclude_land_locked=exclude_land_locked,
+        require_tlp_estimate=require_tlp_estimate,
+        price_ceiling=filters.price_ceiling,
+        exclude_with_buildings=getattr(filters, 'exclude_with_buildings', True),
+        min_road_frontage=getattr(filters, 'min_road_frontage', 50.0),
+        max_retail_price=getattr(filters, 'max_retail_price', 200000.0),
+        min_offer_floor=getattr(filters, 'min_offer_floor', 10000.0),
+        min_lp_estimate=getattr(filters, 'min_lp_estimate', 20000.0),
+        offer_pct=getattr(filters, 'offer_pct', 52.5),
+    )
+
+
+def _serialize_result(result: dict) -> str:
+    """Serialize a match result dict to JSON string, handling numpy/NaN types."""
+    payload = {
+        "match_id": result["match_id"],
+        "total_targets": result["total_targets"],
+        "matched_count": result["matched_count"],
+        "distance_matched_count": result.get("distance_matched_count", result["matched_count"]),
+        "zip_matched_count": result.get("zip_matched_count", 0),
+        "zip_coord_free_count": result.get("zip_coord_free_count", 0),
+        "mailable_count": result.get("mailable_count", 0),
+        "lp_fallback_count": result.get("lp_fallback_count", 0),
+        "county_median_count": result.get("county_median_count", 0),
+        "low_offer_count": result.get("low_offer_count", 0),
+        "low_value_count": result.get("low_value_count", 0),
+        "unpriced_count": result.get("unpriced_count", 0),
+        "smart_floor_recommendation": result.get("smart_floor_recommendation"),
+        "county_diagnostics": result.get("county_diagnostics"),
+        "pricing_breakdown": result.get("pricing_breakdown"),
+        "match_rate_warning": result.get("match_rate_warning"),
+        "offer_pct": result.get("offer_pct", 52.5),
+        "results": result["results"],
+        "warnings": result.get("warnings", []),
+    }
+    try:
+        import simplejson
+        return simplejson.dumps(payload, ignore_nan=True, default=str)
+    except ImportError:
+        pass
+
+    class _NpEncoder(json.JSONEncoder):
+        def default(self, obj):
+            if isinstance(obj, np.integer):
+                return int(obj)
+            if isinstance(obj, np.floating):
+                return None if (math.isnan(obj) or math.isinf(obj)) else float(obj)
+            if isinstance(obj, np.ndarray):
+                return obj.tolist()
+            return super().default(obj)
+
+    def _clean(d):
+        if isinstance(d, dict):
+            return {k: _clean(v) for k, v in d.items()}
+        if isinstance(d, list):
+            return [_clean(v) for v in d]
+        if isinstance(d, float) and (math.isnan(d) or math.isinf(d)):
+            return None
+        return d
+
+    return json.dumps(_clean(payload), cls=_NpEncoder)
+
+
 @router.post("/run")
 async def run_match(filters: MatchFilters) -> Response:
     """
     Run the matching engine against uploaded comps + targets.
-    Uses vectorized Haversine. Runs in a thread pool.
-    Returns pre-serialized JSON to avoid Pydantic overhead on large result sets.
+    Files with >5000 targets run as background jobs — returns {job_id} immediately.
+    Small files run synchronously as before.
     """
     targets_df = get_targets(filters.target_session_id)
     if targets_df is None:
@@ -151,7 +280,7 @@ async def run_match(filters: MatchFilters) -> Response:
             status_code=404,
             detail="No comps found in database. Please upload your comps CSV.",
         )
-    print(f"[match] Loaded {len(comps_df)} comps from crm_sold_comps DB", flush=True)
+    print(f"[match] Loaded {len(comps_df)} comps, {len(targets_df)} targets", flush=True)
 
     flood_mode = (filters.flood_zone_filter or "").strip().lower()
     exclude_flood = filters.exclude_flood
@@ -165,35 +294,56 @@ async def run_match(filters: MatchFilters) -> Response:
 
     exclude_land_locked = filters.exclude_land_locked or filters.exclude_landlocked
     require_tlp_estimate = filters.require_tlp_estimate or filters.require_tlp
+    match_kwargs = _build_match_kwargs(filters, exclude_flood, only_flood, exclude_land_locked, require_tlp_estimate)
 
+    total_targets = len(targets_df)
+
+    # ── Large file → background job ──────────────────────────────────────────
+    if total_targets > LARGE_FILE_THRESHOLD:
+        _cleanup_old_jobs()
+        job_id = str(uuid.uuid4())
+        with _jobs_lock:
+            _jobs[job_id] = {
+                "status": "running",
+                "progress": 0,
+                "total": total_targets,
+                "message": f"Loading comps… 0 of {total_targets:,} processed",
+                "match_id": None,
+                "error": None,
+                "created_at": time.time(),
+            }
+        t = threading.Thread(
+            target=_run_background_job,
+            args=(job_id, comps_df, targets_df, match_kwargs),
+            daemon=True,
+        )
+        t.start()
+        print(f"[match] Background job {job_id} started for {total_targets:,} targets", flush=True)
+        try:
+            import simplejson
+            content = simplejson.dumps({
+                "job_id": job_id,
+                "status": "running",
+                "total_targets": total_targets,
+                "is_background": True,
+                "message": f"Large file ({total_targets:,} records) — running in background. Estimated time: {total_targets // 6000 + 2}–{total_targets // 4000 + 3} min.",
+            }, ignore_nan=True)
+        except ImportError:
+            content = json.dumps({
+                "job_id": job_id,
+                "status": "running",
+                "total_targets": total_targets,
+                "is_background": True,
+                "message": f"Large file ({total_targets:,} records) — running in background.",
+            })
+        return Response(content=content, media_type="application/json")
+
+    # ── Small file → synchronous (existing path) ─────────────────────────────
     try:
         loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(
             _executor,
-            lambda: run_matching(
-                comps_df=comps_df,
-                targets_df=targets_df,
-                radius_miles=filters.radius_miles,
-                acreage_tolerance_pct=filters.acreage_tolerance_pct,
-                min_match_score=filters.min_match_score,
-                zip_filter=filters.zip_filter,
-                min_acreage=filters.min_acreage,
-                max_acreage=filters.max_acreage,
-                exclude_flood=exclude_flood,
-                only_flood=only_flood,
-                min_buildability=filters.min_buildability,
-                vacant_only=filters.vacant_only,
-                require_road_frontage=filters.require_road_frontage,
-                exclude_land_locked=exclude_land_locked,
-                require_tlp_estimate=require_tlp_estimate,
-                price_ceiling=filters.price_ceiling,
-                exclude_with_buildings=getattr(filters, 'exclude_with_buildings', True),
-                min_road_frontage=getattr(filters, 'min_road_frontage', 50.0),
-                max_retail_price=getattr(filters, 'max_retail_price', 200000.0),
-                min_offer_floor=getattr(filters, 'min_offer_floor', 10000.0),
-                min_lp_estimate=getattr(filters, 'min_lp_estimate', 20000.0),
-                offer_pct=getattr(filters, 'offer_pct', 52.5),
-            ),
+            lambda: run_matching(comps_df=comps_df, targets_df=targets_df, **match_kwargs),
         )
     except Exception:
         tb = traceback.format_exc()
@@ -204,93 +354,58 @@ async def run_match(filters: MatchFilters) -> Response:
     store_match(result["match_id"], result)
 
     try:
+        content = _serialize_result(result)
+    except Exception as e:
+        tb = traceback.format_exc()
+        print("JSON DUMP ERROR:\n", tb, flush=True)
+        raise HTTPException(status_code=500, detail=f"Serialization Error: {str(e)}")
+
+    gc.collect()
+    return Response(content=content, media_type="application/json")
+
+
+@router.get("/job/{job_id}")
+async def get_match_job(job_id: str) -> Response:
+    """Poll status of a background matching job. Returns progress + full result when complete."""
+    with _jobs_lock:
+        job = dict(_jobs.get(job_id) or {})
+
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found or expired")
+
+    resp: dict = {
+        "job_id": job_id,
+        "status": job.get("status", "running"),
+        "progress": job.get("progress", 0),
+        "total": job.get("total", 0),
+        "message": job.get("message", ""),
+        "error": job.get("error"),
+        "result": None,
+    }
+
+    if job.get("status") == "complete":
+        match_id = job.get("match_id")
+        if match_id:
+            result = get_match(match_id)
+            if result:
+                # Embed the full serialized result so the frontend can use it directly
+                resp["result"] = result
+
+    try:
         import simplejson
-        # Prefer simplejson to handle numpy/NaN safely
-        content = simplejson.dumps({
-            "match_id": result["match_id"],
-            "total_targets": result["total_targets"],
-            "matched_count": result["matched_count"],
-            "distance_matched_count": result.get("distance_matched_count", result["matched_count"]),
-            "zip_matched_count": result.get("zip_matched_count", 0),
-            "zip_coord_free_count": result.get("zip_coord_free_count", 0),
-            "mailable_count": result.get("mailable_count", 0),
-            "lp_fallback_count": result.get("lp_fallback_count", 0),
-            "county_median_count": result.get("county_median_count", 0),
-            "low_offer_count": result.get("low_offer_count", 0),
-            "low_value_count": result.get("low_value_count", 0),
-            "unpriced_count": result.get("unpriced_count", 0),
-            "smart_floor_recommendation": result.get("smart_floor_recommendation"),
-            "county_diagnostics": result.get("county_diagnostics"),
-            "pricing_breakdown": result.get("pricing_breakdown"),
-            "match_rate_warning": result.get("match_rate_warning"),
-            "offer_pct": result.get("offer_pct", 52.5),
-            "results": result["results"],
-            "warnings": result.get("warnings", []),
-        }, ignore_nan=True, default=str)
+        content = simplejson.dumps(resp, ignore_nan=True, default=str)
     except ImportError:
-        import math
-        import numpy as np
-        class NumpyEncoder(json.JSONEncoder):
-            def default(self, obj):
-                if isinstance(obj, np.integer):
-                    return int(obj)
-                elif isinstance(obj, np.floating):
-                    if math.isnan(obj) or math.isinf(obj):
-                        return None
-                    return float(obj)
-                elif isinstance(obj, np.ndarray):
-                    return obj.tolist()
-                return super().default(obj)
-                
-        # Clean any float('nan') in the native dict before serialization
-        def clean_nans(d):
+        def _clean(d):
             if isinstance(d, dict):
-                return {k: clean_nans(v) for k, v in d.items()}
-            elif isinstance(d, list):
-                return [clean_nans(v) for v in d]
-            elif isinstance(d, float) and (math.isnan(d) or math.isinf(d)):
+                return {k: _clean(v) for k, v in d.items()}
+            if isinstance(d, list):
+                return [_clean(v) for v in d]
+            if isinstance(d, float) and (math.isnan(d) or math.isinf(d)):
                 return None
             return d
-            
-        cleaned_result = clean_nans({
-            "match_id": result["match_id"],
-            "total_targets": result["total_targets"],
-            "matched_count": result["matched_count"],
-            "distance_matched_count": result.get("distance_matched_count", result["matched_count"]),
-            "zip_matched_count": result.get("zip_matched_count", 0),
-            "zip_coord_free_count": result.get("zip_coord_free_count", 0),
-            "mailable_count": result.get("mailable_count", 0),
-            "lp_fallback_count": result.get("lp_fallback_count", 0),
-            "county_median_count": result.get("county_median_count", 0),
-            "low_offer_count": result.get("low_offer_count", 0),
-            "low_value_count": result.get("low_value_count", 0),
-            "unpriced_count": result.get("unpriced_count", 0),
-            "smart_floor_recommendation": result.get("smart_floor_recommendation"),
-            "county_diagnostics": result.get("county_diagnostics"),
-            "pricing_breakdown": result.get("pricing_breakdown"),
-            "match_rate_warning": result.get("match_rate_warning"),
-            "offer_pct": result.get("offer_pct", 52.5),
-            "results": result["results"],
-            "warnings": result.get("warnings", []),
-        })
-        
-        try:
-            content = json.dumps(cleaned_result, cls=NumpyEncoder)
-        except Exception as e:
-            tb = traceback.format_exc()
-            print("JSON DUMP ERROR:\n", tb, flush=True)
-            raise HTTPException(status_code=500, detail=f"Serialization Error: {str(e)}")
+        content = json.dumps(_clean(resp), default=str)
 
-    # Stream pre-serialized JSON — bypasses Pydantic validation on 15k+ records
-    response = Response(
-        content=content,
-        media_type="application/json",
-    )
-    
-    # Explicit memory cleanup after match completes
-    gc.collect()
-    
-    return response
+    return Response(content=content, media_type="application/json")
 
 
 @router.post("/test-pricing")

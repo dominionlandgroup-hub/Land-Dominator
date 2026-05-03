@@ -113,8 +113,31 @@ export async function fetchCompLocations(
 
 // ─── Matching ──────────────────────────────────────────────────────────────
 
-export async function runMatch(filters: MatchFilters): Promise<MatchResult> {
-  const { data } = await api.post<MatchResult>('/match/run', filters, { timeout: 600_000 })
+export interface MatchJobStart {
+  job_id: string
+  status: 'running'
+  total_targets: number
+  is_background: true
+  message: string
+}
+
+export interface MatchJobStatus {
+  job_id: string
+  status: 'running' | 'complete' | 'error'
+  progress: number
+  total: number
+  message: string
+  error?: string
+  result?: MatchResult
+}
+
+export async function runMatch(filters: MatchFilters): Promise<MatchResult | MatchJobStart> {
+  const { data } = await api.post<MatchResult | MatchJobStart>('/match/run', filters, { timeout: 600_000 })
+  return data
+}
+
+export async function getMatchJobStatus(jobId: string): Promise<MatchJobStatus> {
+  const { data } = await api.get<MatchJobStatus>(`/match/job/${jobId}`)
   return data
 }
 

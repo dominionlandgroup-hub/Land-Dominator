@@ -21,7 +21,7 @@ import hashlib
 import random as _random
 import numpy as np
 import pandas as pd
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 
 def normalize_county(name: str) -> str:
@@ -994,6 +994,7 @@ def run_matching(
     min_offer_floor: float = 10000.0,     # Flag as LOW_OFFER if offer_mid < this
     min_lp_estimate: float = 20000.0,     # Flag as LOW_VALUE if retail_estimate < this
     offer_pct: float = 52.5,              # Offer % of retail (35–75%)
+    progress_callback: Optional[Callable[[int, int], None]] = None,  # (completed, total)
 ) -> Dict[str, Any]:
     """
     Run the full matching pipeline with cleaned comps and acreage band pricing.
@@ -2104,6 +2105,8 @@ def run_matching(
     # Process targets WITH coordinates in chunks to save memory
     import gc
     CHUNK_SIZE = 1000
+    _progress_total = len(with_idx) + len(without_idx)
+    _progress_done = 0
     for chunk_start in range(0, len(with_idx), CHUNK_SIZE):
         chunk_idx = with_idx[chunk_start:chunk_start + CHUNK_SIZE]
         if len(chunk_idx) > 0:
@@ -2116,13 +2119,24 @@ def run_matching(
             for local_i, ti in enumerate(chunk_idx):
                 row_distances = dist_chunk[local_i]
                 _process_one(ti, row_distances)
-            
+            _progress_done += len(chunk_idx)
             del dist_chunk
             gc.collect()
+            if progress_callback:
+                try:
+                    progress_callback(_progress_done, _progress_total)
+                except Exception:
+                    pass
 
     # Process targets WITHOUT coordinates (no comps matched)
     for ti in without_idx:
         _process_one(ti, None)
+    _progress_done += len(without_idx)
+    if progress_callback and len(without_idx) > 0:
+        try:
+            progress_callback(_progress_done, _progress_total)
+        except Exception:
+            pass
 
     results.sort(key=lambda x: x["match_score"], reverse=True)
 

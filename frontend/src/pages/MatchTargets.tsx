@@ -4,7 +4,7 @@ import DataTable from '../components/DataTable'
 import LoadingSpinner from '../components/LoadingSpinner'
 import LoadingOverlay from '../components/LoadingOverlay'
 import { useApp } from '../context/AppContext'
-import { uploadTargets, runMatch, getMailingDownloadUrl, getMatchedLeadsDownloadUrl, getDbCompsCount } from '../api/client'
+import { uploadTargets, runMatch, getMatchJobStatus, getMailingDownloadUrl, getMatchedLeadsDownloadUrl, getDbCompsCount } from '../api/client'
 import { listCrmCampaigns, autoCreateCampaign, addMatchResultsToCampaign, getMatchFilters, saveMatchFilters } from '../api/crm'
 import type { Column } from '../components/DataTable'
 import type { MatchedParcel, MatchFilters } from '../types'
@@ -36,6 +36,10 @@ export default function MatchTargets() {
   const [matchLoading, setMatchLoading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [matchError, setMatchError] = useState<string | null>(null)
+  const [matchJobId, setMatchJobId] = useState<string | null>(null)
+  const [matchProgress, setMatchProgress] = useState(0)
+  const [matchTotal, setMatchTotal] = useState(0)
+  const [matchStatusMsg, setMatchStatusMsg] = useState('')
   const [fileName, setFileName] = useState<string | null>(null)
   const [resultView, setResultView] = useState<'table' | 'map'>('table')
   const [dbCompsCount, setDbCompsCount] = useState<number | null>(null)
@@ -49,6 +53,35 @@ export default function MatchTargets() {
       if (saved.min_lp_estimate != null) setMinLpEstimate(String(saved.min_lp_estimate))
     }).catch(() => {})
   }, [])
+
+  // Poll background job status every 5 seconds
+  useEffect(() => {
+    if (!matchJobId) return
+    const interval = setInterval(async () => {
+      try {
+        const status = await getMatchJobStatus(matchJobId)
+        setMatchProgress(status.progress)
+        setMatchTotal(status.total)
+        setMatchStatusMsg(status.message)
+        if (status.status === 'complete' && status.result) {
+          clearInterval(interval)
+          setMatchJobId(null)
+          setMatchResult(status.result)
+          setMailingPreview(null)
+          setMatchLoading(false)
+          setMatchStatusMsg('')
+        } else if (status.status === 'error') {
+          clearInterval(interval)
+          setMatchJobId(null)
+          setMatchError(status.error ?? 'Background matching job failed.')
+          setMatchLoading(false)
+        }
+      } catch {
+        // Ignore transient polling errors
+      }
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [matchJobId])
 
   // ── Filter state ────────────────────────────────────────────────────────
   const init = lastFilters
@@ -169,6 +202,9 @@ export default function MatchTargets() {
     if (!compsStats || !targetStats) return
     setMatchLoading(true)
     setMatchError(null)
+    setMatchJobId(null)
+    setMatchProgress(0)
+    setMatchStatusMsg('')
 
     const filters: MatchFilters = {
       session_id: compsStats.session_id,
@@ -197,14 +233,24 @@ export default function MatchTargets() {
     }).catch(() => {})
 
     try {
-      const result = await runMatch(filters)
-      setMatchResult(result)
-      setMailingPreview(null)
-      setLastFilters(filters)
+      const response = await runMatch(filters)
+      if ('is_background' in response && response.is_background) {
+        // Large file — background job started
+        setMatchJobId(response.job_id)
+        setMatchTotal(response.total_targets)
+        setMatchStatusMsg(response.message)
+        setLastFilters(filters)
+        // Keep matchLoading=true; polling useEffect will clear it on completion
+      } else {
+        // Small file — synchronous result
+        setMatchResult(response as import('../types').MatchResult)
+        setMailingPreview(null)
+        setLastFilters(filters)
+        setMatchLoading(false)
+      }
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? 'Matching failed.'
       setMatchError(msg)
-    } finally {
       setMatchLoading(false)
     }
   }
@@ -517,6 +563,16 @@ export default function MatchTargets() {
           {filterSummary}
         </div>
 
+        {/* ── Large file warning ──────────────────────────────── */}
+        {targetStats && targetStats.total_rows > 5000 && !matchLoading && (
+          <div className="mb-4 px-4 py-3 rounded-xl text-sm flex items-start gap-2" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', color: '#92400E' }}>
+            <span style={{ fontSize: 16 }}>⚠</span>
+            <span>
+              Large file detected ({targetStats.total_rows.toLocaleString()} records). This will run as a background job and may take {Math.round(targetStats.total_rows / 6000) + 2}–{Math.round(targetStats.total_rows / 4000) + 3} minutes.
+            </span>
+          </div>
+        )}
+
         {/* ── Run button ──────────────────────────────────────── */}
         <div className="mb-6">
           <button
@@ -534,7 +590,7 @@ export default function MatchTargets() {
             onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = '#4F46E5'; (e.currentTarget as HTMLButtonElement).style.transform = 'none' }}
           >
             {matchLoading ? (
-              <><LoadingSpinner size="sm" />Running…</>
+              <><LoadingSpinner size="sm" />{matchJobId ? 'Processing in background…' : 'Running…'}</>
             ) : matchResult ? (
               <>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
@@ -547,6 +603,27 @@ export default function MatchTargets() {
               </>
             )}
           </button>
+
+          {/* Progress bar for background jobs */}
+          {matchLoading && matchJobId && (
+            <div className="mt-4 px-1">
+              <p className="text-sm font-medium mb-2" style={{ color: '#4F46E5' }}>{matchStatusMsg || 'Starting…'}</p>
+              <div className="relative h-3 rounded-full overflow-hidden" style={{ background: '#E0E7FF' }}>
+                <div
+                  className="absolute inset-y-0 left-0 rounded-full transition-all duration-700"
+                  style={{
+                    width: matchTotal > 0 ? `${Math.min(100, Math.round(matchProgress / matchTotal * 100))}%` : '0%',
+                    background: 'linear-gradient(90deg, #4F46E5, #7C3AED)',
+                  }}
+                />
+              </div>
+              <p className="text-xs mt-1.5" style={{ color: '#6B7280' }}>
+                {matchProgress.toLocaleString()} of {matchTotal.toLocaleString()} processed
+                {matchTotal > 0 && ` · ${Math.min(100, Math.round(matchProgress / matchTotal * 100))}%`}
+              </p>
+            </div>
+          )}
+
           {targetStats && !matchLoading && (
             <p className="text-sm mt-2 text-center" style={{ color: '#9CA3AF' }}>
               {targetStats.total_rows.toLocaleString()} targets × {(dbCompsCount ?? compsStats.valid_rows).toLocaleString()} comps
