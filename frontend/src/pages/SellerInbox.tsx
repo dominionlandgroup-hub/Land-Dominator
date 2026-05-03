@@ -206,10 +206,27 @@ function CommDetailModal({ comm, onClose }: { comm: Communication; onClose: () =
           )}
         </div>
 
-        {comm.recording_url && (
+        {comm.recording_url ? (
           <div style={{ marginBottom: 18 }}>
-            <p style={{ fontSize: 10, fontWeight: 700, color: '#9B8AAE', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px' }}>Recording</p>
-            <audio controls src={comm.recording_url} style={{ width: '100%', height: 32 }} />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+              <p style={{ fontSize: 10, fontWeight: 700, color: '#9B8AAE', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0 }}>
+                🎙 Recording{comm.duration_seconds ? ` · ${Math.floor(comm.duration_seconds / 60)}m ${comm.duration_seconds % 60}s` : ''}
+              </p>
+              <a
+                href={comm.recording_url}
+                download
+                onClick={e => e.stopPropagation()}
+                style={{ fontSize: 11, color: '#4F46E5', textDecoration: 'none', fontWeight: 600, padding: '2px 8px', border: '1px solid rgba(79,70,229,0.3)', borderRadius: 4 }}
+              >
+                ↓ Download
+              </a>
+            </div>
+            <audio controls src={comm.recording_url} style={{ width: '100%', height: 36 }} />
+          </div>
+        ) : comm.type?.startsWith('call') && (
+          <div style={{ marginBottom: 18 }}>
+            <p style={{ fontSize: 10, fontWeight: 700, color: '#9B8AAE', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 4px' }}>Recording</p>
+            <p style={{ fontSize: 12, color: '#9B8AAE', margin: 0, fontStyle: 'italic' }}>No recording available</p>
           </div>
         )}
 

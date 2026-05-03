@@ -101,6 +101,9 @@ class PropertyBase(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
 
+    # Assignment fee (for pipeline value tracking)
+    assignment_fee: Optional[float] = None
+
     # Meta
     tags: Optional[List[str]] = None
     additional_phones: Optional[List[str]] = None

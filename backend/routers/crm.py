@@ -503,6 +503,7 @@ def _map_pebble_row(row: dict, col_to_field: dict[str, str]) -> dict:
 
 _MIGRATION_SQL = """
 ALTER TABLE crm_campaigns ADD COLUMN IF NOT EXISTS offer_pct NUMERIC DEFAULT 52.5;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS assignment_fee NUMERIC DEFAULT 5000;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS property_id TEXT;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS fips TEXT;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS latitude NUMERIC;

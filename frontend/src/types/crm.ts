@@ -1,6 +1,7 @@
 export type PropertyStatus =
   | 'lead'
   | 'prospect'
+  | 'interested'
   | 'offer_sent'
   | 'under_contract'
   | 'due_diligence'
@@ -111,6 +112,7 @@ export interface CRMProperty {
   pebble_code?: string
   claude_ai_comp?: number
 
+  assignment_fee?: number
   tags?: string[]
   additional_phones?: string[]
   notes?: string

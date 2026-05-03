@@ -171,10 +171,26 @@ export default function CommDetailModal({ comm, onClose, onOpenProperty }: Props
           )}
 
           {/* Recording */}
-          {comm.recording_url && (
+          {comm.recording_url ? (
             <div>
-              <p className="label-caps mb-2">Recording</p>
+              <div className="flex items-center justify-between mb-2">
+                <p className="label-caps">🎙 Recording{comm.duration_seconds ? ` · ${Math.floor(comm.duration_seconds / 60)}m ${comm.duration_seconds % 60}s` : ''}</p>
+                <a
+                  href={comm.recording_url}
+                  download
+                  onClick={e => e.stopPropagation()}
+                  className="text-xs font-semibold"
+                  style={{ color: '#4F46E5', textDecoration: 'none', padding: '2px 8px', border: '1px solid rgba(79,70,229,0.3)', borderRadius: 4 }}
+                >
+                  ↓ Download
+                </a>
+              </div>
               <RecordingPlayer url={comm.recording_url} />
+            </div>
+          ) : comm.type?.startsWith('call') && (
+            <div>
+              <p className="label-caps mb-1">Recording</p>
+              <p className="text-xs" style={{ color: '#9B8AAE', fontStyle: 'italic' }}>No recording available</p>
             </div>
           )}
 

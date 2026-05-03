@@ -1197,20 +1197,31 @@ async def recording_status(request: Request) -> dict:
         call_sid = _form_get(form, "CallSid", "call_control_id")
         recording_url = _form_get(form, "RecordingUrl", "recording_url")
     except Exception:
+        pass
+
+    if not call_sid or not recording_url:
         try:
             body = await request.json()
             data = body.get("data", {}).get("payload", body)
-            call_sid = data.get("call_control_id", data.get("CallSid", ""))
-            recording_url = data.get("recording_url", data.get("RecordingUrl", ""))
+            call_sid = call_sid or data.get("call_leg_id", data.get("call_control_id", data.get("CallSid", "")))
+            # Telnyx sends recording_urls.mp3 for TeXML/webhook recordings
+            rec_urls = data.get("recording_urls", {})
+            recording_url = recording_url or rec_urls.get("mp3") or rec_urls.get("wav") or data.get("recording_url", data.get("RecordingUrl", ""))
         except Exception:
             pass
+
     if call_sid and recording_url:
         try:
-            get_supabase().table("crm_communications").update(
+            sb = get_supabase()
+            sb.table("crm_communications").update(
                 {"recording_url": recording_url}
             ).eq("call_id", call_sid).execute()
+            # Also try matching by call_leg_id stored as call_id
+            print(f"[comms] Recording saved for call_id={call_sid}: {recording_url}", flush=True)
         except Exception as exc:
-            print(f"[comms] recording_status DB error: {exc}")
+            print(f"[comms] recording_status DB error: {exc}", flush=True)
+    else:
+        print(f"[comms] recording_status: missing call_sid={call_sid!r} or recording_url={recording_url!r}", flush=True)
     return {"status": "ok"}
 
 

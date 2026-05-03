@@ -10,13 +10,11 @@ interface BoardsProps {
 // Column definitions per board view
 const BOARD_COLUMNS: Record<string, { status: string; label: string; color: string }[]> = {
   'boards-seller': [
-    { status: 'lead',           label: 'New Lead',       color: '#5C2977' },
-    { status: 'prospect',       label: 'Contacted',      color: '#4A90D9' },
-    { status: 'offer_sent',     label: 'Offer Sent',     color: '#7C3AED' },
-    { status: 'under_contract', label: 'Under Contract', color: '#059669' },
-    { status: 'due_diligence',  label: 'Due Diligence',  color: '#D97706' },
-    { status: 'closed_won',     label: 'Closed Won',     color: '#059669' },
-    { status: 'closed_lost',    label: 'Closed Lost',    color: '#DC2626' },
+    { status: 'lead',       label: 'New Lead',   color: '#5C2977' },
+    { status: 'prospect',   label: 'Contacted',  color: '#4A90D9' },
+    { status: 'interested', label: 'Interested', color: '#7C3AED' },
+    { status: 'offer_sent', label: 'Offer Sent', color: '#D97706' },
+    { status: 'closed_won', label: 'Closed Won', color: '#059669' },
   ],
   'boards-buyer': [
     { status: 'lead',           label: 'Available',      color: '#4A90D9' },
@@ -120,11 +118,23 @@ export default function Boards({ view }: BoardsProps) {
     setDragOverCol(null)
   }
 
+  // Pipeline value calculation — sum assignment_fee for all non-closed records
+  const activeStatuses = new Set(['lead', 'prospect', 'interested', 'offer_sent'])
+  const activeProperties = properties.filter(p => p.status && activeStatuses.has(p.status))
+  const pipelineValue = activeProperties.reduce((sum, p) => sum + (p.assignment_fee ?? 5000), 0)
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#F8F6FB', overflow: 'hidden' }}>
       {/* Header */}
       <div className="page-header" style={{ flexShrink: 0 }}>
-        <h1 style={{ fontSize: 18, fontWeight: 700, color: '#1A0A2E' }}>{BOARD_LABELS[view]}</h1>
+        <div>
+          <h1 style={{ fontSize: 18, fontWeight: 700, color: '#1A0A2E' }}>{BOARD_LABELS[view]}</h1>
+          {view === 'boards-seller' && !loading && (
+            <p style={{ fontSize: 12, color: '#059669', fontWeight: 600, margin: '2px 0 0' }}>
+              Pipeline: {fmtCurrency(pipelineValue)} across {activeProperties.length} active lead{activeProperties.length !== 1 ? 's' : ''}
+            </p>
+          )}
+        </div>
         <button className="btn-secondary text-sm" onClick={load}>↻ Refresh</button>
       </div>
 
@@ -134,14 +144,15 @@ export default function Boards({ view }: BoardsProps) {
         </div>
       ) : (
         <div style={{ flex: 1, overflowX: 'auto', overflowY: 'hidden', padding: '16px 24px 24px' }}>
-          <div style={{ display: 'flex', gap: 16, height: '100%', minWidth: 'max-content' }}>
+          <div style={{ display: 'flex', gap: 16, height: '100%' }}>
             {columns.map(col => {
               const cards = propertiesForStatus(col.status)
               const isDragTarget = dragOverCol === col.status
+              const colValue = cards.reduce((sum, p) => sum + (p.assignment_fee ?? 5000), 0)
               return (
                 <div
                   key={col.status}
-                  style={{ width: 260, display: 'flex', flexDirection: 'column', flexShrink: 0 }}
+                  style={{ minWidth: 280, width: 280, display: 'flex', flexDirection: 'column', flexShrink: 0 }}
                   onDragOver={e => onDragOver(e, col.status)}
                   onDragLeave={() => setDragOverCol(null)}
                   onDrop={e => onDrop(e, col.status)}
@@ -155,11 +166,16 @@ export default function Boards({ view }: BoardsProps) {
                       <span style={{ width: 10, height: 10, borderRadius: '50%', background: col.color, display: 'inline-block', flexShrink: 0 }} />
                       <span style={{ fontWeight: 700, fontSize: 13, color: '#1A0A2E' }}>{col.label}</span>
                     </div>
-                    <span style={{
-                      background: `${col.color}18`, color: col.color,
-                      border: `1px solid ${col.color}30`,
-                      borderRadius: 10, padding: '1px 8px', fontSize: 11, fontWeight: 700,
-                    }}>{cards.length}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {cards.length > 0 && (
+                        <span style={{ fontSize: 11, fontWeight: 600, color: col.color }}>{fmtCurrency(colValue)}</span>
+                      )}
+                      <span style={{
+                        background: `${col.color}18`, color: col.color,
+                        border: `1px solid ${col.color}30`,
+                        borderRadius: 10, padding: '1px 8px', fontSize: 11, fontWeight: 700,
+                      }}>{cards.length}</span>
+                    </div>
                   </div>
 
                   {/* Cards container */}
@@ -177,6 +193,7 @@ export default function Boards({ view }: BoardsProps) {
                     ) : cards.map(p => {
                       const isDragging = draggingId === p.id
                       const days = daysAgo(p.updated_at ?? p.created_at)
+                      const fee = p.assignment_fee ?? 5000
                       return (
                         <div
                           key={p.id}
@@ -210,6 +227,9 @@ export default function Boards({ view }: BoardsProps) {
                           {p.acreage != null && (
                             <p style={{ fontSize: 10, color: '#9B8AAE', margin: '4px 0 0' }}>{p.acreage.toFixed(2)} acres</p>
                           )}
+                          <p style={{ fontSize: 11, fontWeight: 600, color: '#059669', margin: '4px 0 0' }}>
+                            Est. Fee: {fmtCurrency(fee)}
+                          </p>
                         </div>
                       )
                     })}
