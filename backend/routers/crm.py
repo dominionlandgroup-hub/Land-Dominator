@@ -901,39 +901,67 @@ async def update_crm_campaign(campaign_id: str, body: CRMCampaignUpdate) -> dict
 
 @router.delete("/campaigns/{campaign_id}")
 async def delete_crm_campaign(campaign_id: str) -> dict:
-    """
-    Delete a campaign and all its properties.
-    FK cascade rules handle the rest automatically:
-      - crm_properties.campaign_id  ON DELETE SET NULL  (not applicable — we delete them)
-      - crm_property_documents.property_id  ON DELETE CASCADE
-      - crm_communications.property_id      ON DELETE SET NULL
-      - crm_deals.property_id               ON DELETE SET NULL
-      - crm_mail_drops.campaign_id          ON DELETE CASCADE
-    """
     try:
         sb = get_supabase()
 
-        # Step 1: Delete all properties for this campaign.
-        # The DB cascade auto-deletes property_documents and nulls comms/deals.
-        try:
-            sb.table("crm_properties").delete().eq("campaign_id", campaign_id).execute()
-            print(f"[delete-campaign] Step 1 OK: deleted properties for {campaign_id}", flush=True)
-        except Exception as e:
-            print(f"[delete-campaign] Step 1 FAILED (properties): {e}", flush=True)
-            raise
+        # Fetch all property IDs — paginate in case of large campaigns
+        property_ids: list[str] = []
+        offset = 0
+        while True:
+            batch = sb.table("crm_properties").select("id").eq("campaign_id", campaign_id).range(offset, offset + 999).execute()
+            rows = batch.data or []
+            property_ids.extend(r["id"] for r in rows)
+            if len(rows) < 1000:
+                break
+            offset += 1000
+        print(f"[delete-campaign] {campaign_id}: found {len(property_ids)} properties", flush=True)
 
-        # Step 2: Delete the campaign itself.
-        # The DB cascade auto-deletes crm_mail_drops.
-        try:
-            sb.table("crm_campaigns").delete().eq("id", campaign_id).execute()
-            print(f"[delete-campaign] Step 2 OK: deleted campaign {campaign_id}", flush=True)
-        except Exception as e:
-            print(f"[delete-campaign] Step 2 FAILED (campaign): {e}", flush=True)
-            raise
+        # Process in chunks of 100 to stay well under URL-length limits
+        CHUNK = 100
+        for i in range(0, len(property_ids), CHUNK):
+            chunk = property_ids[i:i + CHUNK]
 
-        return {"deleted": True, "campaign_id": campaign_id}
+            # Step 1: Null out communications (FK: property_id → crm_properties)
+            try:
+                sb.table("crm_communications").update({"property_id": None}).in_("property_id", chunk).execute()
+            except Exception as e:
+                print(f"[delete-campaign] comms null chunk {i}: {e}", flush=True)
+
+            # Step 2: Delete property notes
+            try:
+                sb.table("crm_property_notes").delete().in_("property_id", chunk).execute()
+            except Exception as e:
+                print(f"[delete-campaign] notes chunk {i}: {e}", flush=True)
+
+            # Step 3: Delete property documents
+            try:
+                sb.table("crm_property_documents").delete().in_("property_id", chunk).execute()
+            except Exception as e:
+                print(f"[delete-campaign] docs chunk {i}: {e}", flush=True)
+
+        # Step 4: Null campaign_id on properties (in case FK is NOT NULL)
+        try:
+            sb.table("crm_properties").update({"campaign_id": None}).eq("campaign_id", campaign_id).execute()
+        except Exception as e:
+            print(f"[delete-campaign] null campaign_id: {e}", flush=True)
+
+        # Step 5: Delete all properties
+        sb.table("crm_properties").delete().eq("campaign_id", campaign_id).execute()
+        print(f"[delete-campaign] Step 5 OK: properties deleted", flush=True)
+
+        # Step 6: Delete mail drops
+        try:
+            sb.table("crm_mail_drops").delete().eq("campaign_id", campaign_id).execute()
+        except Exception as e:
+            print(f"[delete-campaign] mail_drops: {e}", flush=True)
+
+        # Step 7: Delete the campaign
+        sb.table("crm_campaigns").delete().eq("id", campaign_id).execute()
+        print(f"[delete-campaign] Step 7 OK: campaign {campaign_id} deleted", flush=True)
+
+        return {"deleted": True, "properties_removed": len(property_ids)}
     except Exception as exc:
-        print(f"[delete-campaign] FATAL ERROR: {exc}", flush=True)
+        print(f"[delete-campaign] FATAL: {exc}", flush=True)
         raise HTTPException(status_code=500, detail=str(exc))
 
 
