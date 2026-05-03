@@ -9,7 +9,6 @@ import traceback
 import gc
 import math
 import threading
-import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, HTTPException, Request
@@ -28,33 +27,18 @@ from services.matching_engine import (
     COMP_SEARCH_STEPS,
 )
 from storage.session_store import get_targets, store_match, get_match
+from storage import job_store
 
 router = APIRouter(prefix="/match", tags=["match"])
 
 _executor = ThreadPoolExecutor(max_workers=2)
 
-# ── Background job store ─────────────────────────────────────────────────────
 LARGE_FILE_THRESHOLD = 5000
-_jobs: dict = {}
-_jobs_lock = threading.Lock()
-_JOB_TTL = 3600  # clean up jobs older than 1 hour
-
-
-def _cleanup_old_jobs() -> None:
-    now = time.time()
-    with _jobs_lock:
-        stale = [jid for jid, j in _jobs.items() if now - j.get("created_at", 0) > _JOB_TTL]
-        for jid in stale:
-            del _jobs[jid]
 
 
 def _run_background_job(job_id: str, comps_df: pd.DataFrame, targets_df: pd.DataFrame, kwargs: dict) -> None:
     def _progress(completed: int, total: int) -> None:
-        with _jobs_lock:
-            j = _jobs.get(job_id)
-            if j:
-                j["progress"] = completed
-                j["message"] = f"Matching… {completed:,} of {total:,} complete"
+        job_store.update_progress(job_id, completed, total)
 
     try:
         result = run_matching(
@@ -64,22 +48,12 @@ def _run_background_job(job_id: str, comps_df: pd.DataFrame, targets_df: pd.Data
             **kwargs,
         )
         store_match(result["match_id"], result)
-        with _jobs_lock:
-            j = _jobs.get(job_id)
-            if j:
-                j["status"] = "complete"
-                j["match_id"] = result["match_id"]
-                j["progress"] = j["total"]
-                j["message"] = "Complete"
+        job_store.complete_job(job_id, result["match_id"], result["total_targets"])
         print(f"[job/{job_id}] Done — {result['matched_count']} matched of {result['total_targets']}", flush=True)
     except Exception:
         tb = traceback.format_exc()
         print(f"[job/{job_id}] ERROR:\n{tb}", flush=True)
-        with _jobs_lock:
-            j = _jobs.get(job_id)
-            if j:
-                j["status"] = "error"
-                j["error"] = tb[:600]
+        job_store.fail_job(job_id, tb[:600])
 
 
 def _load_comps_from_db(states: "list[str] | None" = None) -> "pd.DataFrame | None":
@@ -315,18 +289,9 @@ async def run_match(filters: MatchFilters) -> Response:
 
     # ── Large file → background job ──────────────────────────────────────────
     if total_targets > LARGE_FILE_THRESHOLD:
-        _cleanup_old_jobs()
+        job_store.cleanup_old_jobs()
         job_id = str(uuid.uuid4())
-        with _jobs_lock:
-            _jobs[job_id] = {
-                "status": "running",
-                "progress": 0,
-                "total": total_targets,
-                "message": f"Loading comps… 0 of {total_targets:,} processed",
-                "match_id": None,
-                "error": None,
-                "created_at": time.time(),
-            }
+        job_store.create_job(job_id, total_targets)
         t = threading.Thread(
             target=_run_background_job,
             args=(job_id, comps_df, targets_df, match_kwargs),
@@ -382,17 +347,20 @@ async def run_match(filters: MatchFilters) -> Response:
 @router.get("/job/{job_id}")
 async def get_match_job(job_id: str) -> Response:
     """Poll status of a background matching job. Returns progress + full result when complete."""
-    with _jobs_lock:
-        job = dict(_jobs.get(job_id) or {})
+    job = job_store.get_job(job_id)
 
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found or expired")
+        raise HTTPException(
+            status_code=404,
+            detail="Job not found — server may have restarted. Please re-run the matching engine.",
+        )
 
+    total = job.get("total_targets") or job.get("total") or 0
     resp: dict = {
         "job_id": job_id,
         "status": job.get("status", "running"),
         "progress": job.get("progress", 0),
-        "total": job.get("total", 0),
+        "total": total,
         "message": job.get("message", ""),
         "error": job.get("error"),
         "result": None,
@@ -403,8 +371,11 @@ async def get_match_job(job_id: str) -> Response:
         if match_id:
             result = get_match(match_id)
             if result:
-                # Embed the full serialized result so the frontend can use it directly
                 resp["result"] = result
+            else:
+                # Results evicted from memory (server restart after completion) — ask to re-run
+                resp["status"] = "error"
+                resp["error"] = "Match results expired — please re-run the matching engine."
 
     try:
         import simplejson

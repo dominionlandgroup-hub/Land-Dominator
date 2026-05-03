@@ -173,6 +173,30 @@ async def stop_scheduler() -> None:
 
 
 @app.on_event("startup")
+async def recover_match_jobs() -> None:
+    """Mark any background jobs still 'running' from a previous server instance as failed."""
+    try:
+        from storage.job_store import recover_interrupted_jobs, MIGRATION_SQL
+        await recover_interrupted_jobs()
+    except Exception as exc:
+        print(f"[startup] job recovery skipped: {exc}", flush=True)
+        print(
+            "\nNOTE: crm_match_jobs table may be missing. Run in Supabase SQL Editor:\n"
+            "  CREATE TABLE IF NOT EXISTS crm_match_jobs (\n"
+            "    id TEXT PRIMARY KEY,\n"
+            "    status TEXT DEFAULT 'running',\n"
+            "    created_at TIMESTAMPTZ DEFAULT NOW(),\n"
+            "    updated_at TIMESTAMPTZ DEFAULT NOW(),\n"
+            "    total_targets INTEGER,\n"
+            "    progress INTEGER DEFAULT 0,\n"
+            "    match_id TEXT,\n"
+            "    message TEXT,\n"
+            "    error TEXT\n"
+            "  );\n"
+        )
+
+
+@app.on_event("startup")
 async def check_crm_schema() -> None:
     """Warn at startup if required columns/tables are missing from CRM schema."""
     try:
