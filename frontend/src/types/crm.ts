@@ -180,6 +180,7 @@ export interface CRMCampaign {
   mail_house_email?: string
   start_date?: string
   amount_spent?: number
+  offer_pct?: number
 }
 
 export type MailDropStatus = 'scheduled' | 'approved' | 'sent' | 'error'

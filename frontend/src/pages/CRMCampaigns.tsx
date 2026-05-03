@@ -248,7 +248,14 @@ export default function CRMCampaigns() {
                       onClick={() => openDetail(camp)}
                     >
                       <td style={{ padding: '12px 16px', maxWidth: 260 }}>
-                        <span className="text-sm font-semibold" style={{ color: '#1A0A2E' }}>{camp.name}</span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-sm font-semibold" style={{ color: '#1A0A2E' }}>{camp.name}</span>
+                          {camp.offer_pct != null && (
+                            <span style={{ fontSize: 10, fontWeight: 600, color: '#4F46E5', background: '#EEF2FF', border: '1px solid #C7D2FE', borderRadius: 4, padding: '1px 5px', whiteSpace: 'nowrap' }}>
+                              {Number(camp.offer_pct).toFixed(1)}% offer
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td style={{ padding: '12px 16px', whiteSpace: 'nowrap' }}>
                         <span className="text-sm" style={{ color: '#6B5B8A' }}>{formatDate(camp.created_at)}</span>

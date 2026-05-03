@@ -136,6 +136,7 @@ export async function autoCreateCampaign(opts?: {
   state?: string
   month?: string
   year?: number
+  offer_pct?: number
 }): Promise<{ campaign_id: string; name: string }> {
   const { data } = await api.post<{ campaign_id: string; name: string }>('/crm/campaigns/auto-create', opts ?? {})
   return data

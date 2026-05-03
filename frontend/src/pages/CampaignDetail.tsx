@@ -560,6 +560,7 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
             { label: 'Offers', value: (bs.offer_sent ?? 0).toLocaleString(), accent: '#C084FC' },
             { label: 'Purchases', value: (bs.under_contract ?? 0).toLocaleString(), accent: '#10B981' },
             { label: 'Sales', value: (bs.closed_won ?? 0).toLocaleString(), accent: '#10B981' },
+            ...(stats.offer_pct != null ? [{ label: 'Offer %', value: `${Number(stats.offer_pct).toFixed(1)}%`, accent: '#7C3AED' }] : []),
           ].map(s => (
             <div key={s.label} className="text-center">
               <div className="text-xl font-bold" style={{ color: s.accent }}>{s.value}</div>

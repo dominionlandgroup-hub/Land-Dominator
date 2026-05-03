@@ -502,6 +502,7 @@ def _map_pebble_row(row: dict, col_to_field: dict[str, str]) -> dict:
 # ══════════════════════════════════════════════════════════════════════
 
 _MIGRATION_SQL = """
+ALTER TABLE crm_campaigns ADD COLUMN IF NOT EXISTS offer_pct NUMERIC DEFAULT 52.5;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS property_id TEXT;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS fips TEXT;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS latitude NUMERIC;
@@ -934,24 +935,28 @@ async def auto_create_campaign(body: dict = Body(...)) -> dict:
         if not counties and single:
             counties = [single]
 
-        if len(counties) == 1:
-            name = f"{counties[0]} County {month} {year}"
-        elif len(counties) == 2:
-            name = f"{counties[0]} / {counties[1]} {month} {year}"
-        elif len(counties) == 3:
-            name = f"{counties[0]} / {counties[1]} / {counties[2]} {month} {year}"
-        elif len(counties) >= 4:
-            name = f"{state} Multi-County {month} {year}" if state else f"Multi-County {month} {year}"
-        elif state:
-            name = f"{state} {month} {year}"
-        else:
-            name = f"Mail Drop {month} {year}"
+        offer_pct_raw = body.get("offer_pct")
+        offer_pct_val: float | None = float(offer_pct_raw) if offer_pct_raw is not None else None
+        pct_suffix = f" · {offer_pct_val:.1f}%" if offer_pct_val is not None else ""
 
-        r = sb.table("crm_campaigns").insert({
-            "name": name,
-            "created_at": _now(),
-            "updated_at": _now(),
-        }).execute()
+        if len(counties) == 1:
+            name = f"{counties[0]} County {month} {year}{pct_suffix}"
+        elif len(counties) == 2:
+            name = f"{counties[0]} / {counties[1]} {month} {year}{pct_suffix}"
+        elif len(counties) == 3:
+            name = f"{counties[0]} / {counties[1]} / {counties[2]} {month} {year}{pct_suffix}"
+        elif len(counties) >= 4:
+            base = f"{state} Multi-County {month} {year}" if state else f"Multi-County {month} {year}"
+            name = f"{base}{pct_suffix}"
+        elif state:
+            name = f"{state} {month} {year}{pct_suffix}"
+        else:
+            name = f"Mail Drop {month} {year}{pct_suffix}"
+
+        row: dict = {"name": name, "created_at": _now(), "updated_at": _now()}
+        if offer_pct_val is not None:
+            row["offer_pct"] = offer_pct_val
+        r = sb.table("crm_campaigns").insert(row).execute()
         campaign = r.data[0]
         return {"campaign_id": campaign["id"], "name": name}
     except RuntimeError as exc:
@@ -1067,12 +1072,14 @@ async def send_campaign_mail_drop(campaign_id: str, body: dict = Body(default={}
         import base64 as _base64
         from datetime import datetime as _dt
         campaign_name = campaign.get("name", campaign_id)
+        camp_offer_pct = campaign.get("offer_pct")
+        offer_pct_line = f" · {float(camp_offer_pct):.1f}% of LP estimate" if camp_offer_pct is not None else ""
         date_str = _dt.now().strftime("%Y-%m-%d")
         encoded_csv = _base64.b64encode(csv_content.encode("utf-8")).decode("utf-8")
         plain_body = (
             f"Hi,\n\n"
             f"Please find attached the mailing list for the following campaign:\n\n"
-            f"  Campaign: {campaign_name}\n"
+            f"  Campaign: {campaign_name}{offer_pct_line}\n"
             f"  Date: {date_str}\n"
             f"  Records: {record_count}\n\n"
             f"The attached CSV contains owner name, mailing address, APN, acreage, and offer price for each lead.\n\n"
@@ -1087,7 +1094,7 @@ async def send_campaign_mail_drop(campaign_id: str, body: dict = Body(default={}
 <p style="font-size:16px">Hi,</p>
 <p>Please find attached the mailing list for the following campaign:</p>
 <table style="border-collapse:collapse;margin:16px 0">
-  <tr><td style="padding:6px 16px 6px 0;color:#6B5B8A;font-weight:bold">Campaign:</td><td style="padding:6px 0"><strong>{campaign_name}</strong></td></tr>
+  <tr><td style="padding:6px 16px 6px 0;color:#6B5B8A;font-weight:bold">Campaign:</td><td style="padding:6px 0"><strong>{campaign_name}</strong>{offer_pct_line}</td></tr>
   <tr><td style="padding:6px 16px 6px 0;color:#6B5B8A;font-weight:bold">Date:</td><td style="padding:6px 0">{date_str}</td></tr>
   <tr><td style="padding:6px 16px 6px 0;color:#6B5B8A;font-weight:bold">Records:</td><td style="padding:6px 0"><strong>{record_count:,}</strong></td></tr>
   <tr><td style="padding:6px 16px 6px 0;color:#6B5B8A;font-weight:bold">Est. Cost:</td><td style="padding:6px 0">${record_count * float(campaign.get('cost_per_piece') or 0.55):.2f} @ ${float(campaign.get('cost_per_piece') or 0.55):.2f}/piece</td></tr>
@@ -1437,7 +1444,15 @@ async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)
                 cpp = float(camp_data.get("cost_per_piece") or 0.55)
                 prev_spent = float(camp_data.get("amount_spent") or 0)
                 new_spent = prev_spent + cpp * imported
-                sb.table("crm_campaigns").update({"amount_spent": new_spent, "updated_at": _now()}).eq("id", campaign_id).execute()
+                camp_update: dict = {"amount_spent": new_spent, "updated_at": _now()}
+                # Store offer_pct if provided in the request body
+                _req_offer_pct = body.get("offer_pct")
+                if _req_offer_pct is not None:
+                    try:
+                        camp_update["offer_pct"] = float(_req_offer_pct)
+                    except (TypeError, ValueError):
+                        pass
+                sb.table("crm_campaigns").update(camp_update).eq("id", campaign_id).execute()
                 print(f"[add-match-results] amount_spent updated: {prev_spent:.2f} → {new_spent:.2f} ({imported} records × ${cpp}/piece)", flush=True)
             except Exception as spend_err:
                 print(f"[add-match-results] amount_spent update error (non-fatal): {spend_err}", flush=True)

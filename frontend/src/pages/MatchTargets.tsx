@@ -1030,7 +1030,7 @@ export default function MatchTargets() {
                     if (selectedCampaignId === '__new__') {
                       const allCounties = dashboardData?.top_counties ?? []
                       const topState = dashboardData?.top_states?.[0] ?? ''
-                      const created = await autoCreateCampaign({ counties: allCounties, state: topState })
+                      const created = await autoCreateCampaign({ counties: allCounties, state: topState, offer_pct: matchResult.offer_pct ?? offerPct })
                       campaignId = created.campaign_id
                       campaignName = created.name
                       setMailingCampaigns(prev => [...prev, { id: created.campaign_id, name: created.name }])
