@@ -849,24 +849,30 @@ export default function MatchTargets() {
             {/* Acreage band breakdown */}
             {(() => {
               const bandDefs = [
-                { key: 'micro',  label: 'Micro',  range: '0–0.5 ac' },
-                { key: 'small',  label: 'Small',  range: '0.5–2 ac' },
-                { key: 'medium', label: 'Medium', range: '2–5 ac' },
-                { key: 'large',  label: 'Large',  range: '5–10 ac' },
+                { key: 'micro',  label: 'Micro',  range: '0–0.5 ac',  emoji: '🟢' },
+                { key: 'small',  label: 'Small',  range: '0.5–2 ac',  emoji: '🟡' },
+                { key: 'medium', label: 'Medium', range: '2–5 ac',    emoji: '🟡' },
+                { key: 'large',  label: 'Large',  range: '5–10 ac',   emoji: '⚪' },
               ]
+              const total = matchResult.results.length
               const counts = bandDefs.map(b => ({
                 ...b,
                 count: matchResult.results.filter(r => (r.acreage_band as string) === b.key).length,
-              })).filter(b => b.count > 0)
-              if (counts.length === 0) return null
+              }))
+              const anyCount = counts.some(b => b.count > 0)
+              if (!anyCount) return null
               return (
                 <div className="mb-4 px-4 py-3 rounded-xl flex flex-wrap gap-4 items-center" style={{ background: 'rgba(79,70,229,0.04)', border: '1px solid rgba(79,70,229,0.12)' }}>
-                  <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#9CA3AF' }}>By Acreage</span>
+                  <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#9CA3AF' }}>Matched by Band</span>
                   {counts.map(b => (
                     <span key={b.key} className="flex items-center gap-1.5">
+                      <span style={{ fontSize: 12 }}>{b.emoji}</span>
                       <span className="text-xs font-semibold" style={{ color: '#4F46E5' }}>{b.label}</span>
                       <span className="text-xs" style={{ color: '#9CA3AF' }}>{b.range}</span>
                       <span className="text-xs font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(79,70,229,0.1)', color: '#4F46E5' }}>{b.count.toLocaleString()}</span>
+                      {total > 0 && b.count > 0 && (
+                        <span className="text-xs" style={{ color: '#9CA3AF' }}>{Math.round(b.count / total * 100)}%</span>
+                      )}
                     </span>
                   ))}
                 </div>

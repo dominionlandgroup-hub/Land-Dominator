@@ -582,6 +582,25 @@ function BuyBoxRecipe({
 
   const acres = comps.map(c => c.lot_acres).filter(v => Number.isFinite(v) && v > 0).sort((a, b) => a - b)
 
+  // Acreage band breakdown — all four segments with % of sales and median PPA
+  const _BANDS = [
+    { key: 'micro',  label: 'Micro',  emoji: '🟢', min: 0,   max: 0.5,  range: '0–0.5 ac'  },
+    { key: 'small',  label: 'Small',  emoji: '🟡', min: 0.5, max: 2.0,  range: '0.5–2 ac'  },
+    { key: 'medium', label: 'Medium', emoji: '🟡', min: 2.0, max: 5.0,  range: '2–5 ac'    },
+    { key: 'large',  label: 'Large',  emoji: '⚪', min: 5.0, max: 10.0, range: '5–10 ac'   },
+  ]
+  const _validComps = comps.filter(c => c.lot_acres > 0 && c.sale_price > 0)
+  const _totalValid = _validComps.length
+  const bandStats = _BANDS.map(b => {
+    const inBand = _validComps.filter(c => c.lot_acres >= b.min && c.lot_acres < b.max)
+    const count = inBand.length
+    const pct = _totalValid > 0 ? Math.round(count / _totalValid * 100) : 0
+    const ppas = inBand.map(c => c.sale_price / c.lot_acres).filter(v => Number.isFinite(v) && v > 0).sort((a, b) => a - b)
+    const medianPpa = ppas.length > 0 ? ppas[Math.floor(ppas.length / 2)] : null
+    return { ...b, count, pct, medianPpa }
+  })
+  const sweetBand = [...bandStats].sort((a, b) => b.count - a.count)[0]
+
   // 1. Sweet spot — most common acreage bucket
   let sweetMin = 0.1
   let sweetMax = 0.5
@@ -634,9 +653,15 @@ function BuyBoxRecipe({
     '   ✗ Improved/Built lots',
     '',
     '3. LOT SIZE',
-    `   Sweet spot: ${sweetMin}–${sweetMax} acres (${minSqft.toLocaleString()}–${maxSqft.toLocaleString()} sq ft)${sweetPct > 0 ? ` — ${sweetPct}% of all sales` : ''}`,
-    acres.length > 0 ? `   Comp range: ${compMin}–${compMax} acres (actual min–max from your comps)` : '',
-    `   PULL RANGE (enter in Land Portal): ${pullMin}–${pullMax} acres — captures ~${pctCaptured}% of sales`,
+    '   Acreage Band Breakdown:',
+    ...bandStats.filter(b => b.count > 0).map(b =>
+      `   ${b.emoji} ${b.label} (${b.range}): ${b.pct}% of sales${b.medianPpa ? ` · median $${Math.round(b.medianPpa / 1000)}K/ac` : ''}${sweetBand && b.key === sweetBand.key ? ' · sweet spot' : ''}`
+    ),
+    `   PULL RANGE (enter in Land Portal): 0.1 to 10 acres — captures 100% of market`,
+    `   Primary market: 0.1–0.5 acres (${bandStats[0].pct}% of sales)`,
+    `   Secondary market: 0.5–2 acres (${bandStats[1].pct}% of sales)`,
+    `   Tertiary market: 2–10 acres (${bandStats[2].pct + bandStats[3].pct}% of sales)`,
+    acres.length > 0 ? `   Comp range: ${compMin}–${compMax} acres (actual min–max from ${acres.length.toLocaleString()} sold comps)` : '',
     '',
     '4. LAND QUALITY',
     `   Buildability: ${buildabilityLabel}`,
@@ -707,8 +732,18 @@ ${sec('2. Property Type',
   check('Mobile Home', false) + check('Improved/Built lots', false)
 )}
 ${sec('3. Lot Size',
-  `<div style="margin-bottom:10px"><div style="color:#9B8AAE;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Sweet Spot</div><div style="color:#4F46E5;font-weight:600;font-size:13px">${sweetMin}–${sweetMax} acres (${minSqft.toLocaleString()}–${maxSqft.toLocaleString()} sq ft)</div>${sweetPct > 0 ? `<div style="color:#9B8AAE;font-size:11px">${sweetPct}% of all sales</div>` : ''}</div>` +
-  `<div style="margin-bottom:10px"><div style="color:#9B8AAE;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Recommended Pull Range</div><div style="color:#059669;font-weight:600;font-size:13px">${pullMin}–${pullMax} acres</div><div style="color:#9B8AAE;font-size:11px">captures ~${pctCaptured}% of sales · enter these values in Land Portal filters</div></div>` +
+  `<div style="margin-bottom:12px"><div style="color:#9B8AAE;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Acreage Band Breakdown</div>` +
+  bandStats.filter(b => b.count > 0).map(b =>
+    `<div style="display:flex;gap:8px;align-items:center;margin-bottom:4px;font-size:12px">` +
+    `<span>${b.emoji}</span><span style="color:#374151;font-weight:600;min-width:50px">${b.label}</span>` +
+    `<span style="color:#9B8AAE;font-size:10px;min-width:54px">${b.range}</span>` +
+    `<span style="color:#4F46E5;font-weight:700">${b.pct}%</span>` +
+    (b.medianPpa ? `<span style="color:#6B7280;font-size:11px">$${Math.round(b.medianPpa / 1000)}K/ac</span>` : '') +
+    (sweetBand && b.key === sweetBand.key ? `<span style="color:#059669;font-size:10px;font-weight:700;background:rgba(5,150,105,0.1);border-radius:3px;padding:1px 4px">sweet spot</span>` : '') +
+    `</div>`
+  ).join('') +
+  `</div>` +
+  `<div style="margin-bottom:10px"><div style="color:#9B8AAE;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Pull Range (enter in Land Portal)</div><div style="color:#059669;font-weight:600;font-size:13px">0.1 to 10 acres</div><div style="color:#9B8AAE;font-size:11px">captures 100% of market · Primary: 0.1–0.5 ac (${bandStats[0].pct}%) · Secondary: 0.5–2 ac (${bandStats[1].pct}%) · Tertiary: 2–10 ac (${bandStats[2].pct + bandStats[3].pct}%)</div></div>` +
   (acres.length > 0 ? `<div style="color:#9B8AAE;font-size:11px">Comp range: ${compMin}–${compMax} acres (actual min–max from ${comps.length.toLocaleString()} sold comps)</div>` : '')
 )}
 ${sec('4. Land Quality',
@@ -814,19 +849,42 @@ ${sec('6. Owner',
         <div className="rounded-xl p-4" style={cardStyle}>
           {hdr('3 · Lot Size')}
           <div className="space-y-3 text-xs">
-            {/* Sweet spot */}
-            <div>
-              <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: '#9CA3AF' }}>Sweet Spot</p>
-              <p style={{ color: '#4F46E5', fontWeight: 600 }}>{sweetMin}–{sweetMax} acres</p>
-              <p style={{ color: '#9CA3AF', fontSize: '10px' }}>
-                {minSqft.toLocaleString()}–{maxSqft.toLocaleString()} sq ft{sweetPct > 0 ? ` · ${sweetPct}% of all sales` : ''}
-              </p>
-            </div>
-            {/* Recommended pull range */}
+            {/* Acreage band breakdown */}
+            {bandStats.some(b => b.count > 0) && (
+              <div>
+                <p className="text-[10px] uppercase tracking-wider mb-2" style={{ color: '#9CA3AF' }}>Acreage Band Breakdown</p>
+                <div className="space-y-1.5">
+                  {bandStats.map(b => (
+                    <div key={b.key} className="flex items-center gap-2">
+                      <span style={{ fontSize: 11 }}>{b.emoji}</span>
+                      <span style={{ color: '#374151', fontWeight: 600, minWidth: 52 }}>{b.label}</span>
+                      <span style={{ color: '#9CA3AF', fontSize: 10, minWidth: 54 }}>{b.range}</span>
+                      <span style={{ color: '#4F46E5', fontWeight: 700, minWidth: 36 }}>{b.pct}%</span>
+                      {b.medianPpa != null && (
+                        <span style={{ color: '#6B7280', fontSize: 10 }}>
+                          ${Math.round(b.medianPpa / 1000)}K/ac
+                        </span>
+                      )}
+                      {sweetBand && b.key === sweetBand.key && (
+                        <span style={{ fontSize: 9, fontWeight: 700, color: '#059669', background: 'rgba(5,150,105,0.1)', borderRadius: 3, padding: '1px 4px' }}>sweet spot</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* Pull range */}
             <div className="pt-2" style={{ borderTop: '1px solid #F3F4F6' }}>
               <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: '#9CA3AF' }}>Pull Range <span style={{ color: '#059669' }}>← enter in Land Portal</span></p>
-              <p style={{ color: '#059669', fontWeight: 600 }}>{pullMin}–{pullMax} acres</p>
-              <p style={{ color: '#9CA3AF', fontSize: '10px' }}>captures ~{pctCaptured}% of sales</p>
+              <p style={{ color: '#059669', fontWeight: 600 }}>0.1 to 10 acres</p>
+              <p style={{ color: '#9CA3AF', fontSize: '10px' }}>captures 100% of market across all segments</p>
+              {sweetBand && sweetBand.count > 0 && (
+                <div className="mt-1.5 space-y-0.5">
+                  <p style={{ color: '#6B7280', fontSize: 10 }}>Primary: 0.1–0.5 ac ({bandStats[0].pct}% of sales)</p>
+                  <p style={{ color: '#6B7280', fontSize: 10 }}>Secondary: 0.5–2 ac ({bandStats[1].pct}% of sales)</p>
+                  <p style={{ color: '#6B7280', fontSize: 10 }}>Tertiary: 2–10 ac ({bandStats[2].pct + bandStats[3].pct}% of sales)</p>
+                </div>
+              )}
             </div>
             {/* Comp range */}
             {acres.length > 0 && (
