@@ -5,7 +5,10 @@ import {
   listProperties, updateProperty, deleteProperties, bulkInsertRows, getCrmCampaign,
   exportPropertiesCsv, startCampaignLpPull, getCampaignLpPullStatus,
   sendCampaignMailDrop, updateCrmCampaign, getPropertyTags, recalculateAmountSpent,
+  startSkipTrace, getSkipTraceStatus, startSmsCampaign, getSmsStatus,
+  getCampaignFunnelStats, exportMailQueue,
 } from '../api/crm'
+import type { CampaignFunnelStats } from '../api/crm'
 import PropertyDetail from './PropertyDetail'
 
 const PAGE_SIZE = 20
@@ -94,6 +97,29 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
   const [lpTokenWarning, setLpTokenWarning] = useState<string | null>(null)
   const lpPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  // Skip trace
+  const [stJobId, setStJobId] = useState<string | null>(null)
+  const [stDone, setStDone] = useState(0)
+  const [stTotal, setStTotal] = useState(0)
+  const [stStatus, setStStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
+  const [stResult, setStResult] = useState<{ mobile: number; landline: number; no_number: number } | null>(null)
+  const [stError, setStError] = useState<string | null>(null)
+  const stPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // SMS campaign
+  const [smsJobId, setSmsJobId] = useState<string | null>(null)
+  const [smsDone, setSmsDone] = useState(0)
+  const [smsTotal, setSmsTotal] = useState(0)
+  const [smsStatus, setSmsStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
+  const [smsSent, setSmsSent] = useState(0)
+  const [smsCapped, setSmsCapped] = useState(false)
+  const [smsDay, setSmsDay] = useState(1)
+  const [smsError, setSmsError] = useState<string | null>(null)
+  const smsPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Funnel stats
+  const [funnel, setFunnel] = useState<CampaignFunnelStats | null>(null)
+
   // Sort
   const [sortBy, setSortBy] = useState<SortBy>('offer_price')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
@@ -113,6 +139,7 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
   useEffect(() => {
     loadProperties(1, 'all', '', '', '', 'offer_price', 'desc')
     refreshStats()
+    loadFunnel()
   }, [])
 
   useEffect(() => {
@@ -360,6 +387,83 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
     }
   }
 
+  // ── Skip Trace ──────────────────────────────────────────────────────
+  async function handleStartSkipTrace() {
+    if (stStatus === 'running') return
+    if (!confirm(`This will skip-trace ${(stats.property_count ?? 0).toLocaleString()} records using Batch Leads credits. Continue?`)) return
+    setStStatus('running')
+    setStDone(0)
+    setStTotal(0)
+    setStResult(null)
+    setStError(null)
+    try {
+      const { job_id, total } = await startSkipTrace(campaign.id)
+      setStJobId(job_id)
+      setStTotal(total)
+      if (stPollRef.current) clearInterval(stPollRef.current)
+      stPollRef.current = setInterval(async () => {
+        try {
+          const s = await getSkipTraceStatus(campaign.id, job_id)
+          setStDone(s.done)
+          setStTotal(s.total)
+          if (s.status === 'done' || s.status === 'error') {
+            setStStatus(s.status as 'done' | 'error')
+            if (s.status === 'done') setStResult({ mobile: s.mobile, landline: s.landline, no_number: s.no_number })
+            if (s.status === 'error') setStError('Skip trace failed')
+            if (stPollRef.current) { clearInterval(stPollRef.current); stPollRef.current = null }
+            loadFunnel()
+          }
+        } catch {}
+      }, 2000)
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { detail?: string } } }
+      setStError(err?.response?.data?.detail ?? 'Failed to start skip trace')
+      setStStatus('error')
+    }
+  }
+
+  // ── SMS Campaign ─────────────────────────────────────────────────────
+  async function handleStartSms(day = 1) {
+    if (smsStatus === 'running') return
+    setSmsStatus('running')
+    setSmsDone(0)
+    setSmsTotal(0)
+    setSmsSent(0)
+    setSmsCapped(false)
+    setSmsDay(day)
+    setSmsError(null)
+    try {
+      const { job_id, total } = await startSmsCampaign(campaign.id, day)
+      setSmsJobId(job_id)
+      setSmsTotal(total)
+      if (smsPollRef.current) clearInterval(smsPollRef.current)
+      smsPollRef.current = setInterval(async () => {
+        try {
+          const s = await getSmsStatus(campaign.id, job_id)
+          setSmsDone(s.done)
+          setSmsTotal(s.total)
+          setSmsSent(s.sent)
+          setSmsCapped(!!s.capped)
+          if (s.status === 'done' || s.status === 'error') {
+            setSmsStatus(s.status as 'done' | 'error')
+            if (s.status === 'error') setSmsError('SMS send failed')
+            if (smsPollRef.current) { clearInterval(smsPollRef.current); smsPollRef.current = null }
+            loadFunnel()
+          }
+        } catch {}
+      }, 2000)
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { detail?: string } } }
+      setSmsError(err?.response?.data?.detail ?? 'Failed to start SMS campaign')
+      setSmsStatus('error')
+    }
+  }
+
+  // ── Funnel Stats ──────────────────────────────────────────────────────
+  async function loadFunnel() {
+    try { setFunnel(await getCampaignFunnelStats(campaign.id)) } catch {}
+  }
+
   // ── Import ──────────────────────────────────────────────────────────
   function triggerImport() {
     cancelledRef.current = false
@@ -486,6 +590,36 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
             </span>
           )}
 
+          {/* Skip trace status */}
+          {stStatus === 'running' && (
+            <span className="text-xs" style={{ color: '#9CA3AF' }}>
+              🔍 Skip tracing… {stDone.toLocaleString()} of {stTotal.toLocaleString()}
+            </span>
+          )}
+          {stStatus === 'done' && stResult && (
+            <span className="text-xs font-semibold" style={{ color: '#10B981' }}>
+              ✓ {stResult.mobile.toLocaleString()} mobile · {stResult.landline.toLocaleString()} landline · {stResult.no_number.toLocaleString()} no number
+            </span>
+          )}
+          {stStatus === 'error' && (
+            <span className="text-xs font-semibold" style={{ color: '#DC2626' }}>Skip trace failed: {stError}</span>
+          )}
+
+          {/* SMS status */}
+          {smsStatus === 'running' && (
+            <span className="text-xs" style={{ color: '#9CA3AF' }}>
+              💬 Texting Day {smsDay}… {smsDone.toLocaleString()} of {smsTotal.toLocaleString()}
+            </span>
+          )}
+          {smsStatus === 'done' && (
+            <span className="text-xs font-semibold" style={{ color: '#10B981' }}>
+              ✓ Day {smsDay}: {smsSent.toLocaleString()} texts sent{smsCapped ? ' (daily limit reached — remainder queued)' : ''}
+            </span>
+          )}
+          {smsStatus === 'error' && (
+            <span className="text-xs font-semibold" style={{ color: '#DC2626' }}>SMS failed: {smsError}</span>
+          )}
+
           {/* Import progress indicator */}
           {importPhase === 'parsing' && (
             <span className="text-xs" style={{ color: '#9CA3AF' }}>Parsing CSV…</span>
@@ -514,6 +648,32 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
             </svg>
             {lpStatus === 'running' ? 'Pulling LP…' : 'Pull LP Data'}
           </button>
+          <button
+            className="btn-secondary text-sm"
+            onClick={handleStartSkipTrace}
+            disabled={stStatus === 'running'}
+            title="Find phone numbers via Batch Leads skip trace"
+          >
+            🔍 {stStatus === 'running' ? `Skip Tracing… ${stDone.toLocaleString()}/${stTotal.toLocaleString()}` : 'Skip Trace'}
+          </button>
+          <button
+            className="btn-secondary text-sm"
+            onClick={() => handleStartSms(1)}
+            disabled={smsStatus === 'running'}
+            title="Send Day 1 SMS to all mobile numbers"
+          >
+            💬 {smsStatus === 'running' ? `Texting… ${smsDone.toLocaleString()}/${smsTotal.toLocaleString()}` : 'Start Texting'}
+          </button>
+          {funnel && funnel.skip_traced > 0 && (
+            <button
+              className="btn-secondary text-sm"
+              onClick={() => handleStartSms(3)}
+              disabled={smsStatus === 'running'}
+              title="Send Day 3 follow-up to non-responders"
+            >
+              💬 Day 3 Follow-up
+            </button>
+          )}
           <button
             className="btn-secondary text-sm"
             onClick={handleExportAll}
@@ -601,6 +761,39 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
           </div>
         </div>
       </div>
+
+      {/* SMS Funnel Dashboard */}
+      {funnel && funnel.skip_traced > 0 && (
+        <div className="px-6 py-4" style={{ borderBottom: '1px solid #E5E7EB', background: '#F0FDF4' }}>
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-xs font-bold uppercase tracking-wider" style={{ color: '#065F46' }}>SMS Funnel</span>
+            <button
+              className="text-[10px] px-2 py-0.5 rounded font-medium border"
+              style={{ color: '#065F46', borderColor: '#A7F3D0', background: '#D1FAE5' }}
+              onClick={async () => { await exportMailQueue(campaign.id) }}
+            >
+              Export Mail List ({funnel.mail_queue.toLocaleString()})
+            </button>
+          </div>
+          <div className="flex items-stretch gap-0 rounded-xl overflow-hidden border" style={{ borderColor: '#A7F3D0', maxWidth: 700 }}>
+            {[
+              { label: 'Total', value: funnel.total, color: '#6B7280', bg: '#F9FAFB' },
+              { label: 'Skip Traced', value: funnel.skip_traced, color: '#4F46E5', bg: '#EEF2FF' },
+              { label: 'Mobile', value: funnel.mobile, color: '#059669', bg: '#F0FDF4' },
+              { label: 'Texts Sent', value: funnel.texts_sent, color: '#0891B2', bg: '#ECFEFF' },
+              { label: '🔥 HOT', value: funnel.hot, color: '#DC2626', bg: '#FEF2F2' },
+              { label: 'Opted Out', value: funnel.opted_out, color: '#9CA3AF', bg: '#F9FAFB' },
+              { label: 'Mail Queue', value: funnel.mail_queue, color: '#D97706', bg: '#FFFBEB' },
+            ].map((s, i) => (
+              <div key={s.label} className="flex-1 flex flex-col items-center justify-center py-3 px-2 text-center"
+                style={{ background: s.bg, borderLeft: i > 0 ? '1px solid #E5E7EB' : 'none' }}>
+                <div className="text-lg font-bold" style={{ color: s.color }}>{s.value.toLocaleString()}</div>
+                <div className="text-[9px] font-semibold uppercase tracking-wide mt-0.5" style={{ color: '#9CA3AF' }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Filter bar */}
       <div className="px-6 py-3 flex items-center gap-3 flex-wrap" style={{ borderBottom: '1px solid #E5E7EB', background: '#FFFFFF' }}>

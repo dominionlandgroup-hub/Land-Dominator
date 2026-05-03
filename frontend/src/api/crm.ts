@@ -629,3 +629,63 @@ export async function getMatchFilters(): Promise<MatchFilterSettings> {
 export async function saveMatchFilters(filters: MatchFilterSettings): Promise<void> {
   await api.put('/crm/settings/match_filters', { value: filters })
 }
+
+// ── Skip Trace ────────────────────────────────────────────────────────
+
+export async function startSkipTrace(campaignId: string): Promise<{ job_id: string; total: number }> {
+  const { data } = await api.post(`/crm/campaigns/${campaignId}/skip-trace`)
+  return data
+}
+
+export async function getSkipTraceStatus(campaignId: string, jobId: string): Promise<{
+  status: string; done: number; total: number; mobile: number; landline: number; no_number: number; errors: string[]
+}> {
+  const { data } = await api.get(`/crm/campaigns/${campaignId}/skip-trace-status/${jobId}`)
+  return data
+}
+
+// ── SMS Campaign ──────────────────────────────────────────────────────
+
+export async function startSmsCampaign(campaignId: string, day = 1): Promise<{ job_id: string; total: number; day: number }> {
+  const { data } = await api.post(`/crm/campaigns/${campaignId}/send-sms`, { day })
+  return data
+}
+
+export async function getSmsStatus(campaignId: string, jobId: string): Promise<{
+  status: string; done: number; total: number; sent: number; skipped: number; errors: string[]; day: number; capped?: boolean
+}> {
+  const { data } = await api.get(`/crm/campaigns/${campaignId}/send-sms-status/${jobId}`)
+  return data
+}
+
+// ── Funnel Stats ──────────────────────────────────────────────────────
+
+export interface CampaignFunnelStats {
+  total: number; skip_traced: number; mobile: number; landline: number; no_number: number
+  texts_sent: number; hot: number; opted_out: number; mail_queue: number
+}
+
+export async function getCampaignFunnelStats(campaignId: string): Promise<CampaignFunnelStats> {
+  const { data } = await api.get(`/crm/campaigns/${campaignId}/funnel-stats`)
+  return data
+}
+
+// ── Mail Queue Export ─────────────────────────────────────────────────
+
+export async function exportMailQueue(campaignId: string): Promise<void> {
+  const { data } = await api.get(`/crm/campaigns/${campaignId}/mail-queue/export`)
+  const records: Record<string, unknown>[] = data.records ?? []
+  if (!records.length) { alert('No records in mail queue yet.'); return }
+  const cols = ['owner_full_name','owner_mailing_address','owner_mailing_city','owner_mailing_state','owner_mailing_zip','property_address','property_city','state','property_zip','acreage','offer_price','apn']
+  const header = cols.join(',')
+  const rows = records.map(r => cols.map(c => {
+    const v = r[c] ?? ''
+    return String(v).includes(',') ? `"${String(v).replace(/"/g, '""')}"` : String(v)
+  }).join(','))
+  const csv = [header, ...rows].join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url; a.download = `mail-queue-${campaignId.slice(0, 8)}.csv`; a.click()
+  URL.revokeObjectURL(url)
+}

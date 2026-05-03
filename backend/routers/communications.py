@@ -1537,6 +1537,10 @@ async def inbound_sms(request: Request, background_tasks: BackgroundTasks) -> di
     return {"status": "ok"}
 
 
+_SMS_HOT_WORDS = {"YES", "INTERESTED", "HOW", "WHAT", "TELL", "MAYBE", "SURE", "INFO", "DETAILS", "YEAH", "YEP", "OK", "OKAY", "ACCEPT", "WANT", "READY", "SELL"}
+_SMS_STOP_WORDS = {"STOP", "UNSUBSCRIBE", "REMOVE", "CANCEL", "END", "QUIT"}
+
+
 async def _process_inbound_sms(from_phone: str, message_text: str) -> None:
     prop = await _lookup_phone(from_phone)
     if not prop:
@@ -1551,14 +1555,45 @@ async def _process_inbound_sms(from_phone: str, message_text: str) -> None:
         message_body=message_text,
     )
 
-    msg_up = message_text.upper()
-    is_positive = any(w in msg_up for w in ["YES", "INTERESTED", "SURE", "OK", "OKAY", "ACCEPT"])
+    msg_up = message_text.upper().strip()
+    words = set(re.split(r"\W+", msg_up))
 
-    if property_id and is_positive:
+    is_stop = bool(words & _SMS_STOP_WORDS) or any(w in msg_up for w in _SMS_STOP_WORDS)
+    is_hot = not is_stop and bool(words & _SMS_HOT_WORDS)
+
+    sb = get_supabase()
+
+    if is_stop:
+        # Add to suppression list
         try:
-            get_supabase().table("crm_properties").update(
-                {"status": "prospect", "updated_at": _now()}
-            ).eq("id", property_id).execute()
+            sb.table("crm_sms_opt_out").upsert(
+                {"phone_number": from_phone, "opted_out_at": _now(), "source": "sms_reply"},
+                on_conflict="phone_number",
+            ).execute()
+        except Exception:
+            pass
+        # Mark property as opted_out
+        if property_id:
+            try:
+                sb.table("crm_properties").update(
+                    {"opted_out": True, "sms_status": "opted_out", "updated_at": _now()}
+                ).eq("id", property_id).execute()
+            except Exception:
+                pass
+
+    elif is_hot and property_id:
+        # Flag as HOT: update status + sms_status + add tag
+        try:
+            prop_r = sb.table("crm_properties").select("tags").eq("id", property_id).single().execute()
+            existing_tags = prop_r.data.get("tags") or [] if prop_r.data else []
+            if "hot_lead" not in existing_tags:
+                existing_tags = list(existing_tags) + ["hot_lead"]
+            sb.table("crm_properties").update({
+                "status": "prospect",
+                "sms_status": "hot",
+                "tags": existing_tags,
+                "updated_at": _now(),
+            }).eq("id", property_id).execute()
         except Exception:
             pass
 
@@ -1566,7 +1601,15 @@ async def _process_inbound_sms(from_phone: str, message_text: str) -> None:
     apn = prop.get("apn", "")
     county = prop.get("county", "")
     code = prop.get("campaign_code", "")
-    subject = f"{'✅ POSITIVE ' if is_positive else ''}SMS Reply — {owner} — {apn}"
+    if is_stop:
+        subject = f"🚫 STOP Reply — {owner} — {apn}"
+        status_html = "<p style='color:#DC2626;font-weight:bold'>✗ Opted out — added to suppression list</p>"
+    elif is_hot:
+        subject = f"🔥 HOT Response — {owner} — {apn}"
+        status_html = "<p style='color:#2E7D32;font-weight:bold'>✅ HOT — Status set to Prospect, tagged hot_lead</p>"
+    else:
+        subject = f"SMS Reply — {owner} — {apn}"
+        status_html = ""
     html = (
         "<h2>Inbound SMS Reply</h2>"
         f"<ul>"
@@ -1577,7 +1620,7 @@ async def _process_inbound_sms(from_phone: str, message_text: str) -> None:
         f"<li><strong>Campaign Code:</strong> {code}</li>"
         f"</ul>"
         f"<p><strong>Message:</strong> {message_text}</p>"
-        + ("<p style='color:#2E7D32;font-weight:bold'>✓ Status updated to Prospect</p>" if is_positive else "")
+        + status_html
         + "<p><a href='https://land-dominator-production.up.railway.app'>Open Land Dominator →</a></p>"
     )
     await _notify_email(subject, html)

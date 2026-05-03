@@ -33,6 +33,8 @@ router = APIRouter(prefix="/crm", tags=["crm"])
 _import_jobs: dict[str, dict] = {}
 _lp_pull_jobs: dict[str, dict] = {}
 _add_match_jobs: dict[str, dict] = {}  # {job_id: {status, done, total, imported, warnings}}
+_skip_trace_jobs: dict[str, dict] = {}  # {job_id: {status, done, total, mobile, landline, no_number, errors}}
+_sms_campaign_jobs: dict[str, dict] = {}  # {job_id: {status, done, total, sent, skipped, errors}}
 
 # Startup diagnostic — confirms LP token presence in Railway env
 _lp_token_at_startup = os.environ.get("LAND_PORTAL_TOKEN", "")
@@ -595,6 +597,7 @@ async def db_migrate() -> dict:
         "comp_columns_sql": COMP_MIGRATION_SQL,
         "comm_columns_sql": COMM_MIGRATION_SQL,
         "sold_comps_table_sql": SOLD_COMPS_MIGRATION_SQL,
+        "skip_trace_sql": SKIP_TRACE_MIGRATION_SQL,
         "errors_tried": errors_tried,
     }
 
@@ -2861,3 +2864,392 @@ CREATE INDEX IF NOT EXISTS idx_crm_sold_comps_buyer_type ON crm_sold_comps (buye
 ALTER TABLE crm_sold_comps DROP CONSTRAINT IF EXISTS unique_apn;
 ALTER TABLE crm_sold_comps ADD CONSTRAINT unique_apn_date UNIQUE (apn, sale_date);
 """.strip()
+
+
+SKIP_TRACE_MIGRATION_SQL = """
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS phone_1 TEXT;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS phone_1_type TEXT;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS phone_2 TEXT;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS phone_2_type TEXT;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS phone_3 TEXT;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS phone_3_type TEXT;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS email_1 TEXT;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS skip_traced_at TIMESTAMPTZ;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS opted_out BOOLEAN DEFAULT FALSE;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS sms_status TEXT DEFAULT 'pending';
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS sms_day1_sent_at TIMESTAMPTZ;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS sms_day3_sent_at TIMESTAMPTZ;
+CREATE TABLE IF NOT EXISTS crm_sms_opt_out (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  phone_number TEXT NOT NULL UNIQUE,
+  opted_out_at TIMESTAMPTZ DEFAULT NOW(),
+  source       TEXT DEFAULT 'sms_reply'
+);
+CREATE INDEX IF NOT EXISTS idx_crm_sms_opt_out_phone ON crm_sms_opt_out (phone_number);
+""".strip()
+
+
+# ── Skip Trace (Batch Leads) ──────────────────────────────────────────
+
+_BATCH_LEADS_BASE = "https://api.batchleads.io/v2"
+
+
+def _normalize_phone(raw: str) -> str:
+    """Strip non-digits and return +1XXXXXXXXXX or empty string."""
+    digits = re.sub(r"\D", "", raw or "")
+    if len(digits) == 10:
+        return f"+1{digits}"
+    if len(digits) == 11 and digits.startswith("1"):
+        return f"+{digits}"
+    return ""
+
+
+def _parse_batch_leads_phones(data: dict) -> list[dict]:
+    """Extract phone list from BatchLeads skip-trace response (handles multiple response shapes)."""
+    phones = data.get("phones") or data.get("phoneNumbers") or []
+    if not phones and "data" in data:
+        inner = data["data"] or {}
+        phones = inner.get("phones") or inner.get("phoneNumbers") or []
+    result = []
+    for p in phones[:3]:
+        raw_num = p.get("number") or p.get("phoneNumber") or p.get("phone") or ""
+        raw_type = (p.get("type") or p.get("phoneType") or "").lower()
+        num = _normalize_phone(str(raw_num))
+        if not num:
+            continue
+        if "mobile" in raw_type or "cell" in raw_type or "wireless" in raw_type:
+            ptype = "mobile"
+        elif "landline" in raw_type or "land" in raw_type:
+            ptype = "landline"
+        elif "voip" in raw_type:
+            ptype = "voip"
+        else:
+            ptype = "unknown"
+        result.append({"number": num, "type": ptype})
+    return result
+
+
+def _parse_batch_leads_emails(data: dict) -> list[str]:
+    emails = data.get("emails") or []
+    if not emails and "data" in data:
+        emails = (data["data"] or {}).get("emails") or []
+    return [str(e).strip() for e in emails if e]
+
+
+@router.post("/campaigns/{campaign_id}/skip-trace", status_code=202)
+async def start_skip_trace(
+    campaign_id: str,
+    background_tasks: BackgroundTasks,
+) -> dict:
+    """Start a background skip-trace job via Batch Leads API."""
+    api_key = os.environ.get("BATCH_LEADS_API_KEY", "")
+    if not api_key:
+        raise HTTPException(status_code=503, detail="BATCH_LEADS_API_KEY not configured")
+    sb = get_supabase()
+    c_r = sb.table("crm_campaigns").select("id").eq("id", campaign_id).execute()
+    if not c_r.data:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    props = sb.table("crm_properties").select("id,property_address,property_city,state,property_zip").eq("campaign_id", campaign_id).execute()
+    total = len(props.data or [])
+    job_id = str(uuid.uuid4())
+    _skip_trace_jobs[job_id] = {"status": "running", "done": 0, "total": total, "mobile": 0, "landline": 0, "no_number": 0, "errors": []}
+    background_tasks.add_task(_run_skip_trace_job, job_id, campaign_id, api_key, props.data or [])
+    return {"job_id": job_id, "total": total}
+
+
+@router.get("/campaigns/{campaign_id}/skip-trace-status/{job_id}")
+async def get_skip_trace_status(campaign_id: str, job_id: str) -> dict:
+    job = _skip_trace_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
+
+
+def _run_skip_trace_job(job_id: str, campaign_id: str, api_key: str, properties: list[dict]) -> None:
+    import time as _t
+    import httpx as _httpx
+
+    sb = get_supabase()
+    done = 0
+    mobile = 0
+    landline = 0
+    no_number = 0
+    errors: list[str] = []
+    BATCH = 100
+
+    for i, prop in enumerate(properties):
+        addr = prop.get("property_address") or ""
+        city = prop.get("property_city") or ""
+        state_val = prop.get("state") or ""
+        zip_val = prop.get("property_zip") or ""
+        if not addr:
+            no_number += 1
+            done += 1
+            _skip_trace_jobs[job_id].update({"done": done, "mobile": mobile, "landline": landline, "no_number": no_number})
+            continue
+        try:
+            r = _httpx.post(
+                f"{_BATCH_LEADS_BASE}/property/skip-trace",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={"address": addr, "city": city, "state": state_val, "zip": zip_val},
+                timeout=15.0,
+            )
+            data = r.json() if r.status_code < 300 else {}
+            phones = _parse_batch_leads_phones(data)
+            emails = _parse_batch_leads_emails(data)
+            update: dict = {"skip_traced_at": _now()}
+            if phones:
+                update["phone_1"] = phones[0]["number"]
+                update["phone_1_type"] = phones[0]["type"]
+                if len(phones) > 1:
+                    update["phone_2"] = phones[1]["number"]
+                    update["phone_2_type"] = phones[1]["type"]
+                if len(phones) > 2:
+                    update["phone_3"] = phones[2]["number"]
+                    update["phone_3_type"] = phones[2]["type"]
+                if phones[0]["type"] == "mobile":
+                    mobile += 1
+                else:
+                    landline += 1
+            else:
+                no_number += 1
+            if emails:
+                update["email_1"] = emails[0]
+            sb.table("crm_properties").update(update).eq("id", prop["id"]).execute()
+        except Exception as exc:
+            errors.append(f"{addr}: {str(exc)[:80]}")
+            no_number += 1
+        done += 1
+        _skip_trace_jobs[job_id].update({"done": done, "mobile": mobile, "landline": landline, "no_number": no_number})
+        if (i + 1) % BATCH == 0:
+            _t.sleep(1)
+
+    _skip_trace_jobs[job_id] = {
+        "status": "done", "done": done, "total": done,
+        "mobile": mobile, "landline": landline, "no_number": no_number,
+        "errors": errors[:5],
+    }
+    print(f"[skip-trace] {job_id} done: mobile={mobile} landline={landline} no_number={no_number}", flush=True)
+
+
+# ── SMS Campaign ──────────────────────────────────────────────────────
+
+_HOT_WORDS = {"YES", "INTERESTED", "HOW", "WHAT", "TELL", "MAYBE", "SURE", "INFO", "DETAILS", "YEAH", "YEP", "OK", "OKAY", "ACCEPT", "WANT", "READY"}
+_STOP_WORDS = {"STOP", "UNSUBSCRIBE", "REMOVE", "DONT", "DON'T", "DO NOT", "CANCEL", "END", "QUIT"}
+_SMS_DAILY_LIMIT = 500
+
+
+def _sms_day1_template(first_name: str, address: str, offer_low: int, offer_high: int, from_number: str) -> str:
+    return (
+        f"Hi {first_name}, this is Myra with Dominion Land Group. "
+        f"We're interested in buying your vacant land at {address}. "
+        f"We can offer around ${offer_low:,}-${offer_high:,} cash. "
+        f"Interested? Reply YES or call {from_number}. "
+        f"Reply STOP to opt out."
+    )
+
+
+def _sms_day3_template(first_name: str, address: str, offer: int) -> str:
+    return (
+        f"Hi {first_name}, following up on your land at {address}. "
+        f"Our cash offer of ${offer:,} is still available. "
+        f"Interested? Reply YES or STOP to opt out."
+    )
+
+
+@router.post("/campaigns/{campaign_id}/send-sms", status_code=202)
+async def start_sms_campaign(
+    campaign_id: str,
+    background_tasks: BackgroundTasks,
+    body: dict = Body(default={}),
+) -> dict:
+    """Start a background SMS campaign job. day=1 (default) or day=3."""
+    telnyx_key = os.environ.get("TELNYX_API_KEY", "")
+    telnyx_phone = os.environ.get("TELNYX_PHONE_NUMBER", "")
+    if not telnyx_key:
+        raise HTTPException(status_code=503, detail="TELNYX_API_KEY not configured")
+    if not telnyx_phone:
+        raise HTTPException(status_code=503, detail="TELNYX_PHONE_NUMBER not configured")
+    sb = get_supabase()
+    c_r = sb.table("crm_campaigns").select("id").eq("id", campaign_id).execute()
+    if not c_r.data:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    day = int(body.get("day", 1))
+    import datetime as _dt
+    if day == 1:
+        eligible = sb.table("crm_properties").select(
+            "id,owner_first_name,property_address,property_city,state,phone_1,phone_1_type,offer_price,opted_out,sms_status"
+        ).eq("campaign_id", campaign_id).eq("phone_1_type", "mobile").execute()
+        props = [p for p in (eligible.data or []) if not p.get("opted_out") and p.get("sms_status") in ("pending", None)]
+    else:
+        cutoff = (_dt.datetime.utcnow() - _dt.timedelta(days=2)).isoformat()
+        eligible = sb.table("crm_properties").select(
+            "id,owner_first_name,property_address,property_city,state,phone_1,phone_1_type,offer_price,opted_out,sms_status,sms_day1_sent_at"
+        ).eq("campaign_id", campaign_id).eq("phone_1_type", "mobile").eq("sms_status", "day1_sent").lt("sms_day1_sent_at", cutoff).execute()
+        props = [p for p in (eligible.data or []) if not p.get("opted_out")]
+    total = len(props)
+    job_id = str(uuid.uuid4())
+    _sms_campaign_jobs[job_id] = {"status": "running", "done": 0, "total": total, "sent": 0, "skipped": 0, "errors": [], "day": day}
+    background_tasks.add_task(_run_sms_campaign_job, job_id, campaign_id, props, day, telnyx_key, telnyx_phone)
+    return {"job_id": job_id, "total": total, "day": day}
+
+
+@router.get("/campaigns/{campaign_id}/send-sms-status/{job_id}")
+async def get_sms_campaign_status(campaign_id: str, job_id: str) -> dict:
+    job = _sms_campaign_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
+
+
+def _run_sms_campaign_job(job_id: str, campaign_id: str, props: list[dict], day: int, telnyx_key: str, telnyx_phone: str) -> None:
+    import time as _t
+    import httpx as _httpx
+
+    # Normalize from_phone to E.164
+    raw = re.sub(r"\D", "", telnyx_phone)
+    if len(raw) == 10:
+        from_e164 = f"+1{raw}"
+    elif len(raw) == 11 and raw.startswith("1"):
+        from_e164 = f"+{raw}"
+    else:
+        from_e164 = telnyx_phone
+
+    sb = get_supabase()
+    sent = 0
+    skipped = 0
+    errors: list[str] = []
+    daily_cap = _SMS_DAILY_LIMIT
+
+    # Load suppression list
+    try:
+        sup_r = sb.table("crm_sms_opt_out").select("phone_number").execute()
+        suppressed = {r["phone_number"] for r in (sup_r.data or [])}
+    except Exception:
+        suppressed = set()
+
+    for prop in props:
+        if sent >= daily_cap:
+            # Queue remainder — mark sms_status as queued if needed
+            break
+        phone = prop.get("phone_1") or ""
+        if not phone or phone in suppressed:
+            skipped += 1
+            _sms_campaign_jobs[job_id].update({"done": sent + skipped, "sent": sent, "skipped": skipped})
+            continue
+        first = prop.get("owner_first_name") or "there"
+        addr = prop.get("property_address") or prop.get("property_city") or "your property"
+        offer = float(prop.get("offer_price") or 0)
+        offer_low = int(offer * 0.95) if offer > 0 else 0
+        offer_high = int(offer * 1.10) if offer > 0 else 0
+        if day == 1:
+            text = _sms_day1_template(first, addr, offer_low, offer_high, from_e164)
+        else:
+            text = _sms_day3_template(first, addr, int(offer))
+        try:
+            r = _httpx.post(
+                "https://api.telnyx.com/v2/messages",
+                headers={"Authorization": f"Bearer {telnyx_key}", "Content-Type": "application/json"},
+                json={"from": from_e164, "to": phone, "text": text},
+                timeout=15.0,
+            )
+            if r.status_code < 300:
+                now_ts = _now()
+                update: dict = {"updated_at": now_ts}
+                if day == 1:
+                    update["sms_status"] = "day1_sent"
+                    update["sms_day1_sent_at"] = now_ts
+                else:
+                    update["sms_status"] = "day3_sent"
+                    update["sms_day3_sent_at"] = now_ts
+                sb.table("crm_properties").update(update).eq("id", prop["id"]).execute()
+                # Log in crm_communications
+                try:
+                    sb.table("crm_communications").insert({
+                        "property_id": prop["id"],
+                        "comm_type": "sms_outbound",
+                        "phone": phone,
+                        "direction": "outbound",
+                        "message_body": text,
+                        "is_read": True,
+                        "created_at": now_ts,
+                    }).execute()
+                except Exception:
+                    pass
+                sent += 1
+            else:
+                errors.append(f"{phone}: HTTP {r.status_code}")
+                skipped += 1
+        except Exception as exc:
+            errors.append(f"{phone}: {str(exc)[:80]}")
+            skipped += 1
+        _sms_campaign_jobs[job_id].update({"done": sent + skipped, "sent": sent, "skipped": skipped, "errors": errors[:5]})
+        _t.sleep(0.05)  # ~20 msg/sec max
+
+    # Move Day5+ no-response to mail_queue
+    if day >= 3:
+        try:
+            import datetime as _dt2
+            cutoff5 = (_dt2.datetime.utcnow() - _dt2.timedelta(days=4)).isoformat()
+            sb.table("crm_properties").update({"sms_status": "mail_queue", "updated_at": _now()}).eq(
+                "campaign_id", campaign_id
+            ).eq("sms_status", "day3_sent").lt("sms_day3_sent_at", cutoff5).execute()
+        except Exception:
+            pass
+
+    _sms_campaign_jobs[job_id] = {
+        "status": "done", "done": sent + skipped, "total": len(props),
+        "sent": sent, "skipped": skipped, "errors": errors[:5], "day": day,
+        "capped": sent >= daily_cap,
+    }
+    print(f"[sms-campaign] {job_id} day={day} sent={sent} skipped={skipped}", flush=True)
+
+
+# ── Campaign Funnel Stats ─────────────────────────────────────────────
+
+@router.get("/campaigns/{campaign_id}/funnel-stats")
+async def get_campaign_funnel_stats(campaign_id: str) -> dict:
+    """Return skip trace + SMS funnel counts for the campaign dashboard."""
+    sb = get_supabase()
+    try:
+        r = sb.table("crm_properties").select(
+            "id,phone_1_type,opted_out,sms_status,skip_traced_at"
+        ).eq("campaign_id", campaign_id).execute()
+        rows = r.data or []
+    except Exception:
+        rows = []
+    total = len(rows)
+    skip_traced = sum(1 for p in rows if p.get("skip_traced_at"))
+    mobile = sum(1 for p in rows if p.get("phone_1_type") == "mobile" and not p.get("opted_out"))
+    landline = sum(1 for p in rows if p.get("phone_1_type") in ("landline", "voip") and not p.get("opted_out"))
+    no_number = sum(1 for p in rows if not p.get("phone_1_type") and p.get("skip_traced_at"))
+    texts_sent = sum(1 for p in rows if p.get("sms_status") in ("day1_sent", "day3_sent", "hot"))
+    hot = sum(1 for p in rows if p.get("sms_status") == "hot")
+    opted_out = sum(1 for p in rows if p.get("opted_out"))
+    mail_queue = sum(1 for p in rows if p.get("sms_status") == "mail_queue" or (p.get("phone_1_type") in ("landline", "voip", None) and not p.get("opted_out") and p.get("skip_traced_at")))
+    return {
+        "total": total, "skip_traced": skip_traced, "mobile": mobile,
+        "landline": landline, "no_number": no_number,
+        "texts_sent": texts_sent, "hot": hot, "opted_out": opted_out,
+        "mail_queue": mail_queue,
+    }
+
+
+# ── Mail Queue Export ─────────────────────────────────────────────────
+
+@router.get("/campaigns/{campaign_id}/mail-queue/export")
+async def export_mail_queue(campaign_id: str) -> dict:
+    """Return records in the mail queue (landline/no number after skip trace, plus day5+ no response)."""
+    sb = get_supabase()
+    all_r = sb.table("crm_properties").select(
+        "id,owner_full_name,owner_first_name,owner_last_name,owner_mailing_address,owner_mailing_city,owner_mailing_state,owner_mailing_zip,property_address,property_city,state,property_zip,acreage,offer_price,apn,phone_1_type,sms_status,skip_traced_at,opted_out"
+    ).eq("campaign_id", campaign_id).execute()
+    rows = all_r.data or []
+    mail_rows = [
+        r for r in rows
+        if not r.get("opted_out") and (
+            r.get("sms_status") == "mail_queue"
+            or (r.get("skip_traced_at") and r.get("phone_1_type") in ("landline", "voip", None, ""))
+        )
+    ]
+    return {"records": mail_rows, "total": len(mail_rows)}
