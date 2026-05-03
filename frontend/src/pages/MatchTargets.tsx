@@ -19,6 +19,9 @@ function fmtPrice(v: number | null | undefined): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v as number)
 }
 
+const fmt = (n: any) => (n ?? 0).toLocaleString()
+const fmtPct = (n: any) => ((n ?? 0) as number).toFixed(1) + '%'
+
 export default function MatchTargets() {
   const {
     compsStats,
@@ -668,7 +671,7 @@ export default function MatchTargets() {
             {/* Download exports + match summary */}
             {(() => {
               const matchId = matchResult.match_id
-              const distMatchedCt = matchResult.distance_matched_count ?? matchResult.matched_count
+              const distMatchedCt = matchResult.distance_matched_count ?? matchResult.matched_count ?? 0
               const zipMatchedCt = matchResult.zip_matched_count ?? 0
               const lpFallbackCt = matchResult.lp_fallback_count ?? 0
               const unpricedCt = matchResult.unpriced_count ?? 0
@@ -681,7 +684,7 @@ export default function MatchTargets() {
                   <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
                     <div>
                       <div className="flex items-baseline gap-2 mb-0.5">
-                        <span className="text-3xl font-bold" style={{ color: '#10B981' }}>{distMatchedCt.toLocaleString()}</span>
+                        <span className="text-3xl font-bold" style={{ color: '#10B981' }}>{fmt(distMatchedCt)}</span>
                         <span className="text-sm font-semibold" style={{ color: '#10B981' }}>Distance-matched records (strong comps within 3 miles)</span>
                       </div>
                       <p className="text-[11px]" style={{ color: '#6B7280' }}>{(matchResult.total_targets ?? 0).toLocaleString()} total targets</p>
@@ -714,7 +717,7 @@ export default function MatchTargets() {
                   <div className="flex flex-col gap-2 mb-4">
                     <div className="rounded-lg px-3 py-2 flex items-center justify-between" style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)' }}>
                       <div>
-                        <span className="text-sm font-semibold" style={{ color: '#059669' }}>Distance-matched: {distMatchedCt.toLocaleString()} records</span>
+                        <span className="text-sm font-semibold" style={{ color: '#059669' }}>Distance-matched: {fmt(distMatchedCt)} records</span>
                         <span className="text-xs ml-2" style={{ color: '#9CA3AF' }}>strong comps within 3 miles — recommended for mailing</span>
                       </div>
                       <a href={getMatchedLeadsDownloadUrl(matchId, 'comp-matched')} download className="btn-primary text-xs no-underline" style={{ padding: '4px 10px', flexShrink: 0 }}>
@@ -724,7 +727,7 @@ export default function MatchTargets() {
                     {zipMatchedCt > 0 && (
                       <div className="rounded-lg px-3 py-2 flex items-center justify-between" style={{ background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.15)' }}>
                         <div>
-                          <span className="text-sm font-semibold" style={{ color: '#2563EB' }}>ZIP-matched: {zipMatchedCt.toLocaleString()} records</span>
+                          <span className="text-sm font-semibold" style={{ color: '#2563EB' }}>ZIP-matched: {fmt(zipMatchedCt)} records</span>
                           <span className="text-xs ml-2" style={{ color: '#9CA3AF' }}>matched by ZIP code — less precise, use as bonus</span>
                         </div>
                         <a href={getMailingDownloadUrl(matchId, 'full-list', 'full')} download className="btn-secondary text-xs no-underline" style={{ padding: '4px 10px', flexShrink: 0 }}>
@@ -734,13 +737,13 @@ export default function MatchTargets() {
                     )}
                     {lpFallbackCt > 0 && (
                       <div className="rounded-lg px-3 py-2" style={{ background: 'rgba(92,41,119,0.08)', border: '1px solid rgba(92,41,119,0.2)' }}>
-                        <span className="text-sm font-semibold" style={{ color: '#7C3AED' }}>LP Fallback: {lpFallbackCt.toLocaleString()} records</span>
+                        <span className="text-sm font-semibold" style={{ color: '#7C3AED' }}>LP Fallback: {fmt(lpFallbackCt)} records</span>
                         <span className="text-xs ml-2" style={{ color: '#9CA3AF' }}>no local comps — priced from LP estimate only</span>
                       </div>
                     )}
                     {unpricedCt > 0 && (
                       <p className="text-[11px]" style={{ color: '#6B7280' }}>
-                        {unpricedCt.toLocaleString()} records have no data (no comps and no LP estimate) — skip these
+                        {fmt(unpricedCt)} records have no data (no comps and no LP estimate) — skip these
                       </p>
                     )}
                   </div>
@@ -841,15 +844,15 @@ export default function MatchTargets() {
                     </div>
                     <div className="rounded-xl px-4 py-3" style={{ background: compMatched > 0 ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)', border: `1px solid ${compMatched > 0 ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)'}` }}>
                       <p className="text-sm font-semibold" style={{ color: compMatched > 0 ? '#10B981' : '#EF4444' }}>
-                        {compMatched.toLocaleString()} comp-matched record{compMatched !== 1 ? 's' : ''} support a ${Number(assignmentFee || 0).toLocaleString()} assignment fee
+                        {fmt(compMatched)} comp-matched record{compMatched !== 1 ? 's' : ''} support a ${fmt(Number(assignmentFee || 0))} assignment fee
                       </p>
                       {lpSupporting > 0 && (
                         <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>
-                          {lpSupporting.toLocaleString()} additional LP estimate record{lpSupporting !== 1 ? 's' : ''} may also support the fee (not comp-verified)
+                          {fmt(lpSupporting)} additional LP estimate record{lpSupporting !== 1 ? 's' : ''} may also support the fee (not comp-verified)
                         </p>
                       )}
                       <p className="text-xs mt-0.5" style={{ color: '#6B7280' }}>
-                        Formula: retail estimate ≥ offer + ${Number(assignmentFee || 0).toLocaleString()} assignment fee
+                        Formula: retail estimate ≥ offer + ${fmt(Number(assignmentFee || 0))} assignment fee
                       </p>
                     </div>
                   </div>
