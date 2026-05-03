@@ -308,6 +308,7 @@ export type AppPage =
   | 'crm-deals'
   | 'seller-inbox'
   | 'buyer-inbox'
+  | 'seller-deals'
   | 'boards-seller'
   | 'boards-buyer'
   | 'boards-inventory'

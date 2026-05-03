@@ -142,12 +142,16 @@ export interface CRMContact {
 }
 
 export type DealStage =
+  | 'new_lead'
+  | 'contacted'
+  | 'offer_sent'
+  | 'follow_up'
+  | 'under_contract'
+  | 'closed_won'
+  | 'dead'
   | 'lead'
   | 'prospect'
-  | 'offer_sent'
-  | 'under_contract'
   | 'due_diligence'
-  | 'closed_won'
   | 'closed_lost'
 
 export interface CRMDeal {
@@ -162,6 +166,17 @@ export interface CRMDeal {
   notes?: string
   expected_close_date?: string
   tags?: string[]
+  owner_name?: string
+  property_address?: string
+  offer_price?: number
+  offer_low?: number
+  offer_high?: number
+  source?: string
+  seller_phone?: string
+  stage_entered_at?: string
+  contract_price?: number
+  closing_date?: string
+  assignment_fee?: number
 }
 
 export interface ImportResult {

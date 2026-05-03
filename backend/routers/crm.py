@@ -600,6 +600,7 @@ async def db_migrate() -> dict:
         "comm_columns_sql": COMM_MIGRATION_SQL,
         "sold_comps_table_sql": SOLD_COMPS_MIGRATION_SQL,
         "skip_trace_sql": SKIP_TRACE_MIGRATION_SQL,
+        "deals_pipeline_sql": DEALS_PIPELINE_MIGRATION_SQL,
         "errors_tried": errors_tried,
     }
 
@@ -2405,6 +2406,16 @@ async def delete_contact(contact_id: str) -> None:
 # Deals
 # ══════════════════════════════════════════════════════════════════════
 
+@router.get("/deals/new-count")
+async def get_new_deal_count() -> dict:
+    try:
+        sb = get_supabase()
+        res = sb.table("crm_deals").select("id", count="exact").eq("stage", "new_lead").execute()
+        return {"count": res.count or 0}
+    except Exception:
+        return {"count": 0}
+
+
 @router.get("/deals", response_model=List[Deal])
 async def list_deals(stage: Optional[str] = Query(None)) -> list:
     try:
@@ -2884,6 +2895,20 @@ ALTER TABLE crm_sold_comps DROP CONSTRAINT IF EXISTS unique_apn;
 ALTER TABLE crm_sold_comps ADD CONSTRAINT unique_apn_date UNIQUE (apn, sale_date);
 """.strip()
 
+
+DEALS_PIPELINE_MIGRATION_SQL = """
+ALTER TABLE crm_deals ADD COLUMN IF NOT EXISTS owner_name TEXT;
+ALTER TABLE crm_deals ADD COLUMN IF NOT EXISTS property_address TEXT;
+ALTER TABLE crm_deals ADD COLUMN IF NOT EXISTS offer_price NUMERIC;
+ALTER TABLE crm_deals ADD COLUMN IF NOT EXISTS offer_low NUMERIC;
+ALTER TABLE crm_deals ADD COLUMN IF NOT EXISTS offer_high NUMERIC;
+ALTER TABLE crm_deals ADD COLUMN IF NOT EXISTS source TEXT;
+ALTER TABLE crm_deals ADD COLUMN IF NOT EXISTS seller_phone TEXT;
+ALTER TABLE crm_deals ADD COLUMN IF NOT EXISTS stage_entered_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE crm_deals ADD COLUMN IF NOT EXISTS contract_price NUMERIC;
+ALTER TABLE crm_deals ADD COLUMN IF NOT EXISTS closing_date DATE;
+ALTER TABLE crm_deals ADD COLUMN IF NOT EXISTS assignment_fee NUMERIC;
+""".strip()
 
 SKIP_TRACE_MIGRATION_SQL = """
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS phone_1 TEXT;

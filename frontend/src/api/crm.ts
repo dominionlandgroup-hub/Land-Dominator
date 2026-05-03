@@ -360,6 +360,15 @@ export async function deleteDeal(id: string): Promise<void> {
   await api.delete(`/crm/deals/${id}`)
 }
 
+export async function getNewDealCount(): Promise<number> {
+  try {
+    const { data } = await api.get<{ count: number }>('/crm/deals/new-count')
+    return data.count
+  } catch {
+    return 0
+  }
+}
+
 // ── Mail Drops ────────────────────────────────────────────────────────
 
 export async function listMailDrops(campaignId?: string): Promise<MailDrop[]> {

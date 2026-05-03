@@ -167,11 +167,22 @@ class DealBase(BaseModel):
     title: str
     property_id: Optional[str] = None
     contact_id: Optional[str] = None
-    stage: Optional[str] = "lead"
+    stage: Optional[str] = "new_lead"
     value: Optional[float] = None
     notes: Optional[str] = None
     expected_close_date: Optional[str] = None
     tags: Optional[List[str]] = None
+    owner_name: Optional[str] = None
+    property_address: Optional[str] = None
+    offer_price: Optional[float] = None
+    offer_low: Optional[float] = None
+    offer_high: Optional[float] = None
+    source: Optional[str] = None
+    seller_phone: Optional[str] = None
+    stage_entered_at: Optional[str] = None
+    contract_price: Optional[float] = None
+    closing_date: Optional[str] = None
+    assignment_fee: Optional[float] = None
 
 
 class DealCreate(DealBase):
@@ -187,6 +198,17 @@ class DealUpdate(BaseModel):
     notes: Optional[str] = None
     expected_close_date: Optional[str] = None
     tags: Optional[List[str]] = None
+    owner_name: Optional[str] = None
+    property_address: Optional[str] = None
+    offer_price: Optional[float] = None
+    offer_low: Optional[float] = None
+    offer_high: Optional[float] = None
+    source: Optional[str] = None
+    seller_phone: Optional[str] = None
+    stage_entered_at: Optional[str] = None
+    contract_price: Optional[float] = None
+    closing_date: Optional[str] = None
+    assignment_fee: Optional[float] = None
 
 
 class Deal(DealBase):

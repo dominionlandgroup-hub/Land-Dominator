@@ -1531,11 +1531,21 @@ async def _finalize_call(call_sid: str) -> None:
                 existing_deal = sb.table("crm_deals").select("id").eq("property_id", property_id).limit(1).execute()
                 if not existing_deal.data:
                     deal_title = " — ".join(filter(None, [owner, apn, county])).strip(" —")
+                    offer_low = round(float(offer) * 0.90 / 1000) * 1000 if offer else None
+                    offer_high = round(float(offer) * 1.15 / 1000) * 1000 if offer else None
                     sb.table("crm_deals").insert({
                         "title": deal_title or "Unknown Property",
                         "property_id": property_id,
-                        "stage": "lead",
+                        "stage": "new_lead",
                         "value": float(offer) if offer else None,
+                        "owner_name": owner,
+                        "property_address": address_disp,
+                        "offer_price": float(offer) if offer else None,
+                        "offer_low": offer_low,
+                        "offer_high": offer_high,
+                        "source": "CALL",
+                        "seller_phone": caller,
+                        "stage_entered_at": _now(),
                         "notes": f"Auto-created from HOT call. Asking: {asking_str}. Best time: {cb_display}",
                         "tags": ["call", "hot_lead"],
                         "updated_at": _now(),
@@ -1721,11 +1731,25 @@ async def _process_inbound_sms(from_phone: str, message_text: str) -> None:
                 owner_name = prop.get("owner_full_name") or prop.get("owner_first_name") or "Unknown"
                 deal_title = f"{owner_name} — {prop.get('apn', '')} — {prop.get('county', '')}"
                 offer_price = prop.get("offer_price") or prop.get("comp_derived_value")
+                address = prop.get("situs_address") or prop.get("property_address") or ""
+                city = prop.get("situs_city") or prop.get("city") or ""
+                state_abbr = prop.get("situs_state") or prop.get("state") or ""
+                address_disp = " ".join(filter(None, [address, city, state_abbr]))
+                offer_low = round(float(offer_price) * 0.90 / 1000) * 1000 if offer_price else None
+                offer_high = round(float(offer_price) * 1.15 / 1000) * 1000 if offer_price else None
                 sb.table("crm_deals").insert({
                     "title": deal_title.strip(" —"),
                     "property_id": property_id,
-                    "stage": "lead",
+                    "stage": "new_lead",
                     "value": float(offer_price) if offer_price else None,
+                    "owner_name": owner_name,
+                    "property_address": address_disp,
+                    "offer_price": float(offer_price) if offer_price else None,
+                    "offer_low": offer_low,
+                    "offer_high": offer_high,
+                    "source": "SMS",
+                    "seller_phone": from_phone,
+                    "stage_entered_at": _now(),
                     "notes": f"Auto-created from HOT SMS reply: {message_text}",
                     "tags": ["sms", "hot_lead"],
                     "updated_at": _now(),

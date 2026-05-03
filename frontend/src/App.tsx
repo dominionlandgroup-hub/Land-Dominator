@@ -70,6 +70,7 @@ function PageContent() {
     case 'crm-deals':        return <Deals />
     case 'seller-inbox':     return <SellerInbox />
     case 'buyer-inbox':      return <BuyerInbox />
+    case 'seller-deals':     return <Boards view="boards-seller" />
     case 'boards-seller':    return <Boards view="boards-seller" />
     case 'boards-buyer':     return <Boards view="boards-buyer" />
     case 'boards-inventory': return <Boards view="boards-inventory" />

@@ -10,7 +10,7 @@ import type {
   AppPage,
 } from '../types'
 import { restoreLatestCompsSession, restoreLatestTargetSession, fetchDashboard } from '../api/client'
-import { getUnreadCount, listCrmCampaigns } from '../api/crm'
+import { getUnreadCount, listCrmCampaigns, getNewDealCount } from '../api/crm'
 
 const LS_COMPS_KEY = 'ld_comps_stats'
 const LS_TARGET_KEY = 'ld_target_stats'
@@ -62,6 +62,9 @@ interface AppState {
   unreadCount: number
   setUnreadCount: (n: number) => void
 
+  // New deal count for sidebar badge (polled every 60s)
+  newDealCount: number
+
   // Setup Guide drawer
   showSetupGuide: boolean
   setShowSetupGuide: (v: boolean) => void
@@ -106,6 +109,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [propertyCampaignId, setPropertyCampaignId] = useState<string | null>(null)
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null)
   const [unreadCount, setUnreadCount] = useState(0)
+  const [newDealCount, setNewDealCount] = useState(0)
   const [showSetupGuide, setShowSetupGuide] = useState(false)
   const [campaigns, setCampaigns] = useState<{ id: string; name?: string; cost_per_piece?: number }[]>([])
   const [loadingCampaigns, setLoadingCampaigns] = useState(true)
@@ -135,6 +139,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     poll()
     pollUnreadRef.current = setInterval(poll, 30000)
     return () => { if (pollUnreadRef.current) clearInterval(pollUnreadRef.current) }
+  }, [])
+
+  // Poll new deal count every 60s
+  const pollDealRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  useEffect(() => {
+    const poll = () => getNewDealCount().then(setNewDealCount).catch(() => {})
+    poll()
+    pollDealRef.current = setInterval(poll, 60000)
+    return () => { if (pollDealRef.current) clearInterval(pollDealRef.current) }
   }, [])
 
   const refreshCampaigns = useCallback(() => {
@@ -224,6 +237,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSelectedPropertyId: useCallback((id) => setSelectedPropertyId(id), []),
     unreadCount,
     setUnreadCount: useCallback((n) => setUnreadCount(n), []),
+    newDealCount,
     showSetupGuide,
     setShowSetupGuide: useCallback((v) => setShowSetupGuide(v), []),
     campaigns,

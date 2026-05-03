@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { listCommunications, sendSms, initiateOutboundCall, markThreadRead, markAllRead, patchThreadRead, getCallbackNumber, listCrmCampaigns, updateProperty } from '../api/crm'
-import type { Communication, CRMCampaign } from '../types/crm'
+import { listCommunications, sendSms, initiateOutboundCall, markThreadRead, markAllRead, patchThreadRead, getCallbackNumber, listCrmCampaigns, updateProperty, listDeals } from '../api/crm'
+import type { Communication, CRMCampaign, CRMDeal } from '../types/crm'
 import { useApp } from '../context/AppContext'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -578,12 +578,26 @@ export default function SellerInbox() {
   const [callConfirmThread, setCallConfirmThread] = useState<Thread | null>(null)
   const [callbackNumber, setCallbackNumber] = useState('')
   const [createDealThread, setCreateDealThread] = useState<Thread | null>(null)
+  const [selectedDeal, setSelectedDeal] = useState<CRMDeal | null>(null)
   const threadEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { load() }, [])
   useEffect(() => {
     getCallbackNumber().then(r => setCallbackNumber(r.formatted)).catch(() => {})
   }, [])
+
+  // Load deal for selected thread's property
+  useEffect(() => {
+    setSelectedDeal(null)
+    if (!selectedPhone) return
+    const propComms = comms.filter(c => c.phone_number === selectedPhone)
+    const propId = propComms.find(c => c.property?.id)?.property?.id
+    if (!propId) return
+    listDeals().then(all => {
+      const match = all.find(d => d.property_id === propId)
+      setSelectedDeal(match ?? null)
+    }).catch(() => {})
+  }, [selectedPhone, comms])
 
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -991,6 +1005,30 @@ export default function SellerInbox() {
                 style={{ fontSize: 12, color: '#5C2977', fontWeight: 600, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left' }}>
                 View property →
               </button>
+            </div>
+          )}
+
+          {selectedDeal && (
+            <div style={{ marginBottom: 14 }}>
+              <p style={{ fontSize: 10, fontWeight: 700, color: '#9B8AAE', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Pipeline Stage</p>
+              <div style={{ background: '#F3EEF9', borderRadius: 8, padding: '8px 10px', border: '1px solid #E8E0F0' }}>
+                <p style={{ fontSize: 12, fontWeight: 700, color: '#5C2977', margin: '0 0 6px' }}>
+                  {selectedDeal.stage === 'new_lead' ? 'New Lead' :
+                   selectedDeal.stage === 'contacted' ? 'Contacted' :
+                   selectedDeal.stage === 'offer_sent' ? 'Offer Sent' :
+                   selectedDeal.stage === 'follow_up' ? 'Follow Up' :
+                   selectedDeal.stage === 'under_contract' ? 'Under Contract' :
+                   selectedDeal.stage === 'closed_won' ? 'Closed Won' :
+                   selectedDeal.stage === 'dead' ? 'Dead' :
+                   selectedDeal.stage}
+                </p>
+                <button
+                  onClick={() => setCurrentPage('seller-deals')}
+                  style={{ fontSize: 11, color: '#5C2977', fontWeight: 600, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                >
+                  View Deal →
+                </button>
+              </div>
             </div>
           )}
 

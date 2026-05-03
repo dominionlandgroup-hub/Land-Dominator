@@ -201,7 +201,7 @@ function SetupGuideBtn({ active, incompleteCount, onClick }: {
 // ── Sidebar ──────────────────────────────────────────────────────────────────
 
 export default function Sidebar() {
-  const { currentPage, setCurrentPage, compsStats, targetStats, matchResult, unreadCount,
+  const { currentPage, setCurrentPage, compsStats, targetStats, matchResult, unreadCount, newDealCount,
           showSetupGuide, setShowSetupGuide, dashboardData, campaigns, loadingCampaigns } = useApp()
   const [boardsOpen, setBoardsOpen] = useState(
     ['boards-seller', 'boards-buyer', 'boards-inventory'].includes(currentPage)
@@ -249,6 +249,14 @@ export default function Sidebar() {
               background: '#DC2626', color: '#fff', borderRadius: 10,
               padding: '1px 6px', fontSize: 10, fontWeight: 700, lineHeight: '1.4', minWidth: 18, textAlign: 'center',
             }}>{unreadCount > 99 ? '99+' : unreadCount}</span>
+          ) : undefined}
+        />
+        <NavBtn id="seller-deals"  label="Seller Deals" icon={<IconBoard />}  active={currentPage === 'seller-deals'}  onClick={() => nav('seller-deals')}
+          rightEl={newDealCount > 0 ? (
+            <span style={{
+              background: '#DC2626', color: '#fff', borderRadius: 10,
+              padding: '1px 6px', fontSize: 10, fontWeight: 700, lineHeight: '1.4', minWidth: 18, textAlign: 'center',
+            }}>{newDealCount > 99 ? '99+' : newDealCount}</span>
           ) : undefined}
         />
 
