@@ -28,8 +28,8 @@ export default function Campaigns() {
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
 
-  // Delete confirmation
-  const [deletingId, setDeletingId] = useState<string | null>(null)
+  // Delete confirmation modal
+  const [confirmDeleteCampaign, setConfirmDeleteCampaign] = useState<Campaign | null>(null)
 
   // Comparison mode
   const [compareIds, setCompareIds] = useState<string[]>([])
@@ -89,7 +89,7 @@ export default function Campaigns() {
     } catch {
       setError('Failed to delete campaign.')
     } finally {
-      setDeletingId(null)
+      setConfirmDeleteCampaign(null)
     }
   }
 
@@ -253,14 +253,11 @@ export default function Campaigns() {
                 isSelectedForCompare={compareIds.includes(camp.id)}
                 renamingId={renamingId}
                 renameValue={renameValue}
-                deletingId={deletingId}
                 onRenameStart={() => { setRenamingId(camp.id); setRenameValue(camp.name) }}
                 onRenameChange={setRenameValue}
                 onRenameSubmit={() => handleRename(camp.id)}
                 onRenameCancel={() => setRenamingId(null)}
-                onDeleteStart={() => setDeletingId(camp.id)}
-                onDeleteConfirm={() => handleDelete(camp.id)}
-                onDeleteCancel={() => setDeletingId(null)}
+                onDeleteStart={() => setConfirmDeleteCampaign(camp)}
                 onDuplicateSettings={() => handleDuplicateSettings(camp)}
                 onToggleCompare={() => toggleCompare(camp.id)}
                 onImportList={() => setCurrentPage('upload-comps')}
@@ -269,6 +266,47 @@ export default function Campaigns() {
           </div>
         )}
       </div>
+
+      {confirmDeleteCampaign && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ background: 'rgba(26,10,46,0.55)' }}
+          onClick={e => { if (e.target === e.currentTarget) setConfirmDeleteCampaign(null) }}
+        >
+          <div className="rounded-xl bg-white shadow-xl" style={{ width: 420, maxWidth: '95vw', padding: 24, border: '1px solid #E8E0F0' }}>
+            <div className="flex items-center gap-3 mb-4">
+              <div style={{ width: 36, height: 36, borderRadius: 8, background: '#FEE2E2', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#DC2626" strokeWidth="2">
+                  <polyline points="3 6 5 6 21 6"/>
+                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                  <path d="M10 11v6M14 11v6"/>
+                </svg>
+              </div>
+              <div>
+                <h2 className="text-sm font-bold" style={{ color: '#1A0A2E' }}>Delete Campaign?</h2>
+                <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>This action cannot be undone.</p>
+              </div>
+            </div>
+            <div className="rounded-lg p-3 mb-4" style={{ background: '#FEF2F2', border: '1px solid rgba(220,38,38,0.2)' }}>
+              <p className="text-sm font-semibold mb-1" style={{ color: '#1A0A2E' }}>{confirmDeleteCampaign.name}</p>
+              <p className="text-xs" style={{ color: '#DC2626' }}>
+                This will permanently delete all{' '}
+                {Number(confirmDeleteCampaign.stats?.mailing_list_count ?? confirmDeleteCampaign.stats?.matched_count ?? 0).toLocaleString()} properties and all associated records.
+              </p>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button className="btn-secondary" onClick={() => setConfirmDeleteCampaign(null)}>Cancel</button>
+              <button
+                className="text-sm px-4 py-2 rounded-lg font-semibold"
+                style={{ background: '#DC2626', color: '#FFFFFF' }}
+                onClick={() => handleDelete(confirmDeleteCampaign.id)}
+              >
+                Delete Campaign
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -282,14 +320,11 @@ function CampaignCard({
   isSelectedForCompare,
   renamingId,
   renameValue,
-  deletingId,
   onRenameStart,
   onRenameChange,
   onRenameSubmit,
   onRenameCancel,
   onDeleteStart,
-  onDeleteConfirm,
-  onDeleteCancel,
   onDuplicateSettings,
   onToggleCompare,
   onImportList,
@@ -300,14 +335,11 @@ function CampaignCard({
   isSelectedForCompare: boolean
   renamingId: string | null
   renameValue: string
-  deletingId: string | null
   onRenameStart: () => void
   onRenameChange: (v: string) => void
   onRenameSubmit: () => void
   onRenameCancel: () => void
   onDeleteStart: () => void
-  onDeleteConfirm: () => void
-  onDeleteCancel: () => void
   onDuplicateSettings: () => void
   onToggleCompare: () => void
   onImportList: () => void
@@ -434,34 +466,21 @@ function CampaignCard({
           <button className="btn-secondary text-xs" onClick={onRenameStart}>
             Rename
           </button>
-          {deletingId === camp.id ? (
-            <div className="flex items-center gap-1 ml-auto">
-              <span className="text-xs" style={{ color: '#dc2626' }}>Delete?</span>
-              <button
-                className="text-xs px-2 py-1 rounded font-medium"
-                style={{ background: 'rgba(239,68,68,0.12)', color: '#dc2626', border: '1px solid rgba(239,68,68,0.3)' }}
-                onClick={onDeleteConfirm}
-              >
-                Yes
-              </button>
-              <button className="btn-secondary text-xs py-1 px-2" onClick={onDeleteCancel}>Cancel</button>
-            </div>
-          ) : (
-            <button
-              className="text-xs px-2 py-1 rounded-lg ml-auto transition-colors"
-              style={{ color: '#9B8AAE' }}
-              onClick={onDeleteStart}
-              onMouseEnter={(e) => (e.currentTarget.style.color = '#dc2626')}
-              onMouseLeave={(e) => (e.currentTarget.style.color = '#9B8AAE')}
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <polyline points="3 6 5 6 21 6"/>
-                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-                <path d="M10 11v6"/><path d="M14 11v6"/>
-                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
-              </svg>
-            </button>
-          )}
+          <button
+            className="text-xs px-2 py-1 rounded-lg ml-auto transition-colors"
+            style={{ color: '#9B8AAE' }}
+            onClick={onDeleteStart}
+            onMouseEnter={(e) => (e.currentTarget.style.color = '#dc2626')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = '#9B8AAE')}
+            title="Delete campaign"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+              <path d="M10 11v6"/><path d="M14 11v6"/>
+              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+            </svg>
+          </button>
         </div>
       )}
 

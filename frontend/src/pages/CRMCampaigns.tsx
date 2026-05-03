@@ -52,7 +52,7 @@ export default function CRMCampaigns() {
   const [newMailHouseEmail, setNewMailHouseEmail] = useState('')
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
-  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [confirmDeleteCampaign, setConfirmDeleteCampaign] = useState<CRMCampaign | null>(null)
 
   useEffect(() => { fetchCampaigns() }, [])
 
@@ -91,7 +91,7 @@ export default function CRMCampaigns() {
       await deleteCrmCampaign(id)
       setCampaigns(prev => prev.filter(c => c.id !== id))
     } catch { setError('Failed to delete campaign.') }
-    finally { setDeletingId(null) }
+    finally { setConfirmDeleteCampaign(null) }
   }
 
   function openDetail(camp: CRMCampaign) { setSelectedCampaign(camp); setView('detail') }
@@ -234,7 +234,6 @@ export default function CRMCampaigns() {
               <tbody>
                 {sorted.map((camp, idx) => {
                   const stats = getStats(camp)
-                  const isDeleting = deletingId === camp.id
                   return (
                     <tr
                       key={camp.id}
@@ -286,31 +285,20 @@ export default function CRMCampaigns() {
                         <span className="text-sm" style={{ color: '#1A0A2E' }}>{stats.sales.toLocaleString()}</span>
                       </td>
                       <td style={{ padding: '12px 16px' }} onClick={e => e.stopPropagation()}>
-                        {isDeleting ? (
-                          <div className="flex items-center gap-1">
-                            <button
-                              className="text-xs px-2 py-1 rounded font-semibold"
-                              style={{ background: '#FEE2E2', color: '#DC2626', border: '1px solid rgba(220,38,38,0.25)' }}
-                              onClick={() => handleDelete(camp.id)}
-                            >Delete</button>
-                            <button className="btn-secondary text-xs py-1 px-2" onClick={() => setDeletingId(null)}>No</button>
-                          </div>
-                        ) : (
-                          <button
-                            className="px-2 py-1 rounded transition-all"
-                            style={{ color: '#9B8AAE', border: '1px solid #E8E0F0' }}
-                            onClick={() => setDeletingId(camp.id)}
-                            onMouseEnter={e => { e.currentTarget.style.color = '#DC2626'; e.currentTarget.style.borderColor = 'rgba(220,38,38,0.3)' }}
-                            onMouseLeave={e => { e.currentTarget.style.color = '#9B8AAE'; e.currentTarget.style.borderColor = '#E8E0F0' }}
-                            title="Delete campaign"
-                          >
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <polyline points="3 6 5 6 21 6"/>
-                              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-                              <path d="M10 11v6M14 11v6"/>
-                            </svg>
-                          </button>
-                        )}
+                        <button
+                          className="px-2 py-1 rounded transition-all"
+                          style={{ color: '#9B8AAE', border: '1px solid #E8E0F0' }}
+                          onClick={() => setConfirmDeleteCampaign(camp)}
+                          onMouseEnter={e => { e.currentTarget.style.color = '#DC2626'; e.currentTarget.style.borderColor = 'rgba(220,38,38,0.3)' }}
+                          onMouseLeave={e => { e.currentTarget.style.color = '#9B8AAE'; e.currentTarget.style.borderColor = '#E8E0F0' }}
+                          title="Delete campaign"
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polyline points="3 6 5 6 21 6"/>
+                            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                            <path d="M10 11v6M14 11v6"/>
+                          </svg>
+                        </button>
                       </td>
                     </tr>
                   )
@@ -434,6 +422,46 @@ export default function CRMCampaigns() {
               <button className="btn-secondary" onClick={() => { resetNewForm(); setShowNewModal(false) }}>Cancel</button>
               <button className="btn-primary" onClick={handleCreate} disabled={creating || !newName.trim()}>
                 {creating ? 'Creating…' : 'Create Campaign'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDeleteCampaign && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ background: 'rgba(26,10,46,0.55)' }}
+          onClick={e => { if (e.target === e.currentTarget) setConfirmDeleteCampaign(null) }}
+        >
+          <div className="card" style={{ width: 420, maxWidth: '95vw', padding: 24, background: '#FFFFFF', border: '1px solid #E8E0F0' }}>
+            <div className="flex items-center gap-3 mb-4">
+              <div style={{ width: 36, height: 36, borderRadius: 8, background: '#FEE2E2', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#DC2626" strokeWidth="2">
+                  <polyline points="3 6 5 6 21 6"/>
+                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                  <path d="M10 11v6M14 11v6"/>
+                </svg>
+              </div>
+              <div>
+                <h2 className="text-sm font-bold" style={{ color: '#1A0A2E' }}>Delete Campaign?</h2>
+                <p className="text-xs mt-0.5" style={{ color: '#6B5B8A' }}>This action cannot be undone.</p>
+              </div>
+            </div>
+            <div className="rounded-lg p-3 mb-4" style={{ background: '#FEF2F2', border: '1px solid rgba(220,38,38,0.2)' }}>
+              <p className="text-sm font-semibold mb-1" style={{ color: '#1A0A2E' }}>{confirmDeleteCampaign.name}</p>
+              <p className="text-xs" style={{ color: '#DC2626' }}>
+                This will permanently delete all {getStats(confirmDeleteCampaign).total.toLocaleString()} properties and all associated records.
+              </p>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button className="btn-secondary" onClick={() => setConfirmDeleteCampaign(null)}>Cancel</button>
+              <button
+                className="text-sm px-4 py-2 rounded-lg font-semibold transition-all"
+                style={{ background: '#DC2626', color: '#FFFFFF' }}
+                onClick={() => handleDelete(confirmDeleteCampaign.id)}
+              >
+                Delete Campaign
               </button>
             </div>
           </div>
