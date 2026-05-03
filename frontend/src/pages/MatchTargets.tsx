@@ -70,6 +70,9 @@ export default function MatchTargets() {
   const [minOfferFloor, setMinOfferFloor] = useState<string>('10000')
   const [minLpEstimate, setMinLpEstimate] = useState<string>('20000')
   const [assignmentFee, setAssignmentFee] = useState<string>('5000')
+  const [offerPct, setOfferPct] = useState<number>(
+    () => parseFloat(localStorage.getItem('matchTargets_offer_pct') ?? '52.5')
+  )
 
   // Add to Mailing List modal
   const [showMailingModal, setShowMailingModal] = useState(false)
@@ -82,11 +85,15 @@ export default function MatchTargets() {
   const [mailingDone, setMailingDone] = useState(false)
   const [showUnmatched, setShowUnmatched] = useState(false)
 
-  // Persist acreage to localStorage whenever values change
+  // Persist acreage + offer pct to localStorage whenever values change
   useEffect(() => {
     localStorage.setItem('matchTargets_acreage_min', minAcreage)
     localStorage.setItem('matchTargets_acreage_max', maxAcreage)
   }, [minAcreage, maxAcreage])
+
+  useEffect(() => {
+    localStorage.setItem('matchTargets_offer_pct', String(offerPct))
+  }, [offerPct])
 
   // Pre-fill acreage from sweet spot — only on first load when no localStorage value exists
   useEffect(() => {
@@ -179,6 +186,7 @@ export default function MatchTargets() {
       max_retail_price: 200000,
       min_offer_floor: minOfferFloor ? parseFloat(minOfferFloor) : 10000,
       min_lp_estimate: minLpEstimate ? parseFloat(minLpEstimate) : 20000,
+      offer_pct: offerPct,
     }
 
     // Persist filter settings
@@ -213,6 +221,7 @@ export default function MatchTargets() {
   if (floodZoneFilter === 'only') filterParts.push('Flood zones only')
   if (minOfferFloor) filterParts.push(`Offer floor $${Number(minOfferFloor).toLocaleString()}`)
   if (minLpEstimate) filterParts.push(`Min retail $${Number(minLpEstimate).toLocaleString()}`)
+  filterParts.push(`${offerPct.toFixed(1)}% offer`)
   const filterSummary = filterParts.length > 0
     ? `Active filters: ${filterParts.join(' · ')}`
     : 'No filters active — matching all targets'
@@ -436,7 +445,42 @@ export default function MatchTargets() {
 
           </div>
 
-          {/* 5. ZIP Filter */}
+          {/* 5. Offer Percentage */}
+          <div className="mt-5 pt-5" style={{ borderTop: '1px solid #E5E7EB' }}>
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#6B7280' }}>Offer Percentage</p>
+              <span className="text-sm font-bold" style={{ color: '#4F46E5' }}>{offerPct.toFixed(1)}% of LP estimate</span>
+            </div>
+            <input
+              type="range" min="35" max="75" step="0.5"
+              value={offerPct}
+              onChange={e => setOfferPct(parseFloat(e.target.value))}
+              className="w-full accent-indigo-600"
+              style={{ height: 4 }}
+            />
+            <div className="flex justify-between text-[10px] mt-0.5" style={{ color: '#9CA3AF' }}>
+              <span>35% (conservative)</span>
+              <span>52.5% (default)</span>
+              <span>75% (aggressive)</span>
+            </div>
+            {matchResult && (() => {
+              const priced = matchResult.results.filter(r => r.suggested_offer_mid != null)
+              if (priced.length === 0) return null
+              const avgRetail = priced.reduce((s, r) => s + (r.retail_estimate ?? 0), 0) / priced.length
+              const dynAvgOffer = avgRetail * (offerPct / 100)
+              return (
+                <p className="text-xs mt-1.5 font-medium" style={{ color: '#4F46E5' }}>
+                  At {offerPct.toFixed(1)}%: avg offer {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(dynAvgOffer)}
+                  <span className="font-normal ml-1" style={{ color: '#9CA3AF' }}>(re-run match to apply)</span>
+                </p>
+              )
+            })()}
+            {!matchResult && (
+              <p className="text-[10px] mt-1" style={{ color: '#9CA3AF' }}>Applied when you run the match</p>
+            )}
+          </div>
+
+          {/* 6. ZIP Filter */}
           <div className="mt-5 pt-5" style={{ borderTop: '1px solid #E5E7EB' }}>
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#6B7280' }}>ZIP Filter</p>
@@ -518,6 +562,11 @@ export default function MatchTargets() {
 
         {matchResult && (
           <>
+            {/* Offer pct badge */}
+            <div className="mb-4 px-3 py-2 rounded-lg text-xs font-medium inline-flex items-center gap-1.5" style={{ background: 'rgba(79,70,229,0.06)', border: '1px solid rgba(79,70,229,0.15)', color: '#4F46E5' }}>
+              <span>Offers calculated at {(matchResult.offer_pct ?? offerPct).toFixed(1)}% of LP estimate</span>
+            </div>
+
             {/* Smart floor recommendation */}
             {matchResult.smart_floor_recommendation != null && (
               <div className="mb-5 px-4 py-3 rounded-xl flex items-center justify-between" style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)' }}>
@@ -994,6 +1043,7 @@ export default function MatchTargets() {
                       matchResult.match_id,
                       mailingExportType,
                       matchResult.results,
+                      matchResult.offer_pct ?? offerPct,
                     )
                     setMailingSuccess(`${result.imported.toLocaleString()} records added to "${campaignName}" with pricing saved.`)
                     setSelectedCampaignId(campaignId)

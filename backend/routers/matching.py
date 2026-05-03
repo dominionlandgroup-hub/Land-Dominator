@@ -192,6 +192,7 @@ async def run_match(filters: MatchFilters) -> Response:
                 max_retail_price=getattr(filters, 'max_retail_price', 200000.0),
                 min_offer_floor=getattr(filters, 'min_offer_floor', 10000.0),
                 min_lp_estimate=getattr(filters, 'min_lp_estimate', 20000.0),
+                offer_pct=getattr(filters, 'offer_pct', 52.5),
             ),
         )
     except Exception:
@@ -222,6 +223,7 @@ async def run_match(filters: MatchFilters) -> Response:
             "county_diagnostics": result.get("county_diagnostics"),
             "pricing_breakdown": result.get("pricing_breakdown"),
             "match_rate_warning": result.get("match_rate_warning"),
+            "offer_pct": result.get("offer_pct", 52.5),
             "results": result["results"],
             "warnings": result.get("warnings", []),
         }, ignore_nan=True, default=str)
@@ -267,6 +269,7 @@ async def run_match(filters: MatchFilters) -> Response:
             "county_diagnostics": result.get("county_diagnostics"),
             "pricing_breakdown": result.get("pricing_breakdown"),
             "match_rate_warning": result.get("match_rate_warning"),
+            "offer_pct": result.get("offer_pct", 52.5),
             "results": result["results"],
             "warnings": result.get("warnings", []),
         })

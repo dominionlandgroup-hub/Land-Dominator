@@ -128,6 +128,7 @@ class MatchFilters(BaseModel):
     # Offer floor filters (flag only, do not exclude)
     min_offer_floor: float = 10000.0        # Flag as LOW_OFFER if offer_mid < this
     min_lp_estimate: float = 20000.0        # Flag as LOW_VALUE if retail_estimate < this
+    offer_pct: float = 52.5                 # Offer percentage of retail (35–75%)
     debug_apn: Optional[str] = None         # APN to debug
 
 

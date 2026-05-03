@@ -166,7 +166,8 @@ export async function addMatchResultsToCampaign(
   campaignId: string,
   matchId: string,
   exportType: 'mailable' | 'matched' = 'mailable',
-  records?: unknown[]
+  records?: unknown[],
+  offerPct?: number
 ): Promise<{ imported: number; total: number; campaign_id: string }> {
   console.log('[addMatchResultsToCampaign] campaignId:', campaignId)
   console.log('[addMatchResultsToCampaign] exportType:', exportType)
@@ -181,6 +182,7 @@ export async function addMatchResultsToCampaign(
     match_id: matchId,
     export_type: exportType,
     ...(records ? { records } : {}),
+    ...(offerPct != null ? { offer_pct: offerPct } : {}),
   }
   console.log('[addMatchResultsToCampaign] payload keys:', Object.keys(payload), 'records included:', 'records' in payload)
   const { data } = await api.post(`/crm/campaigns/${campaignId}/add-match-results`, payload)

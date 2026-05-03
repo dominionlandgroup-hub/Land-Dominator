@@ -705,6 +705,7 @@ def calculate_offer_price(
     acreage_band_label: Optional[str] = None,
     radius_label: Optional[str] = None,
     same_street_match: bool = False,
+    offer_pct: float = 52.5,
 ) -> Dict[str, Any]:
     """
     Client-approved pricing model (March 2026 - Updated per Damien's request):
@@ -870,13 +871,15 @@ def calculate_offer_price(
         f" | retail={retail_estimate:,.2f} | tlp={tlp_estimate}",
         flush=True,
     )
-    # Client-confirmed 60/65/70 percentages (updated March 2026)
     if tlp_estimate and tlp_estimate > 0 and retail_estimate > tlp_estimate * 2.0:
         retail_estimate = tlp_estimate
-    offer_low = retail_estimate * LOW_PCT
-    offer_mid = retail_estimate * MID_PCT
-    offer_high = retail_estimate * HIGH_PCT
-    print(f"[pricing] offer_low=${offer_low:,.2f} offer_mid=${offer_mid:,.2f} offer_high=${offer_high:,.2f}", flush=True)
+    _mid = max(0.35, min(0.75, offer_pct / 100.0))
+    _low  = max(0.35, _mid - 0.025)
+    _high = min(0.75, _mid + 0.025)
+    offer_low  = retail_estimate * _low
+    offer_mid  = retail_estimate * _mid
+    offer_high = retail_estimate * _high
+    print(f"[pricing] offer_pct={offer_pct}% → offer_low=${offer_low:,.2f} offer_mid=${offer_mid:,.2f} offer_high=${offer_high:,.2f}", flush=True)
 
     # Confidence based on comp count
     n = len(comps)
@@ -990,6 +993,7 @@ def run_matching(
     # Offer floor filters (flag only, do not exclude)
     min_offer_floor: float = 10000.0,     # Flag as LOW_OFFER if offer_mid < this
     min_lp_estimate: float = 20000.0,     # Flag as LOW_VALUE if retail_estimate < this
+    offer_pct: float = 52.5,              # Offer % of retail (35–75%)
 ) -> Dict[str, Any]:
     """
     Run the full matching pipeline with cleaned comps and acreage band pricing.
@@ -1706,6 +1710,7 @@ def run_matching(
             acreage_band_label=band_label,
             radius_label=radius_label,
             same_street_match=same_street_used,
+            offer_pct=offer_pct,
         )
 
         valid_comps_count = int(pricing.get('clean_comp_count') or 0)
@@ -1738,13 +1743,16 @@ def run_matching(
         if pricing['pricing_flag'] == 'NO_COMPS' and tlp_val and tlp_val > 0:
             lp_retail = float(tlp_val)
             _lp_reason = _no_match_pre_reason or 'No comps within 3 miles or same ZIP'
+            _lp_mid  = max(0.35, min(0.75, offer_pct / 100.0))
+            _lp_low  = max(0.35, _lp_mid - 0.025)
+            _lp_high = min(0.75, _lp_mid + 0.025)
             pricing.update({
                 'pricing_flag': 'LP_FALLBACK',
                 'pricing_source': 'LP_FALLBACK',
                 'retail_estimate': float(lp_retail),
-                'offer_low': lp_retail * LOW_PCT,
-                'offer_mid': lp_retail * MID_PCT,
-                'offer_high': lp_retail * HIGH_PCT,
+                'offer_low': lp_retail * _lp_low,
+                'offer_mid': lp_retail * _lp_mid,
+                'offer_high': lp_retail * _lp_high,
                 'confidence': 'EST',
                 'no_match_reason': _lp_reason,
                 'radius_label': 'LP_FALLBACK',
@@ -2253,4 +2261,5 @@ def run_matching(
         "county_diagnostics": county_diagnostics,
         "pricing_breakdown": pricing_breakdown,
         "match_rate_warning": match_rate_warning,
+        "offer_pct": offer_pct,
     }

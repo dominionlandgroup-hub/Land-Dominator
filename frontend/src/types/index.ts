@@ -123,6 +123,7 @@ export interface MatchFilters {
   max_retail_price?: number
   min_offer_floor: number             // Flag as LOW_OFFER if offer < this (default: 10000)
   min_lp_estimate: number             // Flag as LOW_VALUE if retail < this (default: 20000)
+  offer_pct?: number                  // Offer % of retail (35–75, default 52.5)
 }
 
 export type MatchFiltersPartial = Partial<MatchFilters>
@@ -222,6 +223,7 @@ export interface MatchResult {
   low_value_count?: number
   unpriced_count?: number
   smart_floor_recommendation?: number | null
+  offer_pct?: number
   results: MatchedParcel[]
   warnings?: string[]
 }
