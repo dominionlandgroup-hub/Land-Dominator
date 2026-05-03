@@ -498,7 +498,8 @@ function VelocitySection({
   titleCase: (s: string) => string
 }) {
   const [showAllHot, setShowAllHot] = useState(false)
-  const [hotCopied, setHotCopied] = useState(false)
+  const [lpCopied, setLpCopied] = useState(false)
+  const [csvCopied, setCsvCopied] = useState(false)
 
   const fmtSupply = (ms: number) => ms >= 99 ? 'No sales' : `${ms}mo`
   const velCountyRaw = (v: ZipVelocity) => v.county || zipToCounty[v.zip] || ''
@@ -521,11 +522,19 @@ function VelocitySection({
   const hotCountyList = [...hotCountyCounts.entries()].sort((a, b) => b[1] - a[1])
   const displayedHotZips = showAllHot ? hotZips : hotZips.slice(0, 10)
 
-  function handleCopyHotZips() {
+  function handleCopyLandPortal() {
+    const zipList = hotZips.map(v => v.zip).join('\n')
+    navigator.clipboard.writeText(zipList).then(() => {
+      setLpCopied(true)
+      setTimeout(() => setLpCopied(false), 2000)
+    })
+  }
+
+  function handleCopyCsv() {
     const zipList = hotZips.map(v => v.zip).join(', ')
     navigator.clipboard.writeText(zipList).then(() => {
-      setHotCopied(true)
-      setTimeout(() => setHotCopied(false), 2000)
+      setCsvCopied(true)
+      setTimeout(() => setCsvCopied(false), 2000)
     })
   }
 
@@ -590,10 +599,16 @@ function VelocitySection({
               )}
               <div className="flex gap-2 mt-2 flex-wrap">
                 <button
-                  onClick={handleCopyHotZips}
-                  style={{ fontSize: 10, padding: '3px 8px', borderRadius: 4, background: hotCopied ? 'rgba(5,150,105,0.1)' : 'rgba(220,38,38,0.08)', color: hotCopied ? '#059669' : '#DC2626', border: `1px solid ${hotCopied ? 'rgba(5,150,105,0.2)' : 'rgba(220,38,38,0.2)'}`, cursor: 'pointer', fontWeight: 600 }}
+                  onClick={handleCopyLandPortal}
+                  style={{ fontSize: 10, padding: '3px 8px', borderRadius: 4, background: lpCopied ? 'rgba(5,150,105,0.1)' : 'rgba(220,38,38,0.08)', color: lpCopied ? '#059669' : '#DC2626', border: `1px solid ${lpCopied ? 'rgba(5,150,105,0.2)' : 'rgba(220,38,38,0.2)'}`, cursor: 'pointer', fontWeight: 600 }}
                 >
-                  {hotCopied ? `✓ Copied ${hotZips.length} ZIPs!` : `Copy All ${hotZips.length} HOT ZIPs`}
+                  {lpCopied ? `✓ Copied!` : `Copy for Land Portal`}
+                </button>
+                <button
+                  onClick={handleCopyCsv}
+                  style={{ fontSize: 10, padding: '3px 8px', borderRadius: 4, background: csvCopied ? 'rgba(5,150,105,0.1)' : 'rgba(220,38,38,0.08)', color: csvCopied ? '#059669' : '#DC2626', border: `1px solid ${csvCopied ? 'rgba(5,150,105,0.2)' : 'rgba(220,38,38,0.2)'}`, cursor: 'pointer', fontWeight: 600 }}
+                >
+                  {csvCopied ? `✓ Copied!` : `Copy as CSV`}
                 </button>
                 <button
                   onClick={handleDownloadHotZips}
