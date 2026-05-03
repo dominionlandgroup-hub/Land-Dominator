@@ -495,7 +495,7 @@ export default function MatchTargets() {
           <div className="mt-5 pt-5" style={{ borderTop: '1px solid #E5E7EB' }}>
             <div className="flex items-center justify-between mb-1">
               <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#6B7280' }}>Offer Percentage</p>
-              <span className="text-sm font-bold" style={{ color: '#4F46E5' }}>{offerPct.toFixed(1)}% of LP estimate</span>
+              <span className="text-sm font-bold" style={{ color: '#4F46E5' }}>{offerPct.toFixed(1)}% of comp value</span>
             </div>
             <input
               type="range" min="35" max="75" step="0.5"
@@ -505,9 +505,9 @@ export default function MatchTargets() {
               style={{ height: 4 }}
             />
             <div className="flex justify-between text-[10px] mt-0.5" style={{ color: '#9CA3AF' }}>
-              <span>35% (conservative)</span>
-              <span>52.5% (default)</span>
-              <span>75% (aggressive)</span>
+              <span>35% — conservative offer</span>
+              <span>52.5% — standard offer</span>
+              <span>75% — aggressive offer</span>
             </div>
             {matchResult && (() => {
               const priced = matchResult.results.filter(r => r.suggested_offer_mid != null)
@@ -522,7 +522,7 @@ export default function MatchTargets() {
               )
             })()}
             {!matchResult && (
-              <p className="text-[10px] mt-1" style={{ color: '#9CA3AF' }}>Applied when you run the match</p>
+              <p className="text-[10px] mt-1" style={{ color: '#9CA3AF' }}>Offer = comp price per acre × acreage × percentage</p>
             )}
           </div>
 
