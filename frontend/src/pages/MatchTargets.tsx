@@ -824,8 +824,15 @@ export default function MatchTargets() {
         {matchResult && (
           <>
             {/* Offer pct badge */}
-            <div className="mb-4 px-3 py-2 rounded-lg text-xs font-medium inline-flex items-center gap-1.5" style={{ background: 'rgba(79,70,229,0.06)', border: '1px solid rgba(79,70,229,0.15)', color: '#4F46E5' }}>
-              <span>Offers calculated at {(matchResult.offer_pct ?? offerPct).toFixed(1)}% of LP estimate</span>
+            <div className="mb-4 flex flex-wrap gap-2">
+              <div className="px-3 py-2 rounded-lg text-xs font-medium inline-flex items-center gap-1.5" style={{ background: 'rgba(79,70,229,0.06)', border: '1px solid rgba(79,70,229,0.15)', color: '#4F46E5' }}>
+                <span>Offers calculated at {(matchResult.offer_pct ?? offerPct).toFixed(1)}% of comp value (median price per acre × acreage)</span>
+              </div>
+              {(matchResult.lp_fallback_count ?? 0) > 0 && (
+                <div className="px-3 py-2 rounded-lg text-xs font-medium inline-flex items-center gap-1.5" style={{ background: 'rgba(124,58,237,0.06)', border: '1px solid rgba(124,58,237,0.15)', color: '#7C3AED' }}>
+                  <span>LP Fallback records priced at {(matchResult.offer_pct ?? offerPct).toFixed(1)}% of LP estimate</span>
+                </div>
+              )}
             </div>
 
             {/* Smart floor recommendation */}
