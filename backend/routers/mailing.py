@@ -31,6 +31,7 @@ OUTPUT_HEADERS = [
     "Property Zip",
     "APN",
     "County",
+    "FIPS",
     "State",
     "Acreage",
     "Campaign Code",
@@ -351,6 +352,7 @@ def _deduplicate(
                 pricing_method=row.get("pricing_method"),
                 comp_quality_flags=row.get("comp_quality_flags"),
                 pricing_sanity_flag=row.get("pricing_sanity_flag"),
+                fips=row.get("fips"),
             )
         )
 
@@ -384,6 +386,7 @@ def _build_csv(parcels: list[MatchedParcel]) -> bytes:
             p.parcel_zip or "",
             p.apn or "",
             p.parcel_county or "",
+            p.fips or "",
             p.parcel_state or "",
             f"{p.lot_acres:.2f}" if p.lot_acres is not None else "",
             "",  # Campaign Code — not available in match result context

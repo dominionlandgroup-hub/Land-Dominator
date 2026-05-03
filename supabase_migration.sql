@@ -189,3 +189,9 @@ CREATE TABLE IF NOT EXISTS crm_active_listings (
 
 CREATE INDEX IF NOT EXISTS idx_active_listings_zip    ON crm_active_listings (zip_code);
 CREATE INDEX IF NOT EXISTS idx_active_listings_county ON crm_active_listings (county);
+
+-- Performance indexes for matching and CRM queries
+CREATE INDEX IF NOT EXISTS idx_comps_county_lat_lon        ON crm_sold_comps (county, latitude, longitude);
+CREATE INDEX IF NOT EXISTS idx_comms_phone                 ON crm_communications (phone);
+CREATE INDEX IF NOT EXISTS idx_comms_unread                ON crm_communications (property_id) WHERE read = false;
+CREATE INDEX IF NOT EXISTS idx_properties_county_campaign  ON crm_properties (county, campaign_id);

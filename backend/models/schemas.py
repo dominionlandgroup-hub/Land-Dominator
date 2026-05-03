@@ -219,6 +219,8 @@ class MatchedParcel(BaseModel):
     comp_quality_flags: Optional[str] = None
     # Pricing sanity flag (TLP comparison)
     pricing_sanity_flag: Optional[str] = None
+    # FIPS code
+    fips: Optional[str] = None
 
 
 class MatchResponse(BaseModel):

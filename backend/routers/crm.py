@@ -1041,7 +1041,7 @@ async def send_campaign_mail_drop(campaign_id: str, body: dict = Body(default={}
             "Owner Full Name", "Owner First Name", "Owner Last Name",
             "Mailing Address", "Mailing City", "Mailing State", "Mailing Zip",
             "Property Address", "Property City", "Property State", "Property Zip",
-            "APN", "County", "State", "Acreage",
+            "APN", "County", "FIPS", "State", "Acreage",
             "Campaign Code", "Offer Price", "Status",
         ]
         writer = _csv.writer(buf)
@@ -1070,6 +1070,7 @@ async def send_campaign_mail_drop(campaign_id: str, body: dict = Body(default={}
                 p.get("property_zip", ""),
                 p.get("apn", ""),
                 p.get("county", ""),
+                p.get("fips", ""),
                 p.get("state", ""),
                 p.get("acreage", ""),
                 p.get("campaign_code", ""),
@@ -2023,7 +2024,7 @@ async def export_properties_csv(
             "Owner Full Name", "Owner First Name", "Owner Last Name",
             "Mailing Address", "Mailing City", "Mailing State", "Mailing Zip",
             "Property Address", "Property City", "Property State", "Property Zip",
-            "APN", "County", "State", "Acreage",
+            "APN", "County", "FIPS", "State", "Acreage",
             "Campaign Code", "Offer Price", "Status",
         ]
 
@@ -2053,6 +2054,7 @@ async def export_properties_csv(
                 row.get("property_zip") or "",
                 row.get("apn") or "",
                 row.get("county") or "",
+                row.get("fips") or "",
                 row.get("state") or "",
                 row.get("acreage") or "",
                 row.get("campaign_code") or "",

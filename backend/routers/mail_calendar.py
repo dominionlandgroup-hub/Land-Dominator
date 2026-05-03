@@ -22,12 +22,12 @@ _COST_PER_PIECE_DEFAULT = 0.55
 _MAIL_CSV_HEADERS = [
     "Owner Full Name", "Owner First Name", "Owner Last Name",
     "Mailing Address", "City", "State", "Zip",
-    "APN", "County", "Offer Price", "Campaign Code",
+    "APN", "County", "FIPS", "Offer Price", "Campaign Code",
 ]
 _MAIL_CSV_FIELDS = [
     "owner_full_name", "owner_first_name", "owner_last_name",
     "owner_mailing_address", "owner_mailing_city", "owner_mailing_state", "owner_mailing_zip",
-    "apn", "county", "offer_price", "campaign_code",
+    "apn", "county", "fips", "offer_price", "campaign_code",
 ]
 
 # ── Schemas ────────────────────────────────────────────────────────────

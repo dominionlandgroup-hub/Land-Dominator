@@ -104,7 +104,10 @@ def _load_comps_from_db(states: "list[str] | None" = None) -> "pd.DataFrame | No
         state_filter = [s.strip().upper() for s in (states or []) if s and s.strip()]
 
         while True:
-            q = sb.table("crm_sold_comps").select("*")
+            q = sb.table("crm_sold_comps").select(
+                "apn,sale_price,lot_acres,latitude,longitude,zip_code,state,county,sale_date,"
+                "price_per_acre,road_frontage,buildability_pct,flood_zone,fips,address"
+            )
             if state_filter:
                 # Use Supabase .in_() filter — state column stores uppercase 2-letter codes
                 q = q.in_("state", state_filter)
