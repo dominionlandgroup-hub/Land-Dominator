@@ -7,6 +7,7 @@ import {
   sendCampaignMailDrop, updateCrmCampaign, getPropertyTags, recalculateAmountSpent,
   startSkipTrace, getSkipTraceStatus, startSmsCampaign, getSmsStatus,
   getCampaignFunnelStats, exportMailQueue,
+  getLpSkipTraceCount, startLpSkipTrace, getLpSkipTraceStatus,
 } from '../api/crm'
 import type { CampaignFunnelStats } from '../api/crm'
 import PropertyDetail from './PropertyDetail'
@@ -97,7 +98,7 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
   const [lpTokenWarning, setLpTokenWarning] = useState<string | null>(null)
   const lpPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // Skip trace
+  // Skip trace (Batch Leads)
   const [stJobId, setStJobId] = useState<string | null>(null)
   const [stDone, setStDone] = useState(0)
   const [stTotal, setStTotal] = useState(0)
@@ -105,6 +106,15 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
   const [stResult, setStResult] = useState<{ mobile: number; landline: number; no_number: number } | null>(null)
   const [stError, setStError] = useState<string | null>(null)
   const stPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Skip trace (Land Portal)
+  const [lpStJobId, setLpStJobId] = useState<string | null>(null)
+  const [lpStDone, setLpStDone] = useState(0)
+  const [lpStTotal, setLpStTotal] = useState(0)
+  const [lpStStatus, setLpStStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
+  const [lpStResult, setLpStResult] = useState<{ mobile: number; landline: number; no_number: number } | null>(null)
+  const [lpStError, setLpStError] = useState<string | null>(null)
+  const lpStPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // SMS campaign
   const [smsJobId, setSmsJobId] = useState<string | null>(null)
@@ -422,6 +432,55 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
     }
   }
 
+  // ── LP Skip Trace ────────────────────────────────────────────────────
+  async function handleStartLpSkipTrace() {
+    if (lpStStatus === 'running') return
+    try {
+      const { total, with_lp_id } = await getLpSkipTraceCount(campaign.id)
+      const noLpId = total - with_lp_id
+      const msg = [
+        `Land Portal skip trace will use approximately ${with_lp_id.toLocaleString()} tokens.`,
+        ``,
+        `${with_lp_id.toLocaleString()} of ${total.toLocaleString()} records have Land Portal IDs — only those will be skip traced.`,
+        noLpId > 0 ? `${noLpId.toLocaleString()} records without LP IDs will be skipped (use Batch Leads for those).` : '',
+        ``,
+        `Continue?`,
+      ].filter(Boolean).join('\n')
+      if (!confirm(msg)) return
+    } catch {
+      if (!confirm('Could not fetch record counts. Start LP skip trace anyway?')) return
+    }
+    setLpStStatus('running')
+    setLpStDone(0)
+    setLpStTotal(0)
+    setLpStResult(null)
+    setLpStError(null)
+    try {
+      const { job_id, total } = await startLpSkipTrace(campaign.id)
+      setLpStJobId(job_id)
+      setLpStTotal(total)
+      if (lpStPollRef.current) clearInterval(lpStPollRef.current)
+      lpStPollRef.current = setInterval(async () => {
+        try {
+          const s = await getLpSkipTraceStatus(campaign.id, job_id)
+          setLpStDone(s.done)
+          setLpStTotal(s.total)
+          if (s.status === 'done' || s.status === 'error') {
+            setLpStStatus(s.status as 'done' | 'error')
+            if (s.status === 'done') setLpStResult({ mobile: s.mobile, landline: s.landline, no_number: s.no_number })
+            if (s.status === 'error') setLpStError('LP skip trace failed')
+            if (lpStPollRef.current) { clearInterval(lpStPollRef.current); lpStPollRef.current = null }
+            loadFunnel()
+          }
+        } catch {}
+      }, 2000)
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { detail?: string } } }
+      setLpStError(err?.response?.data?.detail ?? 'Failed to start LP skip trace')
+      setLpStStatus('error')
+    }
+  }
+
   // ── SMS Campaign ─────────────────────────────────────────────────────
   async function handleStartSms(day = 1) {
     if (smsStatus === 'running') return
@@ -590,19 +649,34 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
             </span>
           )}
 
-          {/* Skip trace status */}
+          {/* Skip trace status (Batch Leads) */}
           {stStatus === 'running' && (
             <span className="text-xs" style={{ color: '#9CA3AF' }}>
-              🔍 Skip tracing… {stDone.toLocaleString()} of {stTotal.toLocaleString()}
+              🔍 BL Skip tracing… {stDone.toLocaleString()} of {stTotal.toLocaleString()}
             </span>
           )}
           {stStatus === 'done' && stResult && (
             <span className="text-xs font-semibold" style={{ color: '#10B981' }}>
-              ✓ {stResult.mobile.toLocaleString()} mobile · {stResult.landline.toLocaleString()} landline · {stResult.no_number.toLocaleString()} no number
+              ✓ BL: {stResult.mobile.toLocaleString()} mobile · {stResult.landline.toLocaleString()} landline · {stResult.no_number.toLocaleString()} no number
             </span>
           )}
           {stStatus === 'error' && (
             <span className="text-xs font-semibold" style={{ color: '#DC2626' }}>Skip trace failed: {stError}</span>
+          )}
+
+          {/* Skip trace status (Land Portal) */}
+          {lpStStatus === 'running' && (
+            <span className="text-xs" style={{ color: '#9CA3AF' }}>
+              🔍 LP Skip tracing… {lpStDone.toLocaleString()} of {lpStTotal.toLocaleString()}
+            </span>
+          )}
+          {lpStStatus === 'done' && lpStResult && (
+            <span className="text-xs font-semibold" style={{ color: '#10B981' }}>
+              ✓ LP: {lpStResult.mobile.toLocaleString()} mobile · {lpStResult.landline.toLocaleString()} landline · {lpStResult.no_number.toLocaleString()} no number
+            </span>
+          )}
+          {lpStStatus === 'error' && (
+            <span className="text-xs font-semibold" style={{ color: '#DC2626' }}>LP skip trace failed: {lpStError}</span>
           )}
 
           {/* SMS status */}
@@ -651,10 +725,18 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
           <button
             className="btn-secondary text-sm"
             onClick={handleStartSkipTrace}
-            disabled={stStatus === 'running'}
-            title="Find phone numbers via Batch Leads skip trace"
+            disabled={stStatus === 'running' || lpStStatus === 'running'}
+            title="Find phone numbers via Batch Leads skip trace (uses BL credits)"
           >
-            🔍 {stStatus === 'running' ? `Skip Tracing… ${stDone.toLocaleString()}/${stTotal.toLocaleString()}` : 'Skip Trace'}
+            🔍 {stStatus === 'running' ? `BL Tracing… ${stDone.toLocaleString()}/${stTotal.toLocaleString()}` : 'Skip Trace (BL)'}
+          </button>
+          <button
+            className="btn-secondary text-sm"
+            onClick={handleStartLpSkipTrace}
+            disabled={lpStStatus === 'running' || stStatus === 'running'}
+            title="Find phone numbers via Land Portal skip trace (uses LP tokens — only records with LP IDs)"
+          >
+            🔍 {lpStStatus === 'running' ? `LP Tracing… ${lpStDone.toLocaleString()}/${lpStTotal.toLocaleString()}` : 'Skip Trace (LP)'}
           </button>
           <button
             className="btn-secondary text-sm"

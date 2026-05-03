@@ -34,6 +34,7 @@ _import_jobs: dict[str, dict] = {}
 _lp_pull_jobs: dict[str, dict] = {}
 _add_match_jobs: dict[str, dict] = {}  # {job_id: {status, done, total, imported, warnings}}
 _skip_trace_jobs: dict[str, dict] = {}  # {job_id: {status, done, total, mobile, landline, no_number, errors}}
+_lp_skip_trace_jobs: dict[str, dict] = {}  # {job_id: {status, done, total, mobile, landline, no_number, errors}}
 _sms_campaign_jobs: dict[str, dict] = {}  # {job_id: {status, done, total, sent, skipped, errors}}
 
 # Startup diagnostic — confirms LP token presence in Railway env
@@ -3048,6 +3049,152 @@ def _run_skip_trace_job(job_id: str, campaign_id: str, api_key: str, properties:
         "errors": errors[:5],
     }
     print(f"[skip-trace] {job_id} done: mobile={mobile} landline={landline} no_number={no_number}", flush=True)
+
+
+# ── Land Portal Skip Trace ────────────────────────────────────────────
+
+_LP_SKIP_TRACE_URL = "https://landportal.com/wp-json/lp-rest-api/v1/skip-trace"
+
+
+def _parse_lp_skip_trace_phones(data: dict) -> list[dict]:
+    """Parse phones from LP skip trace response (flexible shape)."""
+    phones = data.get("phones") or data.get("phoneNumbers") or data.get("phone_numbers") or []
+    if not phones and "data" in data:
+        inner = data["data"] or {}
+        phones = inner.get("phones") or inner.get("phoneNumbers") or inner.get("phone_numbers") or []
+    result = []
+    for p in phones[:3]:
+        if isinstance(p, str):
+            raw_num, raw_type = p, ""
+        else:
+            raw_num = p.get("number") or p.get("phoneNumber") or p.get("phone") or p.get("value") or ""
+            raw_type = (p.get("type") or p.get("phoneType") or p.get("line_type") or "").lower()
+        num = _normalize_phone(str(raw_num))
+        if not num:
+            continue
+        if "mobile" in raw_type or "cell" in raw_type or "wireless" in raw_type:
+            ptype = "mobile"
+        elif "landline" in raw_type or "land" in raw_type:
+            ptype = "landline"
+        elif "voip" in raw_type:
+            ptype = "voip"
+        else:
+            ptype = "unknown"
+        result.append({"number": num, "type": ptype})
+    return result
+
+
+def _parse_lp_skip_trace_emails(data: dict) -> list[str]:
+    emails = data.get("emails") or []
+    if not emails and "data" in data:
+        emails = (data["data"] or {}).get("emails") or []
+    return [str(e).strip() for e in emails if e]
+
+
+@router.get("/campaigns/{campaign_id}/lp-skip-trace-count")
+async def get_lp_skip_trace_count(campaign_id: str) -> dict:
+    """Return count of properties with LP IDs vs total for pre-flight warning."""
+    sb = get_supabase()
+    all_props = sb.table("crm_properties").select("id,property_id").eq("campaign_id", campaign_id).execute()
+    total = len(all_props.data or [])
+    with_lp_id = sum(1 for p in (all_props.data or []) if p.get("property_id"))
+    return {"total": total, "with_lp_id": with_lp_id}
+
+
+@router.post("/campaigns/{campaign_id}/lp-skip-trace", status_code=202)
+async def start_lp_skip_trace(
+    campaign_id: str,
+    background_tasks: BackgroundTasks,
+) -> dict:
+    """Start a background LP skip-trace job (one at a time, 0.5s delay)."""
+    token = os.environ.get("LAND_PORTAL_TOKEN", "")
+    if not token:
+        raise HTTPException(status_code=503, detail="LAND_PORTAL_TOKEN not configured")
+    sb = get_supabase()
+    c_r = sb.table("crm_campaigns").select("id").eq("id", campaign_id).execute()
+    if not c_r.data:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    # Only process records that have an LP property_id
+    props = (
+        sb.table("crm_properties")
+        .select("id,property_id,fips")
+        .eq("campaign_id", campaign_id)
+        .not_.is_("property_id", "null")
+        .execute()
+    )
+    eligible = [p for p in (props.data or []) if p.get("property_id")]
+    total = len(eligible)
+    job_id = str(uuid.uuid4())
+    _lp_skip_trace_jobs[job_id] = {"status": "running", "done": 0, "total": total, "mobile": 0, "landline": 0, "no_number": 0, "errors": []}
+    background_tasks.add_task(_run_lp_skip_trace_job, job_id, token, eligible)
+    return {"job_id": job_id, "total": total}
+
+
+@router.get("/campaigns/{campaign_id}/lp-skip-trace-status/{job_id}")
+async def get_lp_skip_trace_status(campaign_id: str, job_id: str) -> dict:
+    job = _lp_skip_trace_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
+
+
+def _run_lp_skip_trace_job(job_id: str, token: str, properties: list[dict]) -> None:
+    import time as _t
+    import httpx as _httpx
+
+    sb = get_supabase()
+    done = 0
+    mobile = 0
+    landline = 0
+    no_number = 0
+    errors: list[str] = []
+
+    for prop in properties:
+        lp_pid = prop.get("property_id", "")
+        fips = prop.get("fips", "")
+        prop_db_id = prop["id"]
+        try:
+            r = _httpx.post(
+                _LP_SKIP_TRACE_URL,
+                json={"propertyid": lp_pid, "fips": fips},
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                timeout=20.0,
+            )
+            data = r.json() if r.status_code < 300 else {}
+            phones = _parse_lp_skip_trace_phones(data)
+            emails = _parse_lp_skip_trace_emails(data)
+            update: dict = {"skip_traced_at": _now()}
+            if phones:
+                update["phone_1"] = phones[0]["number"]
+                update["phone_1_type"] = phones[0]["type"]
+                if len(phones) > 1:
+                    update["phone_2"] = phones[1]["number"]
+                    update["phone_2_type"] = phones[1]["type"]
+                if len(phones) > 2:
+                    update["phone_3"] = phones[2]["number"]
+                    update["phone_3_type"] = phones[2]["type"]
+                if phones[0]["type"] == "mobile":
+                    mobile += 1
+                else:
+                    landline += 1
+            else:
+                no_number += 1
+            if emails:
+                update["email_1"] = emails[0]
+            sb.table("crm_properties").update(update).eq("id", prop_db_id).execute()
+        except Exception as exc:
+            errors.append(f"{lp_pid}: {str(exc)[:80]}")
+            no_number += 1
+        done += 1
+        _lp_skip_trace_jobs[job_id].update({"done": done, "mobile": mobile, "landline": landline, "no_number": no_number})
+        _t.sleep(0.5)
+
+    _lp_skip_trace_jobs[job_id] = {
+        "status": "done", "done": done, "total": done,
+        "mobile": mobile, "landline": landline, "no_number": no_number,
+        "errors": errors[:5],
+    }
+    print(f"[lp-skip-trace] {job_id} done: mobile={mobile} landline={landline} no_number={no_number}", flush=True)
 
 
 # ── SMS Campaign ──────────────────────────────────────────────────────

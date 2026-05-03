@@ -663,17 +663,18 @@ async def _update_comm(comm_id: str, **fields) -> None:
         print(f"[comms] update_comm error: {exc}")
 
 
-async def _notify_email(subject: str, html: str) -> None:
+async def _notify_email(subject: str, html: str, to_email: Optional[str] = None) -> None:
     api_key = _sendgrid_key()
     if not api_key:
         return
     try:
         from_email = os.getenv("SENDGRID_FROM_EMAIL", "dominionlandgroup@gmail.com")
+        recipient = to_email or _admin_email()
         async with httpx.AsyncClient(timeout=15) as client:
             await client.post(
                 "https://api.sendgrid.com/v3/mail/send",
                 json={
-                    "personalizations": [{"to": [{"email": _admin_email()}]}],
+                    "personalizations": [{"to": [{"email": recipient}]}],
                     "from": {"email": from_email, "name": "Land Dominator"},
                     "subject": subject,
                     "content": [{"type": "text/html", "value": html}],
@@ -1597,33 +1598,93 @@ async def _process_inbound_sms(from_phone: str, message_text: str) -> None:
         except Exception:
             pass
 
+        # Auto-create a deal if one doesn't exist for this property yet
+        try:
+            existing_deal = sb.table("crm_deals").select("id").eq("property_id", property_id).limit(1).execute()
+            if not existing_deal.data:
+                owner_name = prop.get("owner_full_name") or prop.get("owner_first_name") or "Unknown"
+                deal_title = f"{owner_name} — {prop.get('apn', '')} — {prop.get('county', '')}"
+                offer_price = prop.get("offer_price") or prop.get("comp_derived_value")
+                sb.table("crm_deals").insert({
+                    "title": deal_title.strip(" —"),
+                    "property_id": property_id,
+                    "stage": "lead",
+                    "value": float(offer_price) if offer_price else None,
+                    "notes": f"Auto-created from HOT SMS reply: {message_text}",
+                    "tags": ["sms", "hot_lead"],
+                    "updated_at": _now(),
+                }).execute()
+        except Exception as exc:
+            print(f"[comms] auto-create deal error: {exc}")
+
     owner = prop.get("owner_full_name") or prop.get("owner_first_name") or "Unknown"
     apn = prop.get("apn", "")
     county = prop.get("county", "")
     code = prop.get("campaign_code", "")
+    address = prop.get("situs_address") or prop.get("property_address") or ""
+    city = prop.get("situs_city") or prop.get("city") or ""
+    state = prop.get("situs_state") or prop.get("state") or ""
+    offer_price = prop.get("offer_price")
+    location = ", ".join(filter(None, [city, state]))
+    address_full = " ".join(filter(None, [address, location]))
+
+    if is_hot:
+        # SMS alert to Damien
+        try:
+            api_key = _telnyx_key()
+            from_phone_e164 = _telnyx_phone()
+            if api_key and from_phone_e164:
+                price_str = f"${int(offer_price):,}" if offer_price else "TBD"
+                sms_body = (
+                    f"🔥 HOT LEAD - {owner} replied to your offer on {address_full or apn}\n"
+                    f"Offer: {price_str} | Their reply: {message_text}\n"
+                    f"Open Seller Inbox: https://land-dominator-frontend-production.up.railway.app/inbox"
+                )
+                raw = re.sub(r"\D", "", from_phone_e164)
+                from_e164 = f"+1{raw}" if len(raw) == 10 else (f"+{raw}" if len(raw) == 11 else from_phone_e164)
+                payload: dict = {"from": from_e164, "to": "+12023215846", "text": sms_body}
+                profile_id = os.getenv("TELNYX_MESSAGING_PROFILE_ID", "")
+                if profile_id:
+                    payload["messaging_profile_id"] = profile_id
+                async with httpx.AsyncClient(timeout=15) as client:
+                    await client.post(
+                        "https://api.telnyx.com/v2/messages",
+                        json=payload,
+                        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                    )
+        except Exception as exc:
+            print(f"[comms] HOT alert SMS error: {exc}")
+
     if is_stop:
         subject = f"🚫 STOP Reply — {owner} — {apn}"
         status_html = "<p style='color:#DC2626;font-weight:bold'>✗ Opted out — added to suppression list</p>"
     elif is_hot:
         subject = f"🔥 HOT Response — {owner} — {apn}"
-        status_html = "<p style='color:#2E7D32;font-weight:bold'>✅ HOT — Status set to Prospect, tagged hot_lead</p>"
+        status_html = "<p style='color:#2E7D32;font-weight:bold'>✅ HOT — Status set to Prospect, tagged hot_lead, deal created</p>"
     else:
         subject = f"SMS Reply — {owner} — {apn}"
         status_html = ""
+
+    price_display = f"${int(offer_price):,}" if offer_price else "—"
     html = (
         "<h2>Inbound SMS Reply</h2>"
         f"<ul>"
         f"<li><strong>From:</strong> {from_phone}</li>"
         f"<li><strong>Owner:</strong> {owner}</li>"
         f"<li><strong>APN:</strong> {apn}</li>"
+        f"<li><strong>Address:</strong> {address_full or '—'}</li>"
         f"<li><strong>County:</strong> {county}</li>"
+        f"<li><strong>Offer Price:</strong> {price_display}</li>"
         f"<li><strong>Campaign Code:</strong> {code}</li>"
         f"</ul>"
         f"<p><strong>Message:</strong> {message_text}</p>"
         + status_html
-        + "<p><a href='https://land-dominator-production.up.railway.app'>Open Land Dominator →</a></p>"
+        + "<p><a href='https://land-dominator-frontend-production.up.railway.app/inbox'>Open Seller Inbox →</a></p>"
     )
+    # Always send to admin; for HOT leads also send to dominionlandgroup@gmail.com
     await _notify_email(subject, html)
+    if is_hot:
+        await _notify_email(subject, html, to_email="dominionlandgroup@gmail.com")
 
 
 # ── Outbound SMS ─────────────────────────────────────────────────────────────────
@@ -1854,6 +1915,7 @@ class OutboundCallRequest(BaseModel):
     property_id: Optional[str] = None
     to_number: str
     seller_name: Optional[str] = None
+    callback_number: Optional[str] = None
 
 
 def _e164(number: str) -> str:
@@ -1884,7 +1946,8 @@ async def initiate_outbound_call(body: OutboundCallRequest) -> dict:
     api_key = _telnyx_key()
     from_phone = _telnyx_phone()
     connection_id = os.getenv("TELNYX_CONNECTION_ID", "")
-    callback_number = _callback_phone()
+    # Prefer callback_number from request body, then env var, then hardcoded Damien's phone
+    callback_number = body.callback_number or _callback_phone() or "+12023215846"
 
     if not api_key:
         raise HTTPException(status_code=503, detail="TELNYX_API_KEY not configured")

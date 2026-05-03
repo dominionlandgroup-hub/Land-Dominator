@@ -203,11 +203,13 @@ export async function addMatchResultsToCampaign(
 export async function initiateOutboundCall(
   toNumber: string,
   propertyId?: string,
-  sellerName?: string
+  sellerName?: string,
+  callbackNumber = '+12023215846'
 ): Promise<{ call_id: string; bridge_id?: string; to: string; from: string; communication_id?: string }> {
   const { data } = await api.post('/crm/calls/outbound', {
     to_number: toNumber,
     property_id: propertyId,
+    callback_number: callbackNumber,
     ...(sellerName ? { seller_name: sellerName } : {}),
   })
   return data
@@ -641,6 +643,25 @@ export async function getSkipTraceStatus(campaignId: string, jobId: string): Pro
   status: string; done: number; total: number; mobile: number; landline: number; no_number: number; errors: string[]
 }> {
   const { data } = await api.get(`/crm/campaigns/${campaignId}/skip-trace-status/${jobId}`)
+  return data
+}
+
+// ── Land Portal Skip Trace ────────────────────────────────────────────
+
+export async function getLpSkipTraceCount(campaignId: string): Promise<{ total: number; with_lp_id: number }> {
+  const { data } = await api.get(`/crm/campaigns/${campaignId}/lp-skip-trace-count`)
+  return data
+}
+
+export async function startLpSkipTrace(campaignId: string): Promise<{ job_id: string; total: number }> {
+  const { data } = await api.post(`/crm/campaigns/${campaignId}/lp-skip-trace`)
+  return data
+}
+
+export async function getLpSkipTraceStatus(campaignId: string, jobId: string): Promise<{
+  status: string; done: number; total: number; mobile: number; landline: number; no_number: number; errors: string[]
+}> {
+  const { data } = await api.get(`/crm/campaigns/${campaignId}/lp-skip-trace-status/${jobId}`)
   return data
 }
 
