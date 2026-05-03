@@ -512,7 +512,6 @@ function VelocitySection({
   const hotZips = velEntries.filter(v => v.velocity_label === 'HOT').sort((a, b) => a.months_supply - b.months_supply)
   const balancedZips = velEntries.filter(v => v.velocity_label === 'BALANCED')
   const slowZips = velEntries.filter(v => v.velocity_label === 'SLOW' && v.months_supply < 99)
-  const targetZips = velEntries.filter(v => v.months_supply < 4).sort((a, b) => a.months_supply - b.months_supply)
 
   const hotCountyCounts = new Map<string, number>()
   hotZips.forEach(v => {
@@ -637,20 +636,6 @@ function VelocitySection({
           ) : <span style={{ color: '#9CA3AF' }}>None in buy box counties</span>}
         </div>
       </div>
-      {targetZips.length > 0 && (
-        <div className="rounded-lg p-2.5" style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)' }}>
-          <p style={{ fontSize: 11, color: '#059669', fontWeight: 600, marginBottom: 4 }}>
-            Recommended: HOT ZIPs within buy box counties (under 4 months supply — fastest resale)
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {targetZips.map(v => (
-              <span key={v.zip} style={{ fontSize: 11, fontFamily: 'monospace', padding: '2px 7px', borderRadius: 4, background: 'rgba(16,185,129,0.1)', color: '#059669', border: '1px solid rgba(16,185,129,0.2)' }}>
-                {v.zip}{velCountyLabel(v) ? <span style={{ fontFamily: 'sans-serif', fontSize: 9, opacity: 0.9 }}> · {velCountyLabel(v)}</span> : null} · {fmtSupply(v.months_supply)}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   )
 }
@@ -723,7 +708,7 @@ function BuyBoxRecipe({
     })
     .sort((a, b) => b.sales_count - a.sales_count)
     .slice(0, 20)
-    .map(z => ({ zip: fmtZip(z.zip_code), county: z.county ?? null }))
+    .map(z => ({ zip: fmtZip(z.zip_code), county: z.county ?? zipToCounty[fmtZip(z.zip_code)] ?? null }))
 
   const topZips = topZipItems.map(z => z.zip)
 
