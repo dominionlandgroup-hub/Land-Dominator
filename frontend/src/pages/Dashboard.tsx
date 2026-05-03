@@ -1074,11 +1074,45 @@ ${sec('6. Owner',
         <div className="rounded-xl p-4" style={cardStyle}>
           {hdr('3 · Lot Size')}
           <div className="space-y-3 text-xs">
-            {/* Pull range — simplified */}
-            <div>
-              <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: '#9CA3AF' }}>Pull Range <span style={{ color: '#059669' }}>← enter in Land Portal</span></p>
-              <p style={{ color: '#059669', fontWeight: 600 }}>0.1 to 2.0 acres</p>
-              <p style={{ color: '#9CA3AF', fontSize: '10px' }}>94% of market · micro (0–0.5 ac) + small (0.5–2 ac) lots only</p>
+            {/* What sold in comps */}
+            {sweetSpot?.acreage_min != null && sweetSpot?.acreage_max != null && (
+              <div>
+                <p className="text-[10px] uppercase tracking-wider mb-1.5 font-semibold" style={{ color: '#9CA3AF' }}>What sold in your comps</p>
+                <div className="space-y-1">
+                  <div className="flex justify-between">
+                    <span style={{ color: '#6B7280' }}>Smallest lot sold</span>
+                    <span style={{ color: '#374151', fontWeight: 600 }}>{sweetSpot.acreage_min!.toFixed(2)} acres ({Math.round(sweetSpot.acreage_min! * 43560).toLocaleString()} sq ft)</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span style={{ color: '#6B7280' }}>Largest lot sold</span>
+                    <span style={{ color: '#374151', fontWeight: 600 }}>{sweetSpot.acreage_max!.toFixed(2)} acres ({Math.round(sweetSpot.acreage_max! * 43560).toLocaleString()} sq ft)</span>
+                  </div>
+                  {sweetSpot.most_active_range && sweetSpot.most_active_range_pct != null && (
+                    <div className="flex justify-between">
+                      <span style={{ color: '#6B7280' }}>Most active range</span>
+                      <span style={{ color: '#059669', fontWeight: 600 }}>{sweetSpot.most_active_range} ({sweetSpot.most_active_range_pct}% of sales)</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            {/* Pull range recommendation */}
+            <div style={sweetSpot?.acreage_min != null ? { borderTop: '1px solid #F3F4F6', paddingTop: 10 } : {}}>
+              <p className="text-[10px] uppercase tracking-wider mb-1.5 font-semibold" style={{ color: '#9CA3AF' }}>Recommended pull range <span style={{ color: '#059669' }}>← enter in Land Portal</span></p>
+              <div className="space-y-1">
+                <div className="flex justify-between">
+                  <span style={{ color: '#6B7280' }}>Min</span>
+                  <span style={{ color: '#059669', fontWeight: 600 }}>0.1 acres (4,356 sq ft)</span>
+                </div>
+                <div className="flex justify-between">
+                  <span style={{ color: '#6B7280' }}>Max</span>
+                  <span style={{ color: '#059669', fontWeight: 600 }}>2.0 acres (87,120 sq ft)</span>
+                </div>
+                <div className="flex justify-between">
+                  <span style={{ color: '#6B7280' }}>Coverage</span>
+                  <span style={{ color: '#374151', fontWeight: 500 }}>Captures 94% of all sales</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>

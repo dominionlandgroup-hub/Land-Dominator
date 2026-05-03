@@ -121,6 +121,10 @@ export interface SweetSpot {
   total_sales: number
   expected_offer_low: number
   expected_offer_high: number
+  acreage_min?: number | null
+  acreage_max?: number | null
+  most_active_range?: string | null
+  most_active_range_pct?: number | null
 }
 
 // ─── Matching ──────────────────────────────────────────────────────────────

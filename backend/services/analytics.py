@@ -130,12 +130,24 @@ def compute_sweet_spot(df: pd.DataFrame) -> Dict[str, Any] | None:
     q25 = float(all_prices.quantile(0.25)) if not all_prices.empty else 0.0
     q75 = float(all_prices.quantile(0.75)) if not all_prices.empty else 0.0
 
+    acreage_min = float(valid["Lot Acres"].min())
+    acreage_max = float(valid["Lot Acres"].max())
+
+    # Most active range = bucket with highest sales count among the two micro+small buckets
+    # expressed as a label and percent of all sales
+    most_active_range = f"{best_bucket.replace('-', '–')} ac"
+    most_active_pct = round(best_count / len(valid) * 100) if len(valid) > 0 else 0
+
     return {
         "bucket": best_bucket,
         "count": best_count,
         "total_sales": len(valid),
         "expected_offer_low": q25,
         "expected_offer_high": q75,
+        "acreage_min": acreage_min,
+        "acreage_max": acreage_max,
+        "most_active_range": most_active_range,
+        "most_active_range_pct": most_active_pct,
     }
 
 
