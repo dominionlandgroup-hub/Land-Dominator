@@ -19,6 +19,7 @@ import uuid
 import datetime
 import hashlib
 import random as _random
+import time as _time
 import numpy as np
 import pandas as pd
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -123,6 +124,24 @@ def _haversine_matrix(
         np.sin(dlat / 2) ** 2
         + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2) ** 2
     )
+    a = np.clip(a, 0.0, 1.0)
+    return 2.0 * EARTH_RADIUS_MILES * np.arcsin(np.sqrt(a))
+
+
+def _haversine_vector(
+    target_lat: float,
+    target_lon: float,
+    comp_lats: np.ndarray,
+    comp_lons: np.ndarray,
+) -> np.ndarray:
+    """Compute distances (miles) from one target to many comps. Returns shape (N_comps,)."""
+    lat1 = np.radians(target_lat)
+    lon1 = np.radians(target_lon)
+    lat2 = np.radians(comp_lats)
+    lon2 = np.radians(comp_lons)
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    a = np.sin(dlat / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2) ** 2
     a = np.clip(a, 0.0, 1.0)
     return 2.0 * EARTH_RADIUS_MILES * np.arcsin(np.sqrt(a))
 
@@ -1005,6 +1024,8 @@ def run_matching(
     - Exclude buildings (sqft > 0)
     - Min 50ft road frontage
     """
+    import gc  # noqa: used later for gc.collect() after coord-target loop
+    _t_start = _time.time()
     warnings: List[str] = []
     filter_counts = {}  # Track counts at each filter step
 
@@ -1105,6 +1126,7 @@ def run_matching(
                 _ppas = comp_ppa[_cmask]
                 if len(_ppas) >= 3:
                     county_ppa_medians[_county_key] = float(np.median(_ppas))
+    print(f"[match] Data prep done in {_time.time() - _t_start:.1f}s — {len(vc)} clean comps, {len(county_ppa_medians)} counties", flush=True)
     print(f"[match] County PPA medians: {len(county_ppa_medians)} counties — {sorted(county_ppa_medians.keys())[:10]}", flush=True)
 
     # Extract street names from comp addresses for same-street matching
@@ -1366,8 +1388,9 @@ def run_matching(
     # DEBUG: APNs to trace (set to empty list to disable)
     DEBUG_APNS = []
 
-    def _process_one(ti: int, row_distances: Optional[np.ndarray]) -> None:
+    def _process_one(ti: int, row_distances: Optional[np.ndarray], skip_zip: bool = False) -> None:
         """Score + price one target using same-street priority + acreage band + proximity-tiered radius."""
+        _no_match_pre_reason = None  # defined here so both code paths have it
         target_acres = t_acres_raw[ti]
         has_acres = not (np.isnan(target_acres) or target_acres <= 0)
         cross_county_match = False
@@ -1394,24 +1417,25 @@ def run_matching(
 
         if row_distances is None:
             matched_mask = np.zeros(len(vc), dtype=bool)
-            if debug:
-                print(f"[DEBUG {target_apn}] No row_distances - trying ZIP fallback", flush=True)
-            # ZIP fallback for targets without coordinates
-            if _t_zip_str and _t_zip_str not in ('nan', 'None', ''):
-                _zip_mask_no_coord = np.array([str(z).split('.')[0].strip() == _t_zip_str for z in comp_zips])
-                if has_acres:
-                    _band_lo, _band_hi, band_label = get_acreage_band(float(target_acres))
-                    _band_mask_no_coord = band_masks_dict.get(band_label, np.zeros(len(vc), dtype=bool))
-                    _zip_band = _zip_mask_no_coord & _band_mask_no_coord
-                    if int(_zip_band.sum()) >= 1:
-                        matched_mask = _zip_band
-                        radius_label = 'ZIP'
-                    elif int(_zip_mask_no_coord.sum()) >= 2:
+            if not skip_zip:
+                if debug:
+                    print(f"[DEBUG {target_apn}] No row_distances - trying ZIP fallback", flush=True)
+                # ZIP fallback for targets without coordinates
+                if _t_zip_str and _t_zip_str not in ('nan', 'None', ''):
+                    _zip_mask_no_coord = np.array([str(z).split('.')[0].strip() == _t_zip_str for z in comp_zips])
+                    if has_acres:
+                        _band_lo, _band_hi, band_label = get_acreage_band(float(target_acres))
+                        _band_mask_no_coord = band_masks_dict.get(band_label, np.zeros(len(vc), dtype=bool))
+                        _zip_band = _zip_mask_no_coord & _band_mask_no_coord
+                        if int(_zip_band.sum()) >= 1:
+                            matched_mask = _zip_band
+                            radius_label = 'ZIP'
+                        elif int(_zip_mask_no_coord.sum()) >= 2:
+                            matched_mask = _zip_mask_no_coord
+                            radius_label = 'ZIP'
+                    elif int(_zip_mask_no_coord.sum()) >= 1:
                         matched_mask = _zip_mask_no_coord
                         radius_label = 'ZIP'
-                elif int(_zip_mask_no_coord.sum()) >= 1:
-                    matched_mask = _zip_mask_no_coord
-                    radius_label = 'ZIP'
         else:
             if has_acres:
                 band_low, band_high, band_label = get_acreage_band(float(target_acres))
@@ -2072,36 +2096,57 @@ def run_matching(
             elif _retail is not None and min_lp_estimate and float(_retail) < float(min_lp_estimate):
                 results[-1]['pricing_flag'] = 'LOW_VALUE'
 
-    # Process targets WITH coordinates in chunks to save memory
-    import gc
-    CHUNK_SIZE = 1000
+    # ── Build spatial grid (0.1° cells ≈ 7 miles) for fast candidate lookup ──
+    _t_grid = _time.time()
+    _comp_grid: dict = {}
+    for _ci in range(len(comp_lats)):
+        _cell = (round(float(comp_lats[_ci]) * 10) / 10, round(float(comp_lons[_ci]) * 10) / 10)
+        _comp_grid.setdefault(_cell, []).append(_ci)
+    _n_comps_total = len(comp_lats)
+    print(f"[match] Spatial grid: {len(_comp_grid)} cells, {_n_comps_total} comps in {_time.time() - _t_grid:.2f}s", flush=True)
+
     _progress_total = len(with_idx) + len(without_idx)
     _progress_done = 0
-    for chunk_start in range(0, len(with_idx), CHUNK_SIZE):
-        chunk_idx = with_idx[chunk_start:chunk_start + CHUNK_SIZE]
-        if len(chunk_idx) > 0:
-            dist_chunk = _haversine_matrix(
-                t_lats_raw[chunk_idx],
-                t_lons_raw[chunk_idx],
-                comp_lats,
-                comp_lons,
-            )
-            for local_i, ti in enumerate(chunk_idx):
-                row_distances = dist_chunk[local_i]
-                _process_one(ti, row_distances)
-            _progress_done += len(chunk_idx)
-            del dist_chunk
-            gc.collect()
-            if progress_callback:
-                try:
-                    progress_callback(_progress_done, _progress_total)
-                except Exception:
-                    pass
+    _t_with_start = _time.time()
+    print(f"[match] Processing {len(with_idx)} coord-targets + {len(without_idx)} no-coord targets", flush=True)
 
-    # Process targets WITHOUT coordinates (no comps matched)
+    # Process targets WITH coordinates using spatial grid (±1 cell, 9-cell neighbourhood)
+    for _wi, ti in enumerate(with_idx):
+        _tlat = float(t_lats_raw[ti])
+        _tlon = float(t_lons_raw[ti])
+        _cell_lat = round(_tlat * 10) / 10
+        _cell_lon = round(_tlon * 10) / 10
+        _candidates: list = []
+        for _dlat in (-0.1, 0.0, 0.1):
+            for _dlon in (-0.1, 0.0, 0.1):
+                _key = (round((_cell_lat + _dlat) * 10) / 10, round((_cell_lon + _dlon) * 10) / 10)
+                _candidates.extend(_comp_grid.get(_key, []))
+
+        if _candidates:
+            _cand_arr = np.unique(np.array(_candidates, dtype=np.int64))
+            _cand_dists = _haversine_vector(_tlat, _tlon, comp_lats[_cand_arr], comp_lons[_cand_arr])
+            row_distances = np.full(_n_comps_total, np.inf)
+            row_distances[_cand_arr] = _cand_dists
+        else:
+            row_distances = np.full(_n_comps_total, np.inf)
+
+        _process_one(ti, row_distances)
+        _progress_done += 1
+        if progress_callback and (_wi % 500 == 0 or _wi == len(with_idx) - 1):
+            try:
+                progress_callback(_progress_done, _progress_total)
+            except Exception:
+                pass
+
+    print(f"[match] Coord targets done: {len(with_idx)} in {_time.time() - _t_with_start:.1f}s", flush=True)
+    gc.collect()
+
+    # Process targets WITHOUT coordinates → LP_FALLBACK directly (skip ZIP matching)
+    _t_without_start = _time.time()
     for ti in without_idx:
-        _process_one(ti, None)
+        _process_one(ti, None, skip_zip=True)
     _progress_done += len(without_idx)
+    print(f"[match] No-coord targets done: {len(without_idx)} in {_time.time() - _t_without_start:.1f}s", flush=True)
     if progress_callback and len(without_idx) > 0:
         try:
             progress_callback(_progress_done, _progress_total)
@@ -2223,6 +2268,8 @@ def run_matching(
         smart_floor_recommendation: Optional[float] = _priced_offers[_idx]
     else:
         smart_floor_recommendation = None
+
+    print(f"[match] Total matching time: {_time.time() - _t_start:.1f}s for {total_targets} targets", flush=True)
 
     return {
         "match_id": str(uuid.uuid4()),
