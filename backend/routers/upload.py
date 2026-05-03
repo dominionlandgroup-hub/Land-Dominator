@@ -1321,6 +1321,59 @@ async def comps_db_status():
         return {"status": "error", "detail": str(exc), "total_comps": 0}
 
 
+@router.post("/comps/deduplicate")
+async def deduplicate_comps():
+    """
+    Remove duplicate comps from crm_sold_comps keeping the newest record per APN.
+    Fetches in pages of 1000 (newest first) to avoid Supabase timeouts, then
+    deletes duplicates in chunks of 100.
+    """
+    from services.supabase_client import get_supabase
+    sb = get_supabase()
+    try:
+        seen_apns: set[str] = set()
+        to_delete: list[str] = []
+        offset = 0
+        page_size = 1000
+
+        # Paginated fetch — newest first so we keep the most recent record per APN
+        while True:
+            res = (
+                sb.table("crm_sold_comps")
+                .select("id,apn")
+                .order("created_at", desc=True)
+                .range(offset, offset + page_size - 1)
+                .execute()
+            )
+            rows = res.data or []
+            for row in rows:
+                apn = (row.get("apn") or "").strip()
+                if not apn:
+                    continue
+                if apn in seen_apns:
+                    to_delete.append(row["id"])
+                else:
+                    seen_apns.add(apn)
+            print(f"[dedup] Page offset={offset}: {len(rows)} rows, {len(to_delete)} dupes found so far", flush=True)
+            if len(rows) < page_size:
+                break
+            offset += page_size
+
+        # Delete duplicates in chunks of 100
+        deleted = 0
+        chunk_size = 100
+        for i in range(0, len(to_delete), chunk_size):
+            chunk = to_delete[i:i + chunk_size]
+            sb.table("crm_sold_comps").delete().in_("id", chunk).execute()
+            deleted += len(chunk)
+            print(f"[dedup] Deleted {deleted} / {len(to_delete)} duplicates", flush=True)
+
+        print(f"[dedup] Done. deleted={deleted}, unique_apns={len(seen_apns)}", flush=True)
+        return {"deleted": deleted, "remaining": len(seen_apns), "duplicates_found": len(to_delete)}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 @router.post("/comps/normalize-counties")
 async def normalize_counties_in_db():
     """One-time migration: strip ' County' suffix from all county values in crm_sold_comps."""
