@@ -69,11 +69,19 @@ app.include_router(listings_router.router)
 
 @app.on_event("startup")
 async def start_scheduler() -> None:
-    """Start APScheduler for weekly Monday notification."""
+    """Start APScheduler for periodic background jobs."""
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
         from apscheduler.triggers.cron import CronTrigger
         from routers.mail_calendar import send_weekly_summary_task
+
+        async def _daily_dedup() -> None:
+            try:
+                from routers.upload import deduplicate_comps
+                result = await deduplicate_comps()
+                print(f"[scheduler] Daily dedup complete: {result}", flush=True)
+            except Exception as _e:
+                print(f"[scheduler] Daily dedup failed: {_e}", flush=True)
 
         scheduler = AsyncIOScheduler()
         scheduler.add_job(
@@ -82,9 +90,15 @@ async def start_scheduler() -> None:
             id="weekly_summary",
             replace_existing=True,
         )
+        scheduler.add_job(
+            _daily_dedup,
+            CronTrigger(hour=2, minute=0),
+            id="daily_dedup",
+            replace_existing=True,
+        )
         scheduler.start()
         app.state.scheduler = scheduler
-        print("Scheduler started — weekly summary fires every Monday 08:00")
+        print("Scheduler started — weekly summary Mon 08:00, daily dedup 02:00")
     except Exception as exc:
         print(f"Scheduler startup warning: {exc}")
 

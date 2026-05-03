@@ -247,6 +247,7 @@ export default function Dashboard() {
               zipStats={dashboardData.zip_stats}
               comps={dashboardData.comp_locations}
               zipVelocity={listingsStats?.zip_velocity}
+              topCounties={dashboardData.top_counties ?? []}
             />
 
             {/* ── Section 4: Full ZIP Data ─────────────────────────── */}
@@ -273,12 +274,21 @@ function zipDotColor(z: ZipStats, outlierSet: Set<string>): string {
   return '#DC2626'
 }
 
-function TopMarketsCard({ zipStats, comps, zipVelocity }: { zipStats: ZipStats[]; comps: CompLocation[]; zipVelocity?: Record<string, ZipVelocity> }) {
+function TopMarketsCard({ zipStats, comps, zipVelocity, topCounties }: { zipStats: ZipStats[]; comps: CompLocation[]; zipVelocity?: Record<string, ZipVelocity>; topCounties?: string[] }) {
   const [showMap, setShowMap] = useState(false)
   const [showOutliers, setShowOutliers] = useState(false)
   const [showThin, setShowThin] = useState(false)
 
-  // Compute outlier set FIRST so we can exclude them from the top-10 ranking
+  // County filter — same logic as BuyBoxRecipe
+  const normCounty = (c: string) => c.toLowerCase().trim().replace(/\s+county$/i, '').trim()
+  const recommendedCountySet = new Set((topCounties ?? []).map(normCounty))
+  const zipToCounty: Record<string, string> = {}
+  zipStats.forEach(z => { if (z.county) zipToCounty[fmtZip(z.zip_code)] = z.county })
+  if (zipVelocity) {
+    Object.values(zipVelocity).forEach(v => { if (v.county) zipToCounty[v.zip] = v.county })
+  }
+
+  // Compute outlier set FIRST so we can exclude them from the top-20 ranking
   const ppas = zipStats.map(z => z.median_price_per_acre).filter((v): v is number => v != null && Number.isFinite(v) && v > 0)
   const overallMedian = median(ppas)
   const outlierSet = new Set<string>(
@@ -290,9 +300,15 @@ function TopMarketsCard({ zipStats, comps, zipVelocity }: { zipStats: ZipStats[]
   const warningZips = new Set(zipStats.filter(z => z.sales_count >= 5 && z.sales_count < 10).map(z => z.zip_code))
   const avoidZips = [...outlierSet, ...thinZips]
 
-  // Top 20: exclude outliers and <5 sales first, then rank by sales count
+  // Top 20: exclude outliers, <5 sales, and non-buy-box counties
   const sorted = [...zipStats]
     .filter(z => !outlierSet.has(z.zip_code) && !thinZips.includes(z.zip_code))
+    .filter(z => {
+      if (recommendedCountySet.size === 0) return true
+      const county = z.county ?? zipToCounty[fmtZip(z.zip_code)]
+      if (!county) return false
+      return recommendedCountySet.has(normCounty(county))
+    })
     .sort((a, b) => b.sales_count - a.sales_count)
   const top20 = sorted.slice(0, 20)
   const top20Zips = top20.map(z => z.zip_code)
