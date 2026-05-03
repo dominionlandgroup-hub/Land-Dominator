@@ -239,6 +239,7 @@ export default function Dashboard() {
               topCounties={dashboardData.top_counties ?? []}
               landQuality={dashboardData.land_quality}
               zipVelocity={listingsStats?.zip_velocity}
+              totalValidComps={dashboardData.valid_comps ?? dashboardData.total_comps}
             />
 
             {/* ── Section 3: Top 10 Markets ────────────────────────── */}
@@ -505,10 +506,12 @@ function BuyBoxRecipe({
   topCounties,
   landQuality,
   zipVelocity,
+  totalValidComps,
 }: {
   zipStats: ZipStats[]
   comps: Array<{ lot_acres: number; sale_price: number; zip?: string }>
   sweetSpot?: SweetSpot | null
+  totalValidComps?: number
   topStates: string[]
   topCounties: string[]
   landQuality?: LandQualityStats | null
@@ -564,7 +567,8 @@ function BuyBoxRecipe({
   const suggestCounties = [...suggestMap.values()].slice(0, 3)
 
   // Land quality — data-driven from sold comps, with industry-standard floors/ceilings
-  const totalComps = comps.length
+  // Use the authoritative DB count (valid_comps), not the sample in comp_locations
+  const totalComps = totalValidComps ?? comps.length
   const _lqCov = (count: number) => {
     if (totalComps === 0) return { sufficient: count > 0, high: false }
     const p = count / totalComps
@@ -654,8 +658,11 @@ function BuyBoxRecipe({
     const inBand = _validComps.filter(c => c.lot_acres >= b.min && c.lot_acres < b.max)
     const count = inBand.length
     const pct = _totalValid > 0 ? Math.round(count / _totalValid * 100) : 0
-    const ppas = inBand.map(c => c.sale_price / c.lot_acres).filter(v => Number.isFinite(v) && v > 0).sort((a, b) => a - b)
-    const medianPpa = ppas.length > 0 ? ppas[Math.floor(ppas.length / 2)] : null
+    // Two-pass outlier removal: exclude PPAs > 3x the raw band median (waterfront/premium skew)
+    const rawPpas = inBand.map(c => c.sale_price / c.lot_acres).filter(v => Number.isFinite(v) && v > 0).sort((a, b) => a - b)
+    const rawMedian = rawPpas.length > 0 ? rawPpas[Math.floor(rawPpas.length / 2)] : 0
+    const cleanPpas = rawMedian > 0 ? rawPpas.filter(v => v <= 3 * rawMedian) : rawPpas
+    const medianPpa = cleanPpas.length > 0 ? cleanPpas[Math.floor(cleanPpas.length / 2)] : null
     return { ...b, count, pct, medianPpa }
   })
   const sweetBand = [...bandStats].sort((a, b) => b.count - a.count)[0]
@@ -720,7 +727,7 @@ function BuyBoxRecipe({
     `   Primary market: 0.1–0.5 acres (${bandStats[0].pct}% of sales)`,
     `   Secondary market: 0.5–2 acres (${bandStats[1].pct}% of sales)`,
     `   Tertiary market: 2–10 acres (${bandStats[2].pct + bandStats[3].pct}% of sales)`,
-    acres.length > 0 ? `   Comp range: ${compMin}–${compMax} acres (actual min–max from ${acres.length.toLocaleString()} sold comps)` : '',
+    acres.length > 0 ? `   Comp range: ${compMin}–${compMax} acres (actual min–max from your sold comps)` : '',
     '',
     '4. LAND QUALITY',
     `   Buildability: ${buildabilityLabel}`,
@@ -776,7 +783,7 @@ function BuyBoxRecipe({
     const html = `<!DOCTYPE html><html><head><title>Buy Box Recipe</title>
 <style>body{font-family:-apple-system,sans-serif;padding:40px;color:#1A0A2E;background:#F8F6FB;max-width:800px}@media print{@page{margin:24px}}</style></head><body>
 <h1 style="color:#5C2977;font-size:20px;margin-bottom:8px">Land Portal Buy Box Recipe</h1>
-<p style="color:#6B5B8A;font-size:12px;margin-bottom:28px">Generated ${new Date().toLocaleDateString()} · Based on ${comps.length.toLocaleString()} sold comps</p>
+<p style="color:#6B5B8A;font-size:12px;margin-bottom:28px">Generated ${new Date().toLocaleDateString()} · Based on ${totalComps.toLocaleString()} sold comps</p>
 ${sec('1. Location — Pull by County (not ZIP)',
   (topStates.length ? row('State', topStates.join(', ')) : '') +
   (sortedCounties.length ? `<div style="color:#059669;font-weight:600;font-size:12px;margin-bottom:4px">Pull by County — Land Portal → Location → County</div><div style="margin:4px 0 8px">${sortedCounties.map(pill).join('')}</div><div style="background:#D1FAE5;border:1px solid rgba(5,150,105,0.2);border-radius:6px;padding:8px;font-size:11px;color:#059669;margin-bottom:8px"><strong>Why pull the whole county?</strong> ZIP codes cut across market boundaries — county pulls capture more deals and let the matching engine filter by comp strength.</div>` : '') +
@@ -803,7 +810,7 @@ ${sec('3. Lot Size',
   ).join('') +
   `</div>` +
   `<div style="margin-bottom:10px"><div style="color:#9B8AAE;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Pull Range (enter in Land Portal)</div><div style="color:#059669;font-weight:600;font-size:13px">0.1 to 10 acres</div><div style="color:#9B8AAE;font-size:11px">captures 100% of market · Primary: 0.1–0.5 ac (${bandStats[0].pct}%) · Secondary: 0.5–2 ac (${bandStats[1].pct}%) · Tertiary: 2–10 ac (${bandStats[2].pct + bandStats[3].pct}%)</div></div>` +
-  (acres.length > 0 ? `<div style="color:#9B8AAE;font-size:11px">Comp range: ${compMin}–${compMax} acres (actual min–max from ${comps.length.toLocaleString()} sold comps)</div>` : '')
+  (acres.length > 0 ? `<div style="color:#9B8AAE;font-size:11px">Comp range: ${compMin}–${compMax} acres (actual min–max from your sold comps)</div>` : '')
 )}
 ${sec('4. Land Quality',
   row('Buildability minimum', buildabilityLabel) + (slopeLabel ? row('Maximum slope', slopeLabel) : '') + (wetlandsLabel ? row('Wetlands coverage', wetlandsLabel) : '') +
@@ -833,7 +840,7 @@ ${sec('6. Owner',
         <div>
           <h2 className="font-semibold" style={{ color: '#111827' }}>Land Portal Buy Box Recipe</h2>
           <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>
-            Exact filter settings derived from your {comps.length.toLocaleString()} sold comps — paste directly into Land Portal
+            Exact filter settings derived from your {totalComps.toLocaleString()} sold comps — paste directly into Land Portal
           </p>
         </div>
         <div className="flex gap-2">
@@ -962,7 +969,7 @@ ${sec('6. Owner',
               <div className="pt-2" style={{ borderTop: '1px solid #F3F4F6' }}>
                 <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: '#9CA3AF' }}>Comp Range</p>
                 <p style={{ color: '#6B7280', fontWeight: 500 }}>{compMin}–{compMax} acres</p>
-                <p style={{ color: '#9CA3AF', fontSize: '10px' }}>actual min–max from {acres.length.toLocaleString()} sold comps</p>
+                <p style={{ color: '#9CA3AF', fontSize: '10px' }}>actual min–max from your sold comps</p>
               </div>
             )}
           </div>
@@ -1010,11 +1017,20 @@ ${sec('6. Owner',
 
         {/* Section 7 — Market Velocity (only shown when listings data is available) */}
         {zipVelocity && (() => {
-          const velEntries = Object.values(zipVelocity)
-          if (velEntries.length === 0) return null
+          // Filter velocity entries to only ZIPs in recommended buy box counties
+          const allVelEntries = Object.values(zipVelocity)
+          if (allVelEntries.length === 0) return null
+          const velEntries = recommendedCountySet.size > 0
+            ? allVelEntries.filter(v => {
+                const county = zipToCounty[v.zip]
+                if (!county) return false
+                return recommendedCountySet.has(county.toLowerCase().trim())
+              })
+            : allVelEntries
+          const fmtSupply = (ms: number) => ms >= 99 ? 'No sales' : `${ms}mo`
           const hotZips = velEntries.filter(v => v.velocity_label === 'HOT').sort((a, b) => a.months_supply - b.months_supply)
           const balancedZips = velEntries.filter(v => v.velocity_label === 'BALANCED')
-          const slowZips = velEntries.filter(v => v.velocity_label === 'SLOW')
+          const slowZips = velEntries.filter(v => v.velocity_label === 'SLOW' && v.months_supply < 99)
           const targetZips = velEntries.filter(v => v.months_supply < 4).sort((a, b) => a.months_supply - b.months_supply)
           return (
             <div className="rounded-xl p-4 lg:col-span-3" style={cardStyle}>
@@ -1026,11 +1042,11 @@ ${sec('6. Owner',
                     <div className="flex flex-wrap gap-1.5">
                       {hotZips.slice(0, 10).map(v => (
                         <span key={v.zip} style={{ fontSize: 11, fontFamily: 'monospace', padding: '2px 7px', borderRadius: 4, background: 'rgba(220,38,38,0.08)', color: '#DC2626', border: '1px solid rgba(220,38,38,0.2)' }}>
-                          {v.zip}{zipToCounty[v.zip] ? <span style={{ fontFamily: 'sans-serif', fontSize: 9, opacity: 0.8 }}> {zipToCounty[v.zip]}</span> : null} · {v.months_supply}mo
+                          {v.zip}{zipToCounty[v.zip] ? <span style={{ fontFamily: 'sans-serif', fontSize: 9, opacity: 0.8 }}> {zipToCounty[v.zip]}</span> : null} · {fmtSupply(v.months_supply)}
                         </span>
                       ))}
                     </div>
-                  ) : <span style={{ color: '#9CA3AF' }}>None</span>}
+                  ) : <span style={{ color: '#9CA3AF' }}>None in buy box counties</span>}
                 </div>
                 <div>
                   <p className="mb-1.5" style={{ color: '#D97706', fontWeight: 600 }}>BALANCED — 3–6 months supply ({balancedZips.length} ZIPs)</p>
@@ -1038,11 +1054,11 @@ ${sec('6. Owner',
                     <div className="flex flex-wrap gap-1.5">
                       {balancedZips.slice(0, 8).map(v => (
                         <span key={v.zip} style={{ fontSize: 11, fontFamily: 'monospace', padding: '2px 7px', borderRadius: 4, background: 'rgba(217,119,6,0.08)', color: '#D97706', border: '1px solid rgba(217,119,6,0.2)' }}>
-                          {v.zip}{zipToCounty[v.zip] ? <span style={{ fontFamily: 'sans-serif', fontSize: 9, opacity: 0.8 }}> {zipToCounty[v.zip]}</span> : null} · {v.months_supply}mo
+                          {v.zip}{zipToCounty[v.zip] ? <span style={{ fontFamily: 'sans-serif', fontSize: 9, opacity: 0.8 }}> {zipToCounty[v.zip]}</span> : null} · {fmtSupply(v.months_supply)}
                         </span>
                       ))}
                     </div>
-                  ) : <span style={{ color: '#9CA3AF' }}>None</span>}
+                  ) : <span style={{ color: '#9CA3AF' }}>None in buy box counties</span>}
                 </div>
                 <div>
                   <p className="mb-1.5" style={{ color: '#6B7280', fontWeight: 600 }}>SLOW — 6+ months supply ({slowZips.length} ZIPs)</p>
@@ -1050,22 +1066,22 @@ ${sec('6. Owner',
                     <div className="flex flex-wrap gap-1.5">
                       {slowZips.slice(0, 6).map(v => (
                         <span key={v.zip} style={{ fontSize: 11, fontFamily: 'monospace', padding: '2px 7px', borderRadius: 4, background: '#F3F4F6', color: '#9CA3AF', border: '1px solid #E5E7EB' }}>
-                          {v.zip}{zipToCounty[v.zip] ? <span style={{ fontFamily: 'sans-serif', fontSize: 9 }}> {zipToCounty[v.zip]}</span> : null} · {v.months_supply}mo
+                          {v.zip}{zipToCounty[v.zip] ? <span style={{ fontFamily: 'sans-serif', fontSize: 9 }}> {zipToCounty[v.zip]}</span> : null} · {fmtSupply(v.months_supply)}
                         </span>
                       ))}
                     </div>
-                  ) : <span style={{ color: '#9CA3AF' }}>None</span>}
+                  ) : <span style={{ color: '#9CA3AF' }}>None in buy box counties</span>}
                 </div>
               </div>
               {targetZips.length > 0 && (
                 <div className="rounded-lg p-2.5" style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)' }}>
                   <p style={{ fontSize: 11, color: '#059669', fontWeight: 600, marginBottom: 4 }}>
-                    Recommendation: Target ZIPs with under 4 months supply — faster resale exit
+                    Recommended: HOT ZIPs within buy box counties (under 4 months supply — fastest resale)
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {targetZips.slice(0, 15).map(v => (
                       <span key={v.zip} style={{ fontSize: 11, fontFamily: 'monospace', padding: '2px 7px', borderRadius: 4, background: 'rgba(16,185,129,0.1)', color: '#059669', border: '1px solid rgba(16,185,129,0.2)' }}>
-                        {v.zip}{zipToCounty[v.zip] ? <span style={{ fontFamily: 'sans-serif', fontSize: 9, opacity: 0.85 }}> {zipToCounty[v.zip]}</span> : null} · {v.months_supply}mo
+                        {v.zip}{zipToCounty[v.zip] ? <span style={{ fontFamily: 'sans-serif', fontSize: 9, opacity: 0.85 }}> {zipToCounty[v.zip]}</span> : null} · {fmtSupply(v.months_supply)}
                       </span>
                     ))}
                   </div>
