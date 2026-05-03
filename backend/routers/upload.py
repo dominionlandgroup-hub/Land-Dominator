@@ -946,7 +946,7 @@ async def upload_comps(
         except Exception as _ae:
             print(f"[comps] Active listings save error: {_ae}", flush=True)
 
-        # Compute market velocity per ZIP from active rows
+        # Compute market velocity per ZIP — buy box counties only
         from datetime import timedelta as _td
         _by_zip: dict[str, dict] = {}
         for _ar in active_rows:
@@ -954,14 +954,15 @@ async def upload_comps(
             if not _z:
                 continue
             if _z not in _by_zip:
-                _by_zip[_z] = {"active": 0, "prices": []}
+                _by_zip[_z] = {"active": 0, "prices": [], "county": _ar.get("county") or ""}
             _by_zip[_z]["active"] += 1
             _lp = _ar.get("list_price")
             if _lp and _lp > 0:
                 _by_zip[_z]["prices"].append(_lp)
 
-        # Build ZIP → county from ALL sold comps so velocity entries carry their county
+        # Build ZIP → county AND county sales counts from ALL sold comps in one pass
         _zip_county: dict[str, str] = {}
+        _county_sales_count: dict[str, int] = {}
         try:
             _zc_off = 0
             while True:
@@ -975,8 +976,10 @@ async def upload_comps(
                 for _zr in (_zc_b.data or []):
                     _zk = str(_zr.get("zip_code") or "").split(".")[0].strip()
                     _ck = str(_zr.get("county") or "").strip()
-                    if _zk and _ck and _ck.lower() not in ("nan", "none", "") and _zk not in _zip_county:
-                        _zip_county[_zk] = _ck
+                    if _zk and _ck and _ck.lower() not in ("nan", "none", ""):
+                        if _zk not in _zip_county:
+                            _zip_county[_zk] = _ck
+                        _county_sales_count[_ck] = _county_sales_count.get(_ck, 0) + 1
                 if len(_zc_b.data or []) < 1000:
                     break
                 _zc_off += 1000
@@ -984,12 +987,32 @@ async def upload_comps(
         except Exception as _zce:
             print(f"[velocity] ZIP-county lookup failed: {_zce}", flush=True)
 
+        # Buy box counties = top 10 by sold comp count (mirrors frontend top_counties logic)
+        _buy_box_counties: set[str] = set(
+            sorted(_county_sales_count, key=lambda k: _county_sales_count[k], reverse=True)[:10]
+        )
+        print(f"[velocity] Buy box counties ({len(_buy_box_counties)}): {sorted(_buy_box_counties)}", flush=True)
+
+        # Filter _by_zip to only ZIPs whose county is a buy box county
+        # Use _zip_county (from sold comps) as authoritative source; fall back to active listing county
+        if _buy_box_counties:
+            _by_zip_filtered: dict[str, dict] = {}
+            for _z, _d in _by_zip.items():
+                _c = _zip_county.get(_z) or _d.get("county") or ""
+                if _c and _c in _buy_box_counties:
+                    _by_zip_filtered[_z] = {**_d, "county": _c}
+            _by_zip = _by_zip_filtered
+
+        # Monthly solds — only from buy box counties, last 12 months
         _monthly_solds: dict[str, float] = {}
         try:
             _cutoff = (datetime.now(timezone.utc) - _td(days=365)).strftime("%Y-%m-%d")
             _voff = 0
+            _sold_q = supabase.table("crm_sold_comps").select("zip_code").gte("sale_date", _cutoff)
+            if _buy_box_counties:
+                _sold_q = _sold_q.in_("county", list(_buy_box_counties))
             while True:
-                _vb = supabase.table("crm_sold_comps").select("zip_code").gte("sale_date", _cutoff).range(_voff, _voff + 999).execute()
+                _vb = _sold_q.range(_voff, _voff + 999).execute()
                 for _vr in _vb.data or []:
                     _vz = str(_vr.get("zip_code") or "").split(".")[0].strip()
                     if _vz:
@@ -1009,7 +1032,7 @@ async def upload_comps(
             _avg_p = round(sum(_d["prices"]) / len(_d["prices"])) if _d["prices"] else None
             _zip_vel[_z] = {
                 "zip": _z,
-                "county": _zip_county.get(_z, ""),
+                "county": _d.get("county") or _zip_county.get(_z, ""),
                 "active_count": _ac, "pending_count": 0,
                 "monthly_solds": _ms, "months_supply": _sup,
                 "absorption_rate": round(_ms / _ac, 3) if _ac > 0 else 0.0,
