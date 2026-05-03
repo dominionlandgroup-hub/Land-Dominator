@@ -5,6 +5,7 @@ Backed by Supabase (PostgreSQL). Requires SUPABASE_URL + SUPABASE_KEY env vars.
 import csv
 import hashlib
 import io
+import json
 import os
 import random as _random
 import re
@@ -1371,6 +1372,22 @@ async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)
                 "comp_3_ppa": r.get("comp_3_ppa") or r.get("Comp 3 $/Acre"),
                 # Comp metadata
                 "comp_quality_flags": r.get("comp_quality_flags") or None,
+                # Comp-derived pricing
+                "comp_median_ppa": r.get("comp_median_ppa") or r.get("median_ppa"),
+                "comp_derived_value": r.get("comp_derived_value") or r.get("retail_estimate"),
+                "pricing_calculation": json.dumps({
+                    "comp_median_ppa": r.get("comp_median_ppa") or r.get("median_ppa"),
+                    "lot_acres": r.get("lot_acres"),
+                    "comp_derived_value": r.get("comp_derived_value") or r.get("retail_estimate"),
+                    "offer_pct": r.get("offer_pct"),
+                    "offer_mid": r.get("suggested_offer_mid"),
+                    "comp_count": r.get("comp_count"),
+                    "pricing_flag": r.get("pricing_flag"),
+                    "comp_1_address": r.get("comp_1_address"),
+                    "comp_1_price": r.get("comp_1_price"),
+                    "comp_1_ppa": r.get("comp_1_ppa"),
+                    "comp_1_distance": r.get("comp_1_distance"),
+                }) if (r.get("comp_median_ppa") or r.get("median_ppa")) else None,
                 # Match engine metadata
                 "match_radius_used": r.get("match_radius_used"),
                 "num_comps_used": r.get("num_comps_used"),
@@ -2695,6 +2712,9 @@ ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS comp_3_ppa NUMERIC;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS comp_quality_flags TEXT;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS pricing_method_used TEXT;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS recommended_offer NUMERIC;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS comp_median_ppa NUMERIC;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS comp_derived_value NUMERIC;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS pricing_calculation JSONB;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS confidence_level TEXT;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS dd_zoning TEXT;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS match_radius_used NUMERIC;
@@ -2792,6 +2812,8 @@ async def save_match_pricing(body: dict = Body(...)) -> dict:
                 "confidence_level": r.get("confidence"),
                 "comp_quality_flags": r.get("comp_quality_flags") or None,
                 "pricing_method_used": r.get("pricing_method") or None,
+                "comp_median_ppa": r.get("comp_median_ppa") or r.get("median_ppa"),
+                "comp_derived_value": r.get("comp_derived_value") or r.get("retail_estimate"),
                 "updated_at": _now(),
             }
             updates = {k: v for k, v in updates.items() if v is not None}

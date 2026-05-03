@@ -845,23 +845,20 @@ def calculate_offer_price(
         result['confidence'] = 'NONE'
         return result
 
-    # Core formula: single comp uses that price, multiple uses median
+    # Core formula: median PPA × target acreage (distance-weighted when coords available)
     has_distances = 'distance_miles' in comps.columns
     tier_counts = None
     if has_distances:
         distances = comps['distance_miles'].values.astype(np.float64)
         tier_counts = get_tier_counts(distances)
 
-    # Single comp: use that price directly. Multiple comps: use median.
-    if len(prices) == 1:
-        retail_estimate = float(prices[0])
+    # comp_value = median_ppa × subject_acreage (adjusts for size differences)
+    if has_distances:
+        weights = np.array([get_comp_weight(d) for d in distances])
+        comp_median_ppa = float(weighted_median(ppas, weights))
     else:
-        if has_distances:
-            distances = comps['distance_miles'].values.astype(np.float64)
-            weights = np.array([get_comp_weight(d) for d in distances])
-            retail_estimate = weighted_median(prices, weights)
-        else:
-            retail_estimate = float(np.median(prices))
+        comp_median_ppa = float(np.median(ppas))
+    retail_estimate = comp_median_ppa * target_acres
 
     print(
         f"[pricing] n={len(prices)} comps | prices=[{','.join(f'${p:,.0f}' for p in sorted(prices)[:5])}{'...' if len(prices)>5 else ''}]"
@@ -901,7 +898,9 @@ def calculate_offer_price(
         'clean_comp_count': int(n),
         'outliers_removed': int(outliers_removed),
         'median_comp_sale_price': float(np.median(prices)),
-        'median_ppa': float(np.median(ppas)),
+        'median_ppa': comp_median_ppa,
+        'comp_median_ppa': comp_median_ppa,
+        'comp_derived_value': float(retail_estimate),
         'min_comp_price': float(np.min(prices)),
         'max_comp_price': float(np.max(prices)),
         'acreage_band': acreage_band_label or 'unknown',
@@ -911,7 +910,8 @@ def calculate_offer_price(
         'radius_label': radius_label,
         'proximity_weighted': has_distances,
         'tier_counts': tier_counts,
-        'pricing_source': 'COMPS',
+        'pricing_source': 'COMP_PPA',
+        'pricing_method': 'COMP_PPA_X_ACRES',
         'pricing_flag': 'MATCHED',
         'no_match_reason': None,
         'comp_avg_age_days': None,

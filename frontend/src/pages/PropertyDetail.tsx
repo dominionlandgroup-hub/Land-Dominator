@@ -639,17 +639,32 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
             {(() => {
               const offer = form.offer_price ?? 0
               if (offer <= 0) return null
-              const retail = (form.lp_estimate && form.lp_estimate > 0) ? form.lp_estimate : offer / 0.525
-              const closing = 2000
-              const fee = Math.max(0, Math.round(retail - offer - closing))
+              const compMedianPpa = form.comp_median_ppa as number | undefined
+              const compDerivedValue = form.comp_derived_value as number | undefined
+              const retail = compDerivedValue ?? (form.lp_estimate && form.lp_estimate > 0 ? form.lp_estimate : offer / 0.525)
+              const fee = Math.max(0, Math.round(retail - offer))
+              const isCompBased = compDerivedValue != null && compMedianPpa != null
               return (
                 <div className="mt-4 rounded-xl p-4" style={{ background: '#F7F3FC', border: '1px solid #E8E0F0' }}>
-                  <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#9B8AAE' }}>Assignment Fee Breakdown</p>
+                  <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#9B8AAE' }}>
+                    {isCompBased ? 'Comp-Based Pricing' : 'Assignment Fee Breakdown'}
+                  </p>
+                  {isCompBased && form.acreage != null && (
+                    <div className="mb-3 pb-3" style={{ borderBottom: '1px solid #E8E0F0' }}>
+                      <div className="flex justify-between text-xs mb-1.5">
+                        <span style={{ color: '#6B5B8A' }}>Comp Median $/Acre</span>
+                        <span style={{ fontWeight: 600, color: '#5C2977' }}>{fmtCurrency(compMedianPpa!)}/ac</span>
+                      </div>
+                      <div className="flex justify-between text-xs mb-1.5">
+                        <span style={{ color: '#6B5B8A' }}>Your Lot ({Number(form.acreage).toFixed(2)}ac)</span>
+                        <span style={{ fontWeight: 600, color: '#1A0A2E' }}>{fmtCurrency(compDerivedValue!)}</span>
+                      </div>
+                    </div>
+                  )}
                   <div className="space-y-1.5">
                     {[
-                      { label: 'LP Estimate (Retail)', value: retail, color: '#1A0A2E' },
+                      { label: isCompBased ? 'Comp-Derived Value' : 'Estimated Retail Value', value: retail, color: '#1A0A2E' },
                       { label: 'Your Offer', value: -offer, color: '#DC2626' },
-                      { label: 'Est. Closing Costs', value: -closing, color: '#D97706' },
                     ].map(({ label, value, color }) => (
                       <div key={label} className="flex justify-between items-center">
                         <span style={{ fontSize: 12, color: '#6B5B8A' }}>{label}</span>

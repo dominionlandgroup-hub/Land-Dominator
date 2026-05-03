@@ -13,11 +13,10 @@ import MatchMap from '../components/MatchMap'
 import WelcomeScreen from './WelcomeScreen'
 
 const SQFT_PER_ACRE = 43560
-const CLOSING_COSTS = 2000
 
 function calcMatchFee(retailEstimate: number | null | undefined, offerMid: number | null | undefined): number | null {
   if (!retailEstimate || !offerMid || offerMid <= 0) return null
-  const fee = Math.round(retailEstimate - offerMid - CLOSING_COSTS)
+  const fee = Math.round(retailEstimate - offerMid)
   return fee > 0 ? fee : 0
 }
 
@@ -374,7 +373,8 @@ export default function MatchTargets() {
     },
     { key: 'comp_count', header: 'Comp Count', sortable: true, align: 'center', defaultHidden: true, render: (v) => <span className="text-xs">{String(v ?? '—')}</span> },
     { key: 'closest_comp_distance', header: 'Distance to Closest Comp', sortable: true, align: 'right', defaultHidden: true, render: (v) => (v == null ? <span style={{ color: '#6B7280' }}>—</span> : <span className="text-xs">{(v as number).toFixed(2)}</span>) },
-    { key: 'retail_estimate', header: 'Retail Est.', sortable: true, align: 'right', defaultHidden: true, render: (v) => <span className="text-xs" style={{ color: '#374151' }}>{fmtPrice(v as number)}</span> },
+    { key: 'retail_estimate', header: 'Comp Value', sortable: true, align: 'right', render: (v) => <span className="text-xs font-semibold" style={{ color: '#059669' }}>{fmtPrice(v as number)}</span> },
+    { key: 'median_ppa', header: 'Comp $/Ac', sortable: true, align: 'right', render: (v) => v == null ? <span style={{ color: '#9CA3AF' }}>—</span> : <span className="text-xs" style={{ color: '#4F46E5' }}>{fmtPrice(v as number)}/ac</span> },
     { key: 'suggested_offer_low', header: 'Offer Low', align: 'right', render: (v) => <span className="text-xs" style={{ color: '#9CA3AF' }}>{fmtPrice(v as number)}</span> },
     {
       key: 'suggested_offer_mid', header: 'Offer Mid', sortable: true, align: 'right',
@@ -438,6 +438,77 @@ export default function MatchTargets() {
       },
     },
   ]
+
+  function renderCompDetails(row: MatchedParcel, pct: number): React.ReactNode {
+    const comps: { n: number; addr: string | null; price: number | null; acres: number | null; date: string | null; dist: number | null; ppa: number | null }[] = []
+    for (const n of [1, 2, 3] as const) {
+      const addr = row[`comp_${n}_address` as keyof MatchedParcel] as string | null
+      const price = row[`comp_${n}_price` as keyof MatchedParcel] as number | null
+      const acres = row[`comp_${n}_acres` as keyof MatchedParcel] as number | null
+      const date = row[`comp_${n}_date` as keyof MatchedParcel] as string | null
+      const dist = row[`comp_${n}_distance` as keyof MatchedParcel] as number | null
+      const ppa = row[`comp_${n}_ppa` as keyof MatchedParcel] as number | null
+      if (addr || price) comps.push({ n, addr, price, acres, date, dist, ppa })
+    }
+    const hasComps = comps.length > 0
+    const hasCalc = row.median_ppa != null && row.lot_acres != null
+    if (!hasComps && !hasCalc) return null
+    return (
+      <div style={{ background: '#F9FAFB', borderTop: '1px solid #E5E7EB', padding: '12px 16px 14px' }}>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {hasComps && (
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wide mb-2" style={{ color: '#6B7280' }}>Comps Used</p>
+              <div className="flex flex-col gap-2">
+                {comps.map(c => (
+                  <div key={c.n} className="rounded-lg px-3 py-2" style={{ background: '#FFFFFF', border: '1px solid #E5E7EB' }}>
+                    <p className="text-[10px] font-semibold uppercase mb-1" style={{ color: '#9CA3AF' }}>Comp {c.n}</p>
+                    {c.addr && <p className="text-xs mb-1" style={{ color: '#374151' }}>{c.addr}</p>}
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      {c.price != null && <span className="font-semibold" style={{ color: '#059669' }}>{fmtPrice(c.price)}</span>}
+                      {c.acres != null && <span style={{ color: '#6B7280' }}>{c.acres.toFixed(2)}ac</span>}
+                      {c.ppa != null && <span style={{ color: '#4F46E5' }}>{fmtPrice(c.ppa)}/ac</span>}
+                      {c.date && <span style={{ color: '#9CA3AF' }}>{new Date(c.date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</span>}
+                      {c.dist != null && <span style={{ color: '#9CA3AF' }}>{c.dist.toFixed(2)} mi away</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {hasCalc && (
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wide mb-2" style={{ color: '#6B7280' }}>Pricing Calculation</p>
+              <div className="rounded-lg px-3 py-2.5" style={{ background: '#FFFFFF', border: '1px solid #E5E7EB' }}>
+                <div className="flex justify-between text-xs mb-1.5">
+                  <span style={{ color: '#6B7280' }}>Comp Median $/Acre</span>
+                  <span className="font-semibold" style={{ color: '#4F46E5' }}>{fmtPrice(row.median_ppa!)}/ac</span>
+                </div>
+                <div className="flex justify-between text-xs mb-1.5">
+                  <span style={{ color: '#6B7280' }}>Your Lot</span>
+                  <span className="font-semibold" style={{ color: '#374151' }}>{row.lot_acres!.toFixed(2)}ac</span>
+                </div>
+                <div className="flex justify-between text-xs mb-1.5" style={{ borderTop: '1px solid #F3F4F6', paddingTop: 6 }}>
+                  <span style={{ color: '#6B7280' }}>Comp-Derived Value</span>
+                  <span className="font-semibold" style={{ color: '#059669' }}>{fmtPrice(row.retail_estimate)}</span>
+                </div>
+                <div className="flex justify-between text-xs font-semibold" style={{ borderTop: '1px solid #F3F4F6', paddingTop: 6 }}>
+                  <span style={{ color: '#6B7280' }}>Offer at {pct.toFixed(1)}%</span>
+                  <span style={{ color: '#4F46E5', fontSize: 13 }}>{fmtPrice(row.suggested_offer_mid)}</span>
+                </div>
+                {row.suggested_offer_mid != null && row.retail_estimate != null && (
+                  <div className="flex justify-between text-xs mt-1.5" style={{ borderTop: '1px solid #F3F4F6', paddingTop: 6 }}>
+                    <span style={{ color: '#6B7280' }}>Est. Assignment Fee</span>
+                    <span className="font-bold" style={{ color: '#10B981' }}>{fmtPrice(calcMatchFee(row.retail_estimate, row.suggested_offer_mid))}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -1054,6 +1125,8 @@ export default function MatchTargets() {
                       emptyMessage="No parcels matched with current filters"
                       searchable
                       searchKeys={['apn', 'owner_name', 'parcel_zip', 'parcel_city']}
+                      getExpandKey={(row) => row.apn || String(Math.random())}
+                      renderExpanded={(row) => renderCompDetails(row, offerPct)}
                     />
                   ) : (
                     <MatchMap targets={displayedResults} comps={dashboardData?.comp_locations ?? []} radiusMiles={1} />
@@ -1075,6 +1148,23 @@ export default function MatchTargets() {
             <p className="text-xs mb-4" style={{ color: '#6B7280' }}>
               Insert match results into a CRM campaign as leads.
             </p>
+            {(() => {
+              const priced = matchResult.results.filter(r => r.suggested_offer_mid != null && r.pricing_flag === 'MATCHED')
+              if (priced.length === 0) return null
+              const avgPpa = priced.reduce((s, r) => s + (r.median_ppa ?? 0), 0) / priced.filter(r => r.median_ppa != null).length
+              const avgCompVal = priced.reduce((s, r) => s + (r.retail_estimate ?? 0), 0) / priced.length
+              const avgOffer = priced.reduce((s, r) => s + (r.suggested_offer_mid ?? 0), 0) / priced.length
+              return (
+                <div className="mb-4 rounded-xl p-3" style={{ background: 'rgba(79,70,229,0.04)', border: '1px solid rgba(79,70,229,0.12)' }}>
+                  <p className="text-[10px] font-bold uppercase tracking-wide mb-2" style={{ color: '#4F46E5' }}>Average Pricing ({priced.length.toLocaleString()} comp-matched records)</p>
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div><p className="text-[10px]" style={{ color: '#9CA3AF' }}>Comp $/Ac</p><p className="font-semibold" style={{ color: '#4F46E5' }}>{fmtPrice(avgPpa)}</p></div>
+                    <div><p className="text-[10px]" style={{ color: '#9CA3AF' }}>Comp Value</p><p className="font-semibold" style={{ color: '#059669' }}>{fmtPrice(avgCompVal)}</p></div>
+                    <div><p className="text-[10px]" style={{ color: '#9CA3AF' }}>Avg Offer</p><p className="font-semibold" style={{ color: '#374151' }}>{fmtPrice(avgOffer)}</p></div>
+                  </div>
+                </div>
+              )
+            })()}
 
             {(() => {
               const slowCount = slowMarketZips.reduce((n, { zip }) => {

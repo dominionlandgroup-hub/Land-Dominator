@@ -24,6 +24,9 @@ interface Props<T extends object> {
   selectedKeys?: Set<string>
   getRowKey?: (row: T) => string
   onSelectionChange?: (keys: Set<string>) => void
+  // Expandable rows
+  renderExpanded?: (row: T) => React.ReactNode
+  getExpandKey?: (row: T) => string
 }
 
 type SortDir = 'asc' | 'desc'
@@ -41,8 +44,19 @@ export default function DataTable<T extends object>({
   selectedKeys,
   getRowKey,
   onSelectionChange,
+  renderExpanded,
+  getExpandKey,
 }: Props<T>) {
   const [sortKey, setSortKey] = useState<string | null>(null)
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set())
+
+  function toggleExpand(key: string) {
+    setExpandedKeys(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key); else next.add(key)
+      return next
+    })
+  }
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [page, setPage] = useState(0)
   const [search, setSearch] = useState('')
@@ -243,6 +257,8 @@ export default function DataTable<T extends object>({
             <table className="w-full text-sm min-w-max">
               <thead className="sticky top-0 z-10" style={{ background: '#F9FAFB', borderBottom: '2px solid #E5E7EB' }}>
                 <tr>
+                  {/* Expand toggle column */}
+                  {renderExpanded && <th className="w-8 px-2 py-3" />}
                   {/* Select-all checkbox column */}
                   {selectable && (
                     <th className="px-3 py-3 w-10" onClick={(e) => e.stopPropagation()}>
@@ -287,19 +303,32 @@ export default function DataTable<T extends object>({
               <tbody>
                 {pageData.map((row, i) => {
                   const rowKey = selectable && getRowKey ? getRowKey(row) : ''
+                  const expandKey = renderExpanded && getExpandKey ? getExpandKey(row) : String(i)
                   const isSelected = selectable && selectedKeys?.has(rowKey)
+                  const isExpanded = renderExpanded && expandedKeys.has(expandKey)
+                  const colSpan = visibleCols.length + (selectable ? 1 : 0) + (renderExpanded ? 1 : 0)
                   return (
+                    <React.Fragment key={i}>
                     <tr
-                      key={i}
                       onClick={onRowClick ? () => onRowClick(row) : undefined}
                       className={`table-row-hover${onRowClick ? ' cursor-pointer' : ''}`}
                       style={{
-                        borderBottom: '1px solid #F3F4F6',
+                        borderBottom: isExpanded ? 'none' : '1px solid #F3F4F6',
                         background: isSelected
                           ? 'rgba(79,70,229,0.06)'
                           : i % 2 === 1 ? '#F9FAFB' : '#FFFFFF',
                       }}
                     >
+                      {/* Expand toggle */}
+                      {renderExpanded && (
+                        <td className="px-2 py-2.5 w-8" onClick={(e) => { e.stopPropagation(); toggleExpand(expandKey) }}>
+                          <button
+                            style={{ fontSize: 10, color: '#6B7280', lineHeight: 1, padding: '2px 4px', borderRadius: 3, background: isExpanded ? '#E0E7FF' : '#F3F4F6', border: '1px solid #E5E7EB' }}
+                          >
+                            {isExpanded ? '▲' : '▼'}
+                          </button>
+                        </td>
+                      )}
                       {/* Row checkbox */}
                       {selectable && (
                         <td className="px-3 py-2.5 w-10" onClick={(e) => e.stopPropagation()}>
@@ -333,6 +362,14 @@ export default function DataTable<T extends object>({
                         )
                       })}
                     </tr>
+                    {isExpanded && renderExpanded && (
+                      <tr style={{ borderBottom: '1px solid #F3F4F6' }}>
+                        <td colSpan={colSpan} style={{ padding: 0 }}>
+                          {renderExpanded(row)}
+                        </td>
+                      </tr>
+                    )}
+                    </React.Fragment>
                   )
                 })}
               </tbody>
