@@ -214,7 +214,7 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
 
   // Accordion open/closed state — first 3 open by default
   const [openSections, setOpenSections] = useState<Set<string>>(
-    new Set(['basic', 'owner', 'campaign'])
+    new Set(['basic', 'owner', 'campaign', 'comp-pricing', 'comps'])
   )
   function toggleSection(key: string) {
     setOpenSections(prev => {
@@ -650,54 +650,137 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
               <Field label="Campaign Code" field="campaign_code" />
               <CurrencyInput label="Offer Price" value={form.offer_price} onChange={v => set('offer_price', v)} />
             </div>
+          </AccordionSection>
+
+          {/* Comp-Based Pricing */}
+          <AccordionSection title="Comp-Based Pricing" sectionKey="comp-pricing" {...accordionProps}>
             {(() => {
-              const offer = form.offer_price ?? 0
-              if (offer <= 0) return null
-              const retail = (form.comp_derived_value ?? (form.lp_estimate && form.lp_estimate > 0 ? form.lp_estimate : offer / 0.525)) as number
-              const fee = Math.max(0, Math.round(retail - offer))
               const pricingDesc = form.pricing_description as string | undefined
-              const isLpFallback = !form.comp_derived_value && form.lp_estimate
+              const pricingTier = form.pricing_tier as string | undefined
+              const compMedianPpa = form.comp_median_ppa as number | null | undefined
+              const compDerivedValue = form.comp_derived_value as number | null | undefined
+              const offer = form.offer_price as number | null | undefined
+              const retail = compDerivedValue ?? (form.lp_estimate && (form.lp_estimate as number) > 0 ? form.lp_estimate as number : null)
+              const fee = retail != null && offer != null ? Math.max(0, Math.round((retail as number) - (offer as number))) : null
+              const isLpFallback = !compDerivedValue && form.lp_estimate
               return (
-                <div className="mt-4 rounded-xl p-4" style={{ background: '#F7F3FC', border: '1px solid #E8E0F0' }}>
-                  <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#9B8AAE' }}>
-                    Assignment Fee Breakdown
-                  </p>
+                <div>
                   {pricingDesc && (
-                    <div className="mb-3 pb-3 text-xs" style={{ borderBottom: '1px solid #E8E0F0', color: '#374151' }}>
+                    <div className="mb-4 px-3 py-2.5 rounded-lg text-xs" style={{ background: '#F7F3FC', border: '1px solid #E8E0F0', color: '#374151' }}>
+                      {pricingTier && (
+                        <span className="inline-block mr-2 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase" style={{ background: '#EDE8F5', color: '#5C2977' }}>
+                          {pricingTier.replace(/_/g, ' ')}
+                        </span>
+                      )}
                       {pricingDesc}
                     </div>
                   )}
                   {isLpFallback && (
-                    <div className="mb-3 pb-3" style={{ borderBottom: '1px solid #E8E0F0' }}>
-                      <p className="text-[10px] px-2 py-1 rounded" style={{ background: '#FEF3C7', color: '#92400E' }}>
-                        LP Estimate fallback — no comp found within 1 mile
-                      </p>
+                    <div className="mb-4 px-3 py-2 rounded-lg text-[10px]" style={{ background: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A' }}>
+                      LP Estimate fallback — no comp found within 1 mile
                     </div>
                   )}
-                  <div className="space-y-1.5">
+                  <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #E8E0F0' }}>
                     {[
-                      { label: 'Retail Value', value: retail, color: '#1A0A2E' },
-                      { label: 'Your Offer', value: -offer, color: '#DC2626' },
-                    ].map(({ label, value, color }) => (
-                      <div key={label} className="flex justify-between items-center">
+                      { label: 'Comp Median $/Acre', value: compMedianPpa, fmt: (v: number) => `$${Math.round(v).toLocaleString()}/ac`, color: '#374151' },
+                      { label: 'Comp-Derived Value', value: retail, fmt: (v: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(v), color: '#1A0A2E' },
+                      { label: 'Your Offer', value: offer, fmt: (v: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(v), color: '#DC2626' },
+                    ].map(({ label, value, fmt, color }, i) => (
+                      <div key={label} className="flex justify-between items-center px-4 py-3"
+                        style={{ borderBottom: '1px solid #F3F4F6', background: i % 2 === 0 ? '#FAFAFA' : '#FFFFFF' }}>
                         <span style={{ fontSize: 12, color: '#6B5B8A' }}>{label}</span>
                         <span style={{ fontSize: 13, fontWeight: 600, color }}>
-                          {value < 0 ? '−' : ''}{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(Math.abs(value))}
+                          {value != null ? fmt(value as number) : <span style={{ color: '#C4B5D6' }}>—</span>}
                         </span>
                       </div>
                     ))}
-                    <div style={{ borderTop: '1px solid #E8E0F0', paddingTop: 8, marginTop: 4 }}>
-                      <div className="flex justify-between items-center">
-                        <span style={{ fontSize: 13, fontWeight: 700, color: '#1A0A2E' }}>Est. Assignment Fee</span>
-                        <span style={{ fontSize: 16, fontWeight: 800, color: '#059669' }}>
-                          {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(fee)}
-                        </span>
-                      </div>
+                    <div className="flex justify-between items-center px-4 py-3.5" style={{ background: '#F7F3FC' }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: '#1A0A2E' }}>Est. Assignment Fee</span>
+                      <span style={{ fontSize: 16, fontWeight: 800, color: '#059669' }}>
+                        {fee != null
+                          ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(fee)
+                          : <span style={{ color: '#C4B5D6', fontSize: 13, fontWeight: 400 }}>—</span>}
+                      </span>
                     </div>
                   </div>
                 </div>
               )
             })()}
+          </AccordionSection>
+
+          {/* Comparables */}
+          <AccordionSection title="Comparables" sectionKey="comps" {...accordionProps}>
+            {/* Quality flag banner */}
+            {form.comp_quality_flags && (
+              <div className="mb-4 flex flex-wrap gap-2 items-center">
+                {form.comp_quality_flags.split(',').map(f => f.trim()).filter(Boolean).map(flag => (
+                  <span key={flag} className="text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider"
+                    style={{
+                      background: flag === 'REVIEW_NEEDED' ? '#FEE2E2' : '#FEF3C7',
+                      color: flag === 'REVIEW_NEEDED' ? '#DC2626' : '#D97706',
+                      border: `1px solid ${flag === 'REVIEW_NEEDED' ? '#FECACA' : '#FDE68A'}`,
+                    }}>
+                    {flag.replace(/_/g, ' ')}
+                  </span>
+                ))}
+                {form.pricing_method_used && (
+                  <span className="text-[10px] font-medium px-2 py-1 rounded-full" style={{ background: '#F7F3FC', color: '#5C2977' }}>
+                    Method: {form.pricing_method_used}
+                  </span>
+                )}
+              </div>
+            )}
+            <div className="grid grid-cols-3 gap-4">
+              {([1, 2, 3] as const).map(n => {
+                const price = form[`comp${n}_price` as keyof CRMProperty] as number | undefined
+                const acreage = form[`comp${n}_acreage` as keyof CRMProperty] as number | undefined
+                const link = form[`comp${n}_link` as keyof CRMProperty] as string | undefined
+                const address = form[`comp_${n}_address` as keyof CRMProperty] as string | undefined
+                const date = form[`comp_${n}_date` as keyof CRMProperty] as string | undefined
+                const distance = form[`comp_${n}_distance` as keyof CRMProperty] as number | undefined
+                const ppa = form[`comp_${n}_ppa` as keyof CRMProperty] as number | undefined
+                const now = Date.now()
+                const dateMs = date ? new Date(date).getTime() : null
+                const isStale = dateMs != null && (now - dateMs) > 18 * 30.44 * 24 * 60 * 60 * 1000
+                const propertyAcreage = form.acreage
+                const isPoor = acreage != null && propertyAcreage != null && propertyAcreage > 0
+                  ? Math.max(acreage, propertyAcreage) / Math.min(acreage, propertyAcreage) > 3
+                  : false
+                return (
+                  <div key={n} className="rounded-xl overflow-hidden" style={{ border: '1px solid #E8E0F0' }}>
+                    <div className="px-4 pt-4 pb-3" style={{ background: '#F7F3FC', borderBottom: '1px solid #E8E0F0' }}>
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#9B8AAE' }}>Comp {n}</p>
+                        <div className="flex gap-1">
+                          {isStale && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#FEF3C7', color: '#D97706', border: '1px solid #FDE68A' }}>STALE</span>}
+                          {isPoor && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#FEE2E2', color: '#DC2626', border: '1px solid #FECACA' }}>POOR</span>}
+                        </div>
+                      </div>
+                      <p className="text-2xl font-bold" style={{ color: '#1A0A2E' }}>
+                        {price != null ? fmtCurrency(price) : <span style={{ color: '#9B8AAE', fontSize: '13px', fontWeight: 400 }}>No price yet</span>}
+                      </p>
+                      {acreage != null && <p className="text-sm mt-0.5" style={{ color: '#6B5B8A' }}>{acreage.toFixed(2)} ac{ppa != null ? ` · ${fmtCurrency(ppa)}/ac` : ''}</p>}
+                      {address && <p className="text-xs mt-1 leading-tight" style={{ color: '#6B5B8A' }}>{address}</p>}
+                      <div className="flex flex-wrap gap-2 mt-1.5">
+                        {date && <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: '#EDE8F5', color: '#6B5B8A' }}>{new Date(date).toLocaleDateString('en-US', { year: 'numeric', month: 'short' })}</span>}
+                        {distance != null && <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: '#EDE8F5', color: '#6B5B8A' }}>{distance.toFixed(2)} mi away</span>}
+                      </div>
+                      {link && (
+                        <a href={link} target="_blank" rel="noopener noreferrer"
+                          className="inline-block mt-2 text-xs font-semibold px-2 py-1 rounded-lg"
+                          style={{ background: '#EDE8F5', color: '#5C2977' }}
+                        >View on Land Portal →</a>
+                      )}
+                    </div>
+                    <div className="p-4 space-y-2">
+                      <Field label="Link" field={`comp${n}_link` as keyof CRMProperty} placeholder="https://…" />
+                      <CurrencyInput label="Price" value={form[`comp${n}_price` as keyof CRMProperty] as number | undefined} onChange={v => set(`comp${n}_price` as keyof CRMProperty, v)} />
+                      <Field label="Acreage" field={`comp${n}_acreage` as keyof CRMProperty} type="number" placeholder="0.00" />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           </AccordionSection>
 
           {/* Due Diligence */}
@@ -784,82 +867,6 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
               <Field label="Slope AVG (%)" field="slope_avg" type="number" placeholder="0.00" />
               <Field label="Elevation AVG (ft)" field="elevation_avg" type="number" placeholder="0" />
               <Field label="Assessed Value" field="assessed_value" />
-            </div>
-          </AccordionSection>
-
-          {/* Comparables */}
-          <AccordionSection title="Comparables" sectionKey="comps" {...accordionProps}>
-            {/* Quality flag banner */}
-            {form.comp_quality_flags && (
-              <div className="mb-4 flex flex-wrap gap-2 items-center">
-                {form.comp_quality_flags.split(',').map(f => f.trim()).filter(Boolean).map(flag => (
-                  <span key={flag} className="text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider"
-                    style={{
-                      background: flag === 'REVIEW_NEEDED' ? '#FEE2E2' : '#FEF3C7',
-                      color: flag === 'REVIEW_NEEDED' ? '#DC2626' : '#D97706',
-                      border: `1px solid ${flag === 'REVIEW_NEEDED' ? '#FECACA' : '#FDE68A'}`,
-                    }}>
-                    {flag.replace(/_/g, ' ')}
-                  </span>
-                ))}
-                {form.pricing_method_used && (
-                  <span className="text-[10px] font-medium px-2 py-1 rounded-full" style={{ background: '#F7F3FC', color: '#5C2977' }}>
-                    Method: {form.pricing_method_used}
-                  </span>
-                )}
-              </div>
-            )}
-            <div className="grid grid-cols-3 gap-4">
-              {([1, 2, 3] as const).map(n => {
-                const price = form[`comp${n}_price` as keyof CRMProperty] as number | undefined
-                const acreage = form[`comp${n}_acreage` as keyof CRMProperty] as number | undefined
-                const link = form[`comp${n}_link` as keyof CRMProperty] as string | undefined
-                const address = form[`comp_${n}_address` as keyof CRMProperty] as string | undefined
-                const date = form[`comp_${n}_date` as keyof CRMProperty] as string | undefined
-                const distance = form[`comp_${n}_distance` as keyof CRMProperty] as number | undefined
-                const ppa = form[`comp_${n}_ppa` as keyof CRMProperty] as number | undefined
-                // Per-comp quality check: stale if date > 18 months, poor if acreage ratio > 3x
-                const now = Date.now()
-                const dateMs = date ? new Date(date).getTime() : null
-                const isStale = dateMs != null && (now - dateMs) > 18 * 30.44 * 24 * 60 * 60 * 1000
-                const propertyAcreage = form.acreage
-                const isPoor = acreage != null && propertyAcreage != null && propertyAcreage > 0
-                  ? Math.max(acreage, propertyAcreage) / Math.min(acreage, propertyAcreage) > 3
-                  : false
-                return (
-                  <div key={n} className="rounded-xl overflow-hidden" style={{ border: '1px solid #E8E0F0' }}>
-                    <div className="px-4 pt-4 pb-3" style={{ background: '#F7F3FC', borderBottom: '1px solid #E8E0F0' }}>
-                      <div className="flex items-center justify-between mb-1">
-                        <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#9B8AAE' }}>Comp {n}</p>
-                        <div className="flex gap-1">
-                          {isStale && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#FEF3C7', color: '#D97706', border: '1px solid #FDE68A' }}>STALE</span>}
-                          {isPoor && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#FEE2E2', color: '#DC2626', border: '1px solid #FECACA' }}>POOR</span>}
-                        </div>
-                      </div>
-                      <p className="text-2xl font-bold" style={{ color: '#1A0A2E' }}>
-                        {price != null ? fmtCurrency(price) : <span style={{ color: '#9B8AAE', fontSize: '13px', fontWeight: 400 }}>No price yet</span>}
-                      </p>
-                      {acreage != null && <p className="text-sm mt-0.5" style={{ color: '#6B5B8A' }}>{acreage.toFixed(2)} ac{ppa != null ? ` · ${fmtCurrency(ppa)}/ac` : ''}</p>}
-                      {address && <p className="text-xs mt-1 leading-tight" style={{ color: '#6B5B8A' }}>{address}</p>}
-                      <div className="flex flex-wrap gap-2 mt-1.5">
-                        {date && <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: '#EDE8F5', color: '#6B5B8A' }}>{new Date(date).toLocaleDateString('en-US', { year: 'numeric', month: 'short' })}</span>}
-                        {distance != null && <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: '#EDE8F5', color: '#6B5B8A' }}>{distance.toFixed(2)} mi away</span>}
-                      </div>
-                      {link && (
-                        <a href={link} target="_blank" rel="noopener noreferrer"
-                          className="inline-block mt-2 text-xs font-semibold px-2 py-1 rounded-lg"
-                          style={{ background: '#EDE8F5', color: '#5C2977' }}
-                        >View on Land Portal →</a>
-                      )}
-                    </div>
-                    <div className="p-4 space-y-2">
-                      <Field label="Link" field={`comp${n}_link` as keyof CRMProperty} placeholder="https://…" />
-                      <CurrencyInput label="Price" value={form[`comp${n}_price` as keyof CRMProperty] as number | undefined} onChange={v => set(`comp${n}_price` as keyof CRMProperty, v)} />
-                      <Field label="Acreage" field={`comp${n}_acreage` as keyof CRMProperty} type="number" placeholder="0.00" />
-                    </div>
-                  </div>
-                )
-              })}
             </div>
           </AccordionSection>
 
