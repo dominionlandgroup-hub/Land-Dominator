@@ -903,8 +903,23 @@ async def update_crm_campaign(campaign_id: str, body: CRMCampaignUpdate) -> dict
 async def delete_crm_campaign(campaign_id: str) -> None:
     try:
         sb = get_supabase()
-        # Unlink properties before deleting
-        sb.table("crm_properties").update({"campaign_id": None}).eq("campaign_id", campaign_id).execute()
+
+        # Get all property IDs for this campaign
+        prop_rows = sb.table("crm_properties").select("id").eq("campaign_id", campaign_id).execute()
+        prop_ids = [p["id"] for p in (prop_rows.data or [])]
+
+        if prop_ids:
+            # Delete communications linked to these properties
+            sb.table("crm_communications").delete().in_("property_id", prop_ids).execute()
+            # Delete documents linked to these properties
+            sb.table("crm_property_documents").delete().in_("property_id", prop_ids).execute()
+            # Delete the properties themselves
+            sb.table("crm_properties").delete().in_("id", prop_ids).execute()
+
+        # Delete mail drops linked to the campaign
+        sb.table("crm_mail_drops").delete().eq("campaign_id", campaign_id).execute()
+
+        # Finally delete the campaign
         sb.table("crm_campaigns").delete().eq("id", campaign_id).execute()
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
