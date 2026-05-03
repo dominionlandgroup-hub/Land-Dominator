@@ -486,6 +486,175 @@ function CollapsibleZipTable({ zipStats }: { zipStats: ZipStats[] }) {
   )
 }
 
+// ── Velocity Section (needs own state for expand/copy) ───────────────────
+
+function VelocitySection({
+  velEntries,
+  zipToCounty,
+  titleCase: tc,
+}: {
+  velEntries: ZipVelocity[]
+  zipToCounty: Record<string, string>
+  titleCase: (s: string) => string
+}) {
+  const [showAllHot, setShowAllHot] = useState(false)
+  const [hotCopied, setHotCopied] = useState(false)
+
+  const fmtSupply = (ms: number) => ms >= 99 ? 'No sales' : `${ms}mo`
+  const velCountyRaw = (v: ZipVelocity) => v.county || zipToCounty[v.zip] || ''
+  const velCountyLabel = (v: ZipVelocity) => {
+    const c = velCountyRaw(v)
+    if (!c) return ''
+    const withSuffix = /county$/i.test(c.trim()) ? c : `${c} County`
+    return tc(withSuffix)
+  }
+
+  const hotZips = velEntries.filter(v => v.velocity_label === 'HOT').sort((a, b) => a.months_supply - b.months_supply)
+  const balancedZips = velEntries.filter(v => v.velocity_label === 'BALANCED')
+  const slowZips = velEntries.filter(v => v.velocity_label === 'SLOW' && v.months_supply < 99)
+  const targetZips = velEntries.filter(v => v.months_supply < 4).sort((a, b) => a.months_supply - b.months_supply)
+
+  const hotCountyCounts = new Map<string, number>()
+  hotZips.forEach(v => {
+    const c = velCountyLabel(v) || 'Unknown'
+    hotCountyCounts.set(c, (hotCountyCounts.get(c) || 0) + 1)
+  })
+  const hotCountyList = [...hotCountyCounts.entries()].sort((a, b) => b[1] - a[1])
+  const displayedHotZips = showAllHot ? hotZips : hotZips.slice(0, 10)
+
+  function handleCopyHotZips() {
+    const zipList = hotZips.map(v => v.zip).join(', ')
+    navigator.clipboard.writeText(zipList).then(() => {
+      setHotCopied(true)
+      setTimeout(() => setHotCopied(false), 2000)
+    })
+  }
+
+  function handleDownloadHotZips() {
+    const date = new Date().toISOString().split('T')[0].replace(/-/g, '')
+    const rows = hotZips.map(v => `${v.zip},${velCountyLabel(v)}`)
+    const csv = ['ZIP,County', ...rows].join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `FL_HOT_ZIPs_${date}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const cardStyle = { background: '#F9FAFB', border: '1px solid #E5E7EB' }
+
+  if (velEntries.length === 0) {
+    return (
+      <div className="rounded-xl p-4 lg:col-span-3" style={cardStyle}>
+        <p className="text-[10px] uppercase tracking-wider font-semibold mb-3" style={{ color: '#6B7280' }}>7 · Market Velocity — buy box counties only</p>
+        <p style={{ fontSize: 12, color: '#9CA3AF' }}>No velocity data available for buy box counties — upload active listings to see market supply</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-xl p-4 lg:col-span-3" style={cardStyle}>
+      <p className="text-[10px] uppercase tracking-wider font-semibold mb-3" style={{ color: '#6B7280' }}>7 · Market Velocity — buy box counties only</p>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs mb-3">
+        {/* HOT */}
+        <div>
+          <p className="mb-1.5" style={{ color: '#DC2626', fontWeight: 600 }}>HOT — under 3 months supply ({hotZips.length} ZIPs)</p>
+          {hotZips.length > 0 ? (
+            <>
+              {hotCountyList.length > 0 && (
+                <div className="mb-2 rounded-lg p-2" style={{ background: 'rgba(220,38,38,0.04)', border: '1px solid rgba(220,38,38,0.12)' }}>
+                  <p style={{ fontSize: 10, color: '#9CA3AF', marginBottom: 3 }}>{hotZips.length} HOT ZIPs across buy box counties:</p>
+                  {hotCountyList.map(([county, count]) => (
+                    <p key={county} style={{ fontSize: 10, color: '#6B7280', marginBottom: 1 }}>
+                      <span style={{ color: '#DC2626', fontWeight: 600 }}>{county}:</span> {count} ZIP{count !== 1 ? 's' : ''}
+                    </p>
+                  ))}
+                </div>
+              )}
+              <div className="flex flex-wrap gap-1.5">
+                {displayedHotZips.map(v => (
+                  <span key={v.zip} style={{ fontSize: 11, fontFamily: 'monospace', padding: '2px 7px', borderRadius: 4, background: 'rgba(220,38,38,0.08)', color: '#DC2626', border: '1px solid rgba(220,38,38,0.2)' }}>
+                    {v.zip}{velCountyLabel(v) ? <span style={{ fontFamily: 'sans-serif', fontSize: 9, opacity: 0.85 }}> · {velCountyLabel(v)}</span> : null} · {fmtSupply(v.months_supply)}
+                  </span>
+                ))}
+              </div>
+              {hotZips.length > 10 && (
+                <button
+                  className="mt-2 text-[10px]"
+                  style={{ color: '#DC2626', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
+                  onClick={() => setShowAllHot(v => !v)}
+                >
+                  {showAllHot ? 'Show Less ▲' : `Show All ${hotZips.length} HOT ZIPs ▼`}
+                </button>
+              )}
+              <div className="flex gap-2 mt-2 flex-wrap">
+                <button
+                  onClick={handleCopyHotZips}
+                  style={{ fontSize: 10, padding: '3px 8px', borderRadius: 4, background: hotCopied ? 'rgba(5,150,105,0.1)' : 'rgba(220,38,38,0.08)', color: hotCopied ? '#059669' : '#DC2626', border: `1px solid ${hotCopied ? 'rgba(5,150,105,0.2)' : 'rgba(220,38,38,0.2)'}`, cursor: 'pointer', fontWeight: 600 }}
+                >
+                  {hotCopied ? `✓ Copied ${hotZips.length} ZIPs!` : `Copy All ${hotZips.length} HOT ZIPs`}
+                </button>
+                <button
+                  onClick={handleDownloadHotZips}
+                  style={{ fontSize: 10, padding: '3px 8px', borderRadius: 4, background: 'rgba(79,70,229,0.06)', color: '#4F46E5', border: '1px solid rgba(79,70,229,0.2)', cursor: 'pointer', fontWeight: 600 }}
+                >
+                  ↓ Download CSV
+                </button>
+              </div>
+              <div className="mt-2 rounded-lg p-2" style={{ background: 'rgba(79,70,229,0.04)', border: '1px solid rgba(79,70,229,0.12)' }}>
+                <p style={{ fontSize: 10, color: '#4F46E5', fontWeight: 600, marginBottom: 2 }}>Pro tip: Use the {hotZips.length} HOT ZIPs for a targeted pull</p>
+                <p style={{ fontSize: 10, color: '#6B7280' }}>Go to Land Portal → Location → ZIP Code (instead of County) → paste the HOT ZIPs list for the most active markets only</p>
+              </div>
+            </>
+          ) : <span style={{ color: '#9CA3AF' }}>None in buy box counties</span>}
+        </div>
+        {/* BALANCED */}
+        <div>
+          <p className="mb-1.5" style={{ color: '#D97706', fontWeight: 600 }}>BALANCED — 3–6 months supply ({balancedZips.length} ZIPs)</p>
+          {balancedZips.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {balancedZips.slice(0, 8).map(v => (
+                <span key={v.zip} style={{ fontSize: 11, fontFamily: 'monospace', padding: '2px 7px', borderRadius: 4, background: 'rgba(217,119,6,0.08)', color: '#D97706', border: '1px solid rgba(217,119,6,0.2)' }}>
+                  {v.zip}{velCountyLabel(v) ? <span style={{ fontFamily: 'sans-serif', fontSize: 9, opacity: 0.85 }}> · {velCountyLabel(v)}</span> : null} · {fmtSupply(v.months_supply)}
+                </span>
+              ))}
+            </div>
+          ) : <span style={{ color: '#9CA3AF' }}>None in buy box counties</span>}
+        </div>
+        {/* SLOW */}
+        <div>
+          <p className="mb-1.5" style={{ color: '#6B7280', fontWeight: 600 }}>SLOW — 6+ months supply ({slowZips.length} ZIPs)</p>
+          {slowZips.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {slowZips.slice(0, 6).map(v => (
+                <span key={v.zip} style={{ fontSize: 11, fontFamily: 'monospace', padding: '2px 7px', borderRadius: 4, background: '#F3F4F6', color: '#9CA3AF', border: '1px solid #E5E7EB' }}>
+                  {v.zip}{velCountyLabel(v) ? <span style={{ fontFamily: 'sans-serif', fontSize: 9 }}> · {velCountyLabel(v)}</span> : null} · {fmtSupply(v.months_supply)}
+                </span>
+              ))}
+            </div>
+          ) : <span style={{ color: '#9CA3AF' }}>None in buy box counties</span>}
+        </div>
+      </div>
+      {targetZips.length > 0 && (
+        <div className="rounded-lg p-2.5" style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)' }}>
+          <p style={{ fontSize: 11, color: '#059669', fontWeight: 600, marginBottom: 4 }}>
+            Recommended: HOT ZIPs within buy box counties (under 4 months supply — fastest resale)
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {targetZips.map(v => (
+              <span key={v.zip} style={{ fontSize: 11, fontFamily: 'monospace', padding: '2px 7px', borderRadius: 4, background: 'rgba(16,185,129,0.1)', color: '#059669', border: '1px solid rgba(16,185,129,0.2)' }}>
+                {v.zip}{velCountyLabel(v) ? <span style={{ fontFamily: 'sans-serif', fontSize: 9, opacity: 0.9 }}> · {velCountyLabel(v)}</span> : null} · {fmtSupply(v.months_supply)}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Buy Box Recipe ────────────────────────────────────────────────────────
 
 const SQFT_PER_ACRE = 43560
@@ -535,6 +704,7 @@ function BuyBoxRecipe({
   const sortedCounties = [...topCounties].sort((a, b) => a.localeCompare(b))
   // Normalize county names for comparison: strip " County" suffix, lowercase, trim
   const normCounty = (c: string) => c.toLowerCase().trim().replace(/\s+county$/i, '').trim()
+  const titleCase = (s: string) => s.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
   const recommendedCountySet = new Set(topCounties.map(normCounty))
 
   // ZIP → county lookup: comp stats first, then supplement with velocity entries
@@ -881,7 +1051,7 @@ ${sec('6. Owner',
                 <p className="mb-1 font-semibold" style={{ color: '#10B981' }}>Pull by County — Land Portal → Location → County</p>
                 <div className="flex flex-wrap gap-1.5 mb-2">
                   {sortedCounties.map(c => (
-                    <span key={c} className="text-[11px] px-2 py-0.5 rounded font-medium" style={{ background: 'rgba(16,185,129,0.12)', color: '#10B981', border: '1px solid rgba(16,185,129,0.2)' }}>{c}</span>
+                    <span key={c} className="text-[11px] px-2 py-0.5 rounded font-medium" style={{ background: 'rgba(16,185,129,0.12)', color: '#10B981', border: '1px solid rgba(16,185,129,0.2)' }}>{titleCase(c)}</span>
                   ))}
                 </div>
                 <div className="rounded-lg p-2.5" style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)' }}>
@@ -894,7 +1064,7 @@ ${sec('6. Owner',
               <div className="flex flex-wrap gap-1.5">
                 {topZipItems.map(z => (
                   <span key={z.zip} className="font-mono text-[11px] px-2 py-0.5 rounded" style={{ background: '#F3F4F6', color: '#6B7280', border: '1px solid #E5E7EB' }}>
-                    {z.zip}{z.county ? <span style={{ color: '#9CA3AF' }}> · {z.county}</span> : null}
+                    {z.zip}{z.county ? <span style={{ color: '#9CA3AF' }}> · {titleCase(z.county)}</span> : null}
                   </span>
                 ))}
               </div>
@@ -903,7 +1073,7 @@ ${sec('6. Owner',
                   <p className="text-[10px] font-semibold mb-1.5" style={{ color: '#4F46E5' }}>Strong sales outside your buy box — consider adding:</p>
                   {suggestCounties.map(s => (
                     <p key={s.county} className="text-[10px] mb-0.5" style={{ color: '#6B7280' }}>
-                      → <span style={{ color: '#1A0A2E', fontWeight: 600 }}>{s.county}</span> — {s.sales} sales · top ZIP {s.topZip}
+                      → <span style={{ color: '#1A0A2E', fontWeight: 600 }}>{titleCase(s.county)}</span> — {s.sales} sales · top ZIP {s.topZip}
                     </p>
                   ))}
                 </div>
@@ -1022,96 +1192,16 @@ ${sec('6. Owner',
 
         {/* Section 7 — Market Velocity (only shown when listings data is available) */}
         {zipVelocity && (() => {
-          // Filter velocity entries to only ZIPs in recommended buy box counties.
-          // v.county is populated by the backend from crm_sold_comps at upload time.
           const allVelEntries = Object.values(zipVelocity)
           if (allVelEntries.length === 0) return null
           const velEntries = recommendedCountySet.size > 0
             ? allVelEntries.filter(v => {
-                const county = v.county || zipToCounty[v.zip]  // v.county is authoritative
+                const county = v.county || zipToCounty[v.zip]
                 if (!county) return false
                 return recommendedCountySet.has(normCounty(county))
               })
             : allVelEntries
-          const fmtSupply = (ms: number) => ms >= 99 ? 'No sales' : `${ms}mo`
-          // County display: use v.county (from backend lookup), fall back to zipToCounty map
-          // Add "County" suffix if not already present
-          const velCounty = (v: ZipVelocity) => v.county || zipToCounty[v.zip] || ''
-          const velCountyLabel = (v: ZipVelocity) => {
-            const c = velCounty(v)
-            if (!c) return ''
-            return /county$/i.test(c.trim()) ? c : `${c} County`
-          }
-          const hotZips = velEntries.filter(v => v.velocity_label === 'HOT').sort((a, b) => a.months_supply - b.months_supply)
-          const balancedZips = velEntries.filter(v => v.velocity_label === 'BALANCED')
-          const slowZips = velEntries.filter(v => v.velocity_label === 'SLOW' && v.months_supply < 99)
-          const targetZips = velEntries.filter(v => v.months_supply < 4).sort((a, b) => a.months_supply - b.months_supply)
-          const noData = velEntries.length === 0
-          return (
-            <div className="rounded-xl p-4 lg:col-span-3" style={cardStyle}>
-              {hdr('7 · Market Velocity — buy box counties only')}
-              {noData ? (
-                <p style={{ fontSize: 12, color: '#9CA3AF' }}>
-                  No velocity data available for buy box counties — upload active listings to see market supply
-                </p>
-              ) : (
-                <>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs mb-3">
-                    <div>
-                      <p className="mb-1.5" style={{ color: '#DC2626', fontWeight: 600 }}>HOT — under 3 months supply ({hotZips.length} ZIPs)</p>
-                      {hotZips.length > 0 ? (
-                        <div className="flex flex-wrap gap-1.5">
-                          {hotZips.slice(0, 10).map(v => (
-                            <span key={v.zip} style={{ fontSize: 11, fontFamily: 'monospace', padding: '2px 7px', borderRadius: 4, background: 'rgba(220,38,38,0.08)', color: '#DC2626', border: '1px solid rgba(220,38,38,0.2)' }}>
-                              {v.zip}{velCountyLabel(v) ? <span style={{ fontFamily: 'sans-serif', fontSize: 9, opacity: 0.85 }}> · {velCountyLabel(v)}</span> : null} · {fmtSupply(v.months_supply)}
-                            </span>
-                          ))}
-                        </div>
-                      ) : <span style={{ color: '#9CA3AF' }}>None in buy box counties</span>}
-                    </div>
-                    <div>
-                      <p className="mb-1.5" style={{ color: '#D97706', fontWeight: 600 }}>BALANCED — 3–6 months supply ({balancedZips.length} ZIPs)</p>
-                      {balancedZips.length > 0 ? (
-                        <div className="flex flex-wrap gap-1.5">
-                          {balancedZips.slice(0, 8).map(v => (
-                            <span key={v.zip} style={{ fontSize: 11, fontFamily: 'monospace', padding: '2px 7px', borderRadius: 4, background: 'rgba(217,119,6,0.08)', color: '#D97706', border: '1px solid rgba(217,119,6,0.2)' }}>
-                              {v.zip}{velCountyLabel(v) ? <span style={{ fontFamily: 'sans-serif', fontSize: 9, opacity: 0.85 }}> · {velCountyLabel(v)}</span> : null} · {fmtSupply(v.months_supply)}
-                            </span>
-                          ))}
-                        </div>
-                      ) : <span style={{ color: '#9CA3AF' }}>None in buy box counties</span>}
-                    </div>
-                    <div>
-                      <p className="mb-1.5" style={{ color: '#6B7280', fontWeight: 600 }}>SLOW — 6+ months supply ({slowZips.length} ZIPs)</p>
-                      {slowZips.length > 0 ? (
-                        <div className="flex flex-wrap gap-1.5">
-                          {slowZips.slice(0, 6).map(v => (
-                            <span key={v.zip} style={{ fontSize: 11, fontFamily: 'monospace', padding: '2px 7px', borderRadius: 4, background: '#F3F4F6', color: '#9CA3AF', border: '1px solid #E5E7EB' }}>
-                              {v.zip}{velCountyLabel(v) ? <span style={{ fontFamily: 'sans-serif', fontSize: 9 }}> · {velCountyLabel(v)}</span> : null} · {fmtSupply(v.months_supply)}
-                            </span>
-                          ))}
-                        </div>
-                      ) : <span style={{ color: '#9CA3AF' }}>None in buy box counties</span>}
-                    </div>
-                  </div>
-                  {targetZips.length > 0 && (
-                    <div className="rounded-lg p-2.5" style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)' }}>
-                      <p style={{ fontSize: 11, color: '#059669', fontWeight: 600, marginBottom: 4 }}>
-                        Recommended: HOT ZIPs within buy box counties (under 4 months supply — fastest resale)
-                      </p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {targetZips.slice(0, 15).map(v => (
-                          <span key={v.zip} style={{ fontSize: 11, fontFamily: 'monospace', padding: '2px 7px', borderRadius: 4, background: 'rgba(16,185,129,0.1)', color: '#059669', border: '1px solid rgba(16,185,129,0.2)' }}>
-                            {v.zip}{velCountyLabel(v) ? <span style={{ fontFamily: 'sans-serif', fontSize: 9, opacity: 0.9 }}> · {velCountyLabel(v)}</span> : null} · {fmtSupply(v.months_supply)}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          )
+          return <VelocitySection velEntries={velEntries} zipToCounty={zipToCounty} titleCase={titleCase} />
         })()}
       </div>
     </div>
