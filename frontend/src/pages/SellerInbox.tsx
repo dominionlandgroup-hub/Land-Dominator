@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { listCommunications, sendSms, initiateOutboundCall, markThreadRead, markAllRead, patchThreadRead, getCallbackNumber } from '../api/crm'
-import type { Communication } from '../types/crm'
+import { listCommunications, sendSms, initiateOutboundCall, markThreadRead, markAllRead, patchThreadRead, getCallbackNumber, listCrmCampaigns, updateProperty } from '../api/crm'
+import type { Communication, CRMCampaign } from '../types/crm'
 import { useApp } from '../context/AppContext'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -424,6 +424,137 @@ const TEMPLATES = (firstName: string, address: string, offerPrice: number | null
   },
 ]
 
+// ── Create Deal modal ─────────────────────────────────────────────────────────
+
+function CreateDealModal({
+  thread,
+  onClose,
+  onSuccess,
+}: {
+  thread: Thread
+  onClose: () => void
+  onSuccess: () => void
+}) {
+  const prop = thread.comms.find(c => c.property)?.property
+  const ownerName = thread.name !== thread.phone ? thread.name : (prop?.owner_full_name || '')
+  const apn = prop?.apn || ''
+  const county = prop?.county || ''
+  const defaultName = [ownerName, apn, county].filter(Boolean).join(' - ')
+
+  const [dealName, setDealName] = useState(defaultName)
+  const [fee, setFee] = useState('5000')
+  const [campaigns, setCampaigns] = useState<CRMCampaign[]>([])
+  const [campaignId, setCampaignId] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
+
+  useEffect(() => {
+    listCrmCampaigns().then(list => {
+      setCampaigns(list)
+      if (list.length > 0) setCampaignId(list[0].id)
+    }).catch(() => {})
+  }, [])
+
+  async function handleConfirm() {
+    if (!prop?.id) { setError('No property linked to this conversation.'); return }
+    setLoading(true); setError(null)
+    try {
+      await updateProperty(prop.id, {
+        status: 'prospect',
+        assignment_fee: parseFloat(fee) || 5000,
+        ...(campaignId ? { campaign_id: campaignId } : {}),
+      })
+      setSuccess(true)
+      setTimeout(() => { onSuccess(); onClose() }, 1800)
+    } catch (e: unknown) {
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setError(detail ?? 'Failed to create deal.')
+    } finally { setLoading(false) }
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(26,10,46,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+      onClick={onClose}>
+      <div style={{ background: '#FFFFFF', borderRadius: 12, padding: 28, maxWidth: 460, width: '100%', border: '1px solid #E8E0F0' }}
+        onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, color: '#1A0A2E', margin: 0 }}>Create Deal</h2>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, color: '#6B5B8A', lineHeight: 1 }}>×</button>
+        </div>
+
+        {success ? (
+          <div style={{ textAlign: 'center', padding: '16px 0' }}>
+            <p style={{ fontSize: 20, marginBottom: 8 }}>✅</p>
+            <p style={{ fontWeight: 700, color: '#059669', fontSize: 14 }}>Deal created and added to Seller Deals</p>
+          </div>
+        ) : (
+          <>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#9B8AAE', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 4 }}>Deal Name</label>
+              <input
+                type="text"
+                value={dealName}
+                onChange={e => setDealName(e.target.value)}
+                style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: 8, border: '1px solid #E8E0F0', fontSize: 14, color: '#1A0A2E', outline: 'none', background: '#F7F3FC' }}
+              />
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#9B8AAE', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 4 }}>Campaign</label>
+              <select
+                value={campaignId}
+                onChange={e => setCampaignId(e.target.value)}
+                style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #E8E0F0', fontSize: 14, color: '#1A0A2E', background: '#F7F3FC', outline: 'none' }}
+              >
+                <option value="">— No campaign —</option>
+                {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#9B8AAE', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 4 }}>Est. Assignment Fee</label>
+              <div style={{ position: 'relative' }}>
+                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#6B5B8A', fontSize: 14 }}>$</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="500"
+                  value={fee}
+                  onChange={e => setFee(e.target.value)}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px 9px 22px', borderRadius: 8, border: '1px solid #E8E0F0', fontSize: 14, color: '#1A0A2E', outline: 'none', background: '#F7F3FC' }}
+                />
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 20, padding: '10px 14px', borderRadius: 8, background: '#F7F3FC', border: '1px solid #E8E0F0' }}>
+              <p style={{ fontSize: 12, color: '#6B5B8A', margin: 0 }}>
+                Status: <strong style={{ color: '#5C2977' }}>New Lead</strong> — will appear on Seller Deals board
+              </p>
+              {!prop?.id && (
+                <p style={{ fontSize: 11, color: '#D97706', margin: '4px 0 0' }}>⚠️ No property linked — open the conversation to link a property first</p>
+              )}
+            </div>
+
+            {error && <p style={{ fontSize: 12, color: '#DC2626', marginBottom: 12 }}>{error}</p>}
+
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button onClick={onClose} disabled={loading}
+                style={{ padding: '9px 18px', borderRadius: 8, border: '1px solid #E8E0F0', background: '#F7F3FC', color: '#6B5B8A', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
+                Cancel
+              </button>
+              <button onClick={handleConfirm} disabled={loading || !prop?.id}
+                style={{ padding: '9px 22px', borderRadius: 8, border: 'none', background: loading || !prop?.id ? '#9B8AAE' : '#5C2977', color: '#fff', fontWeight: 700, fontSize: 14, cursor: loading || !prop?.id ? 'default' : 'pointer' }}>
+                {loading ? 'Creating…' : 'Add to Seller Deals'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 type InboxFilter = 'all' | 'calls' | 'texts' | 'hot' | 'callback' | 'unread'
@@ -446,6 +577,7 @@ export default function SellerInbox() {
   const [markingAll, setMarkingAll] = useState(false)
   const [callConfirmThread, setCallConfirmThread] = useState<Thread | null>(null)
   const [callbackNumber, setCallbackNumber] = useState('')
+  const [createDealThread, setCreateDealThread] = useState<Thread | null>(null)
   const threadEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { load() }, [])
@@ -759,6 +891,11 @@ export default function SellerInbox() {
                   View Property →
                 </button>
               )}
+              <button
+                onClick={() => setCreateDealThread(selected)}
+                style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #5C2977', background: '#5C2977', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                + Create Deal
+              </button>
             </div>
 
             {/* Messages */}
@@ -896,6 +1033,15 @@ export default function SellerInbox() {
           onConfirm={() => handleCall(callConfirmThread)}
           onClose={() => setCallConfirmThread(null)}
           calling={calling}
+        />
+      )}
+
+      {/* ── Create Deal modal ── */}
+      {createDealThread && (
+        <CreateDealModal
+          thread={createDealThread}
+          onClose={() => setCreateDealThread(null)}
+          onSuccess={() => setCreateDealThread(null)}
         />
       )}
     </div>

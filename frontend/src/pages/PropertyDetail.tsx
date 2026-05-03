@@ -635,6 +635,7 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
             <div className="grid grid-cols-2 gap-4">
               <Field label="Campaign Code" field="campaign_code" />
               <CurrencyInput label="Offer Price" value={form.offer_price} onChange={v => set('offer_price', v)} />
+              <CurrencyInput label="Est. Assignment Fee" value={form.assignment_fee ?? 5000} onChange={v => set('assignment_fee', v)} />
             </div>
           </AccordionSection>
 

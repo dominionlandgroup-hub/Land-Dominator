@@ -3,6 +3,8 @@ import { listProperties, updateProperty } from '../api/crm'
 import type { CRMProperty } from '../types/crm'
 import { useApp } from '../context/AppContext'
 
+const SELLER_STATUSES = ['prospect', 'interested', 'offer_sent', 'under_contract', 'closed_won']
+
 interface BoardsProps {
   view: 'boards-seller' | 'boards-buyer' | 'boards-inventory'
 }
@@ -10,11 +12,11 @@ interface BoardsProps {
 // Column definitions per board view
 const BOARD_COLUMNS: Record<string, { status: string; label: string; color: string }[]> = {
   'boards-seller': [
-    { status: 'lead',       label: 'New Lead',   color: '#5C2977' },
-    { status: 'prospect',   label: 'Contacted',  color: '#4A90D9' },
-    { status: 'interested', label: 'Interested', color: '#7C3AED' },
-    { status: 'offer_sent', label: 'Offer Sent', color: '#D97706' },
-    { status: 'closed_won', label: 'Closed Won', color: '#059669' },
+    { status: 'prospect',       label: 'New Lead',        color: '#5C2977' },
+    { status: 'interested',     label: 'Interested',      color: '#7C3AED' },
+    { status: 'offer_sent',     label: 'Offer Sent',      color: '#D97706' },
+    { status: 'under_contract', label: 'Under Contract',  color: '#2563EB' },
+    { status: 'closed_won',     label: 'Closed Won',      color: '#059669' },
   ],
   'boards-buyer': [
     { status: 'lead',           label: 'Available',      color: '#4A90D9' },
@@ -52,14 +54,15 @@ export default function Boards({ view }: BoardsProps) {
   const [loading, setLoading] = useState(true)
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dragOverCol, setDragOverCol] = useState<string | null>(null)
+  const [clearAllConfirm, setClearAllConfirm] = useState(false)
+  const [clearingAll, setClearingAll] = useState(false)
 
   const columns = BOARD_COLUMNS[view] ?? BOARD_COLUMNS['boards-seller']
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const statuses = columns.map(c => c.status)
-      // Load up to 500 properties across all relevant statuses
+      const statuses = view === 'boards-seller' ? SELLER_STATUSES : columns.map(c => c.status)
       const allResults = await Promise.all(
         statuses.map(s => listProperties({ status: s, limit: 200, page: 1 }).catch(() => ({ data: [], total: 0, page: 1, limit: 200 })))
       )
@@ -118,10 +121,23 @@ export default function Boards({ view }: BoardsProps) {
     setDragOverCol(null)
   }
 
-  // Pipeline value calculation — sum assignment_fee for all non-closed records
-  const activeStatuses = new Set(['lead', 'prospect', 'interested', 'offer_sent'])
+  async function handleClearNewLeads() {
+    setClearingAll(true)
+    try {
+      const prospects = properties.filter(p => p.status === 'prospect')
+      await Promise.all(prospects.map(p => updateProperty(p.id, { status: 'lead' })))
+      setProperties(ps => ps.filter(p => p.status !== 'prospect'))
+    } catch { /* silent */ } finally {
+      setClearingAll(false)
+      setClearAllConfirm(false)
+    }
+  }
+
+  // Pipeline value calculation — sum assignment_fee for all active (non-closed) records
+  const activeStatuses = new Set(['prospect', 'interested', 'offer_sent', 'under_contract'])
   const activeProperties = properties.filter(p => p.status && activeStatuses.has(p.status))
   const pipelineValue = activeProperties.reduce((sum, p) => sum + (p.assignment_fee ?? 5000), 0)
+  const newLeadCount = properties.filter(p => p.status === 'prospect').length
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#F8F6FB', overflow: 'hidden' }}>
@@ -175,6 +191,14 @@ export default function Boards({ view }: BoardsProps) {
                         border: `1px solid ${col.color}30`,
                         borderRadius: 10, padding: '1px 8px', fontSize: 11, fontWeight: 700,
                       }}>{cards.length}</span>
+                      {view === 'boards-seller' && col.status === 'prospect' && cards.length > 0 && (
+                        <button
+                          onClick={() => setClearAllConfirm(true)}
+                          style={{ fontSize: 10, padding: '2px 7px', borderRadius: 6, border: '1px solid #E8E0F0', background: '#F7F3FC', color: '#9B8AAE', cursor: 'pointer', fontWeight: 600 }}
+                        >
+                          Clear All
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -194,6 +218,7 @@ export default function Boards({ view }: BoardsProps) {
                       const isDragging = draggingId === p.id
                       const days = daysAgo(p.updated_at ?? p.created_at)
                       const fee = p.assignment_fee ?? 5000
+                      const feeColor = fee >= 10000 ? '#059669' : fee >= 5000 ? '#D97706' : '#9B8AAE'
                       return (
                         <div
                           key={p.id}
@@ -227,7 +252,7 @@ export default function Boards({ view }: BoardsProps) {
                           {p.acreage != null && (
                             <p style={{ fontSize: 10, color: '#9B8AAE', margin: '4px 0 0' }}>{p.acreage.toFixed(2)} acres</p>
                           )}
-                          <p style={{ fontSize: 11, fontWeight: 600, color: '#059669', margin: '4px 0 0' }}>
+                          <p style={{ fontSize: 11, fontWeight: 600, color: feeColor, margin: '4px 0 0' }}>
                             Est. Fee: {fmtCurrency(fee)}
                           </p>
                         </div>
@@ -237,6 +262,30 @@ export default function Boards({ view }: BoardsProps) {
                 </div>
               )
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Clear All New Leads confirmation modal */}
+      {clearAllConfirm && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(26,10,46,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+          onClick={() => !clearingAll && setClearAllConfirm(false)}>
+          <div style={{ background: '#FFFFFF', borderRadius: 12, padding: 28, maxWidth: 420, width: '100%', border: '1px solid #E8E0F0' }}
+            onClick={e => e.stopPropagation()}>
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: '#1A0A2E', margin: '0 0 10px' }}>Clear New Leads?</h2>
+            <p style={{ fontSize: 13, color: '#6B5B8A', margin: '0 0 20px', lineHeight: 1.6 }}>
+              Move all <strong>{newLeadCount} New Lead{newLeadCount !== 1 ? 's' : ''}</strong> to archive? This removes them from the board but keeps them in your CRM under Properties.
+            </p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button onClick={() => setClearAllConfirm(false)} disabled={clearingAll}
+                style={{ padding: '9px 18px', borderRadius: 8, border: '1px solid #E8E0F0', background: '#F7F3FC', color: '#6B5B8A', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
+                Cancel
+              </button>
+              <button onClick={handleClearNewLeads} disabled={clearingAll}
+                style={{ padding: '9px 22px', borderRadius: 8, border: 'none', background: clearingAll ? '#9B8AAE' : '#DC2626', color: '#fff', fontWeight: 700, fontSize: 14, cursor: clearingAll ? 'default' : 'pointer' }}>
+                {clearingAll ? 'Clearing…' : `Clear All (${newLeadCount})`}
+              </button>
+            </div>
           </div>
         </div>
       )}
