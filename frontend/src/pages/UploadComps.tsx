@@ -292,6 +292,9 @@ export default function UploadComps() {
   const [inventory, setInventory] = useState<{ items: CompInventoryItem[]; total_comps: number } | null>(null)
   const [loadingInventory, setLoadingInventory] = useState(false)
   const [showDropZone, setShowDropZone] = useState(false)
+  // replaceMode=true (default): clear all existing comps, then insert fresh
+  // replaceMode=false: append without deleting (add more comps)
+  const [replaceMode, setReplaceMode] = useState(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   async function loadInventory() {
@@ -335,7 +338,7 @@ export default function UploadComps() {
 
     for (const file of fileArr) {
       try {
-        const stats = await uploadComps(file, true)
+        const stats = await uploadComps(file, !replaceMode)
         setUploadResults(prev =>
           prev.map(r =>
             r.filename === file.name && r.status === 'uploading'
@@ -457,6 +460,40 @@ export default function UploadComps() {
           style={{ display: 'none' }}
           onChange={e => e.target.files && handleFiles(e.target.files)}
         />
+
+        {/* Replace vs Add toggle */}
+        {showDropZone && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <span style={{ fontSize: 12, color: '#6B7280', fontWeight: 500 }}>Upload mode:</span>
+            <button
+              onClick={() => setReplaceMode(true)}
+              style={{
+                padding: '5px 14px', fontSize: 12, fontWeight: 700, borderRadius: 6, cursor: 'pointer',
+                background: replaceMode ? '#DC2626' : '#F9FAFB',
+                color: replaceMode ? '#fff' : '#6B7280',
+                border: replaceMode ? 'none' : '1px solid #E5E7EB',
+              }}
+            >
+              Replace All
+            </button>
+            <button
+              onClick={() => setReplaceMode(false)}
+              style={{
+                padding: '5px 14px', fontSize: 12, fontWeight: 700, borderRadius: 6, cursor: 'pointer',
+                background: !replaceMode ? '#4F46E5' : '#F9FAFB',
+                color: !replaceMode ? '#fff' : '#6B7280',
+                border: !replaceMode ? 'none' : '1px solid #E5E7EB',
+              }}
+            >
+              Add More
+            </button>
+            <span style={{ fontSize: 11, color: replaceMode ? '#DC2626' : '#059669', fontWeight: 600 }}>
+              {replaceMode
+                ? 'Deletes existing comps then uploads fresh — prevents duplicates'
+                : 'Appends to existing comps — duplicate APNs skipped automatically'}
+            </span>
+          </div>
+        )}
 
         {/* Drop zone */}
         {showDropZone && (

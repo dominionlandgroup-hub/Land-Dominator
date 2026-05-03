@@ -104,13 +104,12 @@ def _load_comps_from_db(states: "list[str] | None" = None) -> "pd.DataFrame | No
         state_filter = [s.strip().upper() for s in (states or []) if s and s.strip()]
 
         while True:
+            # Load ALL comps — no state filter. County/coordinate matching handles geography.
             q = sb.table("crm_sold_comps").select(
-                "apn,sale_price,lot_acres,latitude,longitude,zip_code,state,county,sale_date,"
-                "price_per_acre,road_frontage,buildability_pct,flood_zone,fips,address"
+                "apn,sale_price,acreage,latitude,longitude,zip_code,state,county,sale_date,"
+                "price_per_acre,road_frontage,buildability,fema_coverage,wetlands_coverage,"
+                "slope_avg,elevation_avg,land_use,buyer_name,buyer_type,full_address,fips"
             )
-            if state_filter:
-                # Use Supabase .in_() filter — state column stores uppercase 2-letter codes
-                q = q.in_("state", state_filter)
             r = q.range(offset, offset + batch_size - 1).execute()
             batch = r.data or []
             rows.extend(batch)
@@ -119,9 +118,9 @@ def _load_comps_from_db(states: "list[str] | None" = None) -> "pd.DataFrame | No
             offset += batch_size
 
         if not rows:
-            state_msg = f" for states {state_filter}" if state_filter else ""
-            print(f"[match] No comps found in DB{state_msg}", flush=True)
+            print(f"[match] No comps found in DB", flush=True)
             return None
+        print(f"Loaded {len(rows)} total comps from database across all states", flush=True)
 
         # Map DB column names → LP export column names used by matching engine
         def _norm_county(v: object) -> str:
@@ -157,8 +156,7 @@ def _load_comps_from_db(states: "list[str] | None" = None) -> "pd.DataFrame | No
 
         df = pd.DataFrame(mapped)
         total = len(df)
-        state_msg = f" (states: {state_filter})" if state_filter else ""
-        print(f"Comps loaded: {total}{state_msg}", flush=True)
+        print(f"Comps mapped: {total}", flush=True)
 
         # Filter bad comps at load time
         df["Lot Acres"] = pd.to_numeric(df["Lot Acres"], errors="coerce")

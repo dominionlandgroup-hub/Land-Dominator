@@ -257,11 +257,10 @@ def _save_comps_to_db(
                 if s and s not in ("NAN", "NONE", "")
             ]
 
-        if not append and states:
-            # Legacy replace mode: clear existing comps for these states first
-            for state in states:
-                sb.table("crm_sold_comps").delete().eq("state", state).execute()
-            print(f"[comps-db] Replace mode: cleared comps for states {states}", flush=True)
+        if not append:
+            # Replace mode: delete ALL existing comps before inserting fresh data
+            sb.table("crm_sold_comps").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+            print("[comps-db] Replace mode: cleared ALL existing comps", flush=True)
 
         # For append mode, preload existing (apn, sale_date) pairs so we can skip true duplicates.
         # Same APN on different dates = different sales = keep both.
@@ -625,7 +624,7 @@ def parse_date(val) -> "str | None":
 @router.post("/comps")
 async def upload_comps(
     file: UploadFile = File(...),
-    append: bool = Query(True, description="True = append to existing comps; False = replace state"),
+    append: bool = Query(True, description="True = append (add more); False = replace all (clear then insert)"),
 ):
     import traceback as _tb
 
@@ -818,9 +817,19 @@ async def upload_comps(
         flush=True,
     )
 
-    # APN dedup — skip rows whose APN is already in DB
+    # Replace mode: clear all existing comps before dedup check
+    if not append:
+        try:
+            from services.supabase_client import get_supabase as _gsb_rep
+            _sb_rep = _gsb_rep()
+            _sb_rep.table("crm_sold_comps").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+            print("[comps] Replace mode: cleared ALL existing comps", flush=True)
+        except Exception as _rep_e:
+            print(f"[comps] Replace mode clear failed: {_rep_e}", flush=True)
+
+    # APN dedup — skip rows whose APN is already in DB (append mode only)
     deduped_count = 0
-    if rows:
+    if rows and append:
         apns_in_upload = [r["apn"] for r in rows if r.get("apn")]
         if apns_in_upload:
             try:
