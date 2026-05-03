@@ -552,6 +552,7 @@ async def db_check_columns() -> dict:
         }
 
 
+@router.get("/db-migrate")
 @router.post("/db-migrate")
 async def db_migrate() -> dict:
     """
@@ -906,19 +907,36 @@ async def update_crm_campaign(campaign_id: str, body: CRMCampaignUpdate) -> dict
 
 @router.delete("/campaigns/{campaign_id}")
 async def delete_crm_campaign(campaign_id: str) -> dict:
-    """
-    Delete a campaign and its mail drops.
-    Properties have campaign_id SET NULL via DB constraint — no manual cleanup needed.
-    """
+    """Delete a campaign and all its properties, mail drops, and communications."""
     try:
         sb = get_supabase()
         print(f"[delete-campaign] deleting {campaign_id}", flush=True)
 
-        # Delete mail drops first (FK: campaign_id → crm_campaigns)
-        sb.table("crm_mail_drops").delete().eq("campaign_id", campaign_id).execute()
-        print(f"[delete-campaign] mail drops deleted", flush=True)
+        # 1. Get property IDs first for comm/doc cleanup
+        props_r = sb.table("crm_properties").select("id").eq("campaign_id", campaign_id).execute()
+        prop_ids = [p["id"] for p in (props_r.data or [])]
+        print(f"[delete-campaign] {len(prop_ids)} properties to delete", flush=True)
 
-        # Delete the campaign — DB SET NULL constraint handles crm_properties.campaign_id
+        # 2. Delete communications for these properties
+        if prop_ids:
+            for pid in prop_ids:
+                try:
+                    sb.table("crm_communications").delete().eq("property_id", pid).execute()
+                except Exception:
+                    pass
+
+        # 3. Delete properties
+        if prop_ids:
+            sb.table("crm_properties").delete().eq("campaign_id", campaign_id).execute()
+            print(f"[delete-campaign] properties deleted", flush=True)
+
+        # 4. Delete mail drops
+        try:
+            sb.table("crm_mail_drops").delete().eq("campaign_id", campaign_id).execute()
+        except Exception:
+            pass
+
+        # 5. Delete the campaign
         sb.table("crm_campaigns").delete().eq("id", campaign_id).execute()
         print(f"[delete-campaign] campaign {campaign_id} deleted OK", flush=True)
 
