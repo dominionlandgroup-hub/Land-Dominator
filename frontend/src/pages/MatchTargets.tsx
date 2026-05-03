@@ -684,7 +684,7 @@ export default function MatchTargets() {
                         <span className="text-3xl font-bold" style={{ color: '#10B981' }}>{distMatchedCt.toLocaleString()}</span>
                         <span className="text-sm font-semibold" style={{ color: '#10B981' }}>Distance-matched records (strong comps within 3 miles)</span>
                       </div>
-                      <p className="text-[11px]" style={{ color: '#6B7280' }}>{matchResult.total_targets.toLocaleString()} total targets</p>
+                      <p className="text-[11px]" style={{ color: '#6B7280' }}>{(matchResult.total_targets ?? 0).toLocaleString()} total targets</p>
                     </div>
                     <button className="btn-primary text-sm" style={{ padding: '8px 16px' }} onClick={() => setShowMailingModal(true)}>
                       + Add to Mailing List
@@ -759,7 +759,7 @@ export default function MatchTargets() {
 
             {/* Result summary cards */}
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-              <ResultCard label="Comp-Matched" value={matchResult.matched_count.toLocaleString()} accent="#10B981" sub="Ready to mail" />
+              <ResultCard label="Comp-Matched" value={(matchResult.matched_count ?? 0).toLocaleString()} accent="#10B981" sub="Ready to mail" />
               <ResultCard label="County Median" value={((matchResult as any).county_median_count ?? 0).toLocaleString()} accent="#3B82F6" sub="Estimated" />
               <ResultCard label="LP Estimate Only" value={(matchResult.lp_fallback_count ?? 0).toLocaleString()} accent="#C084FC" sub="Reference only" />
               <ResultCard label="Below Floor" value={((matchResult.low_offer_count ?? 0) + (matchResult.low_value_count ?? 0)).toLocaleString()} accent="#F59E0B" sub="Offer too low" />
@@ -802,7 +802,7 @@ export default function MatchTargets() {
                           }} />
                         </div>
                         <span className="text-xs tabular-nums font-semibold w-14 text-right" style={{ color: r.color }}>
-                          {pb[r.key].toLocaleString()}
+                          {(pb[r.key] ?? 0).toLocaleString()}
                         </span>
                       </div>
                     ))}
@@ -952,7 +952,7 @@ export default function MatchTargets() {
                         {Object.entries(reasonGroups).sort(([, a], [, b]) => b - a).map(([reason, count]) => (
                           <div key={reason} className="flex justify-between items-center px-2.5 py-1.5 rounded-lg" style={{ background: '#F3F4F6' }}>
                             <span className="text-xs" style={{ color: '#374151' }}>{reason}</span>
-                            <span className="text-xs font-semibold tabular-nums" style={{ color: '#9CA3AF' }}>{count.toLocaleString()}</span>
+                            <span className="text-xs font-semibold tabular-nums" style={{ color: '#9CA3AF' }}>{(count ?? 0).toLocaleString()}</span>
                           </div>
                         ))}
                       </div>
@@ -1044,7 +1044,7 @@ export default function MatchTargets() {
             <div className="flex flex-col gap-1 mb-3">
               <label className="label-caps">Records to add</label>
               <div className="rounded-lg px-3 py-2 text-sm font-medium" style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', color: '#10B981' }}>
-                ✓ {matchResult.matched_count.toLocaleString()} Comp-Matched Records
+                ✓ {(matchResult.matched_count ?? 0).toLocaleString()} Comp-Matched Records
               </div>
               <p className="text-[10px] mt-0.5" style={{ color: '#10B981' }}>
                 Only records priced from local sold comps — LP Fallback records are excluded
