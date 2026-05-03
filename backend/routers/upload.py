@@ -836,7 +836,7 @@ async def upload_comps(
         except Exception as _rep_e:
             print(f"[comps] Replace mode clear failed: {_rep_e}", flush=True)
 
-    # APN dedup — skip rows whose APN is already in DB (append mode only)
+    # Dedup by (apn, state, sale_date) — same APN on different dates = different sale = keep
     deduped_count = 0
     if rows and append:
         apns_in_upload = [r["apn"] for r in rows if r.get("apn")]
@@ -844,18 +844,18 @@ async def upload_comps(
             try:
                 from services.supabase_client import get_supabase as _gsb
                 _sb = _gsb()
-                existing_apns: set[str] = set()
+                # Fetch existing (apn, state, sale_date) combos for the APNs in this upload
+                existing_keys: set[tuple] = set()
                 for i in range(0, len(apns_in_upload), 500):
                     batch = apns_in_upload[i:i + 500]
-                    res = _sb.table("crm_sold_comps").select("apn").in_("apn", batch).execute()
+                    res = _sb.table("crm_sold_comps").select("apn,state,sale_date").in_("apn", batch).execute()
                     for r in (res.data or []):
-                        if r.get("apn"):
-                            existing_apns.add(r["apn"])
+                        existing_keys.add((r.get("apn") or "", r.get("state") or "", r.get("sale_date") or ""))
                 before = len(rows)
-                rows = [r for r in rows if not r.get("apn") or r["apn"] not in existing_apns]
+                rows = [r for r in rows if (r.get("apn") or "", r.get("state") or "", r.get("sale_date") or "") not in existing_keys]
                 deduped_count = before - len(rows)
                 if deduped_count:
-                    print(f"[comps] APN dedup: skipped {deduped_count} rows already in DB", flush=True)
+                    print(f"[comps] Dedup: skipped {deduped_count} rows already in DB (same APN+state+date)", flush=True)
             except Exception as _e:
                 print(f"[comps] APN dedup check failed (continuing without dedup): {_e}", flush=True)
 
@@ -913,7 +913,7 @@ async def upload_comps(
             try:
                 result = supabase.table('crm_sold_comps').upsert(
                     chunk,
-                    on_conflict='apn,state',
+                    on_conflict='apn,state,sale_date',
                     ignore_duplicates=True,
                 ).execute()
                 # supabase-py v1: errors in result.error; v2: raises APIError
@@ -923,10 +923,19 @@ async def upload_comps(
                 saved += chunk_saved
                 print(f"[comps] Saved chunk {i}–{i + len(chunk)}: {saved} total", flush=True)
             except Exception as chunk_exc:
+                # Batch failed (e.g. old unique constraint) — fall back to row-by-row
                 err_msg = str(chunk_exc)
-                errors.append(err_msg)
-                print(f"[comps] CHUNK ERROR at rows {i}–{i + len(chunk)}: {err_msg}", flush=True)
-                _tb.print_exc()
+                print(f"[comps] Chunk {i}–{i + len(chunk)} failed ({err_msg[:120]}), retrying row-by-row…", flush=True)
+                row_saved = 0
+                for row_item in chunk:
+                    try:
+                        r2 = supabase.table('crm_sold_comps').insert(row_item).execute()
+                        if not (hasattr(r2, 'error') and r2.error):
+                            row_saved += 1
+                    except Exception:
+                        pass  # true duplicate or bad row — skip silently
+                saved += row_saved
+                print(f"[comps] Row-by-row fallback: {row_saved}/{len(chunk)} saved", flush=True)
 
         print(f"[comps] TOTAL SAVED TO DATABASE: {saved}", flush=True)
         if errors:

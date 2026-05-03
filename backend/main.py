@@ -104,6 +104,32 @@ async def start_scheduler() -> None:
 
 
 @app.on_event("startup")
+async def apply_db_migrations() -> None:
+    """Apply idempotent DB schema migrations at startup."""
+    service_key = os.getenv("SUPABASE_SERVICE_KEY", "").strip()
+    url = os.getenv("SUPABASE_URL", "").strip()
+    if not service_key or not url:
+        print("[migration] SUPABASE_SERVICE_KEY not set — skipping DB migration (run manually in Supabase SQL editor)", flush=True)
+        return
+    try:
+        from supabase import create_client
+        admin = create_client(url, service_key)
+        sql = (
+            "ALTER TABLE crm_sold_comps DROP CONSTRAINT IF EXISTS unique_apn_sale; "
+            "ALTER TABLE crm_sold_comps DROP CONSTRAINT IF EXISTS unique_apn_state; "
+            "DO $$ BEGIN "
+            "  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'unique_apn_state_date') THEN "
+            "    ALTER TABLE crm_sold_comps ADD CONSTRAINT unique_apn_state_date UNIQUE (apn, state, sale_date); "
+            "  END IF; "
+            "END $$;"
+        )
+        admin.rpc("exec_sql", {"sql": sql}).execute()
+        print("[migration] unique_apn_state_date constraint applied", flush=True)
+    except Exception as exc:
+        print(f"[migration] DB migration skipped: {exc}", flush=True)
+
+
+@app.on_event("startup")
 async def check_env_vars() -> None:
     """Log presence/absence of all required environment variables at startup."""
     required_vars = [
