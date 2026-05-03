@@ -1,4 +1,4 @@
-"""Communications router — Telnyx calls, SMS, and ElevenLabs AI voice agent."""
+"""Communications router — Telnyx calls, SMS, and Cartesia AI voice agent (Myra)."""
 import asyncio
 import hashlib
 import json
@@ -23,8 +23,8 @@ print("=== Communications router loaded - ready for calls ===")
 
 def _telnyx_key() -> str:    return os.getenv("TELNYX_API_KEY", "")
 def _telnyx_phone() -> str:  return os.getenv("TELNYX_PHONE_NUMBER", "")
-def _elevenlabs_key() -> str: return os.getenv("ELEVENLABS_API_KEY", "")
-def _elevenlabs_voice() -> str: return os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
+def _cartesia_key() -> str:  return os.getenv("CARTESIA_API_KEY", "")
+def _cartesia_voice() -> str: return os.getenv("CARTESIA_VOICE_ID", "")
 def _admin_email() -> str:   return os.getenv("ADMIN_EMAIL", "dupeedamien@gmail.com")
 def _sendgrid_key() -> str:  return os.getenv("SENDGRID_API_KEY", "")
 
@@ -49,97 +49,126 @@ _warmup_done: bool = False
 _AUDIO_DIR = Path("/tmp/tts_cache")
 _AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 
-# The 7 phrases pre-cached with ElevenLabs at startup.
-# Kept small so warmup finishes in ~7 seconds and never hits the rate limit.
+# Core phrases pre-cached with Cartesia at startup (1 s gap each).
 _WARMUP_KEYS: frozenset[str] = frozenset({
-    "greeting", "offer_code_hint", "got_it_name",
-    "interested", "confirm_callback", "close_hot", "close_cold",
+    "greeting", "collect_name", "collect_callback_time",
+    "close_hot_base", "close_cold", "still_there", "voicemail", "after_hours",
 })
 
-# ALL phrase texts — used for Polly <Say> fallback when ElevenLabs cache is incomplete.
-# Non-warmup phrases (not_found, still_there, etc.) always use Polly; that's fine because
-# they play rarely and callers won't notice the voice switch within a single phrase.
-# The rule is: NEVER mix voices within the CORE flow. Core phrases are in _WARMUP_KEYS.
+# Static phrase texts used for Polly <Say> fallback when Cartesia cache is absent.
 _PHRASES: dict[str, str] = {
-    # ── Core (pre-cached) ───────────────────────────────────────────────────
     "greeting": (
-        "Thank you for calling Dominion Land Group. I'm Myra. "
-        "Do you have the offer code from your letter?"
+        "Thank you for calling Dominion Land Group, this is Myra. "
+        "How can I help you?"
     ),
-    "offer_code_hint": (
-        "The code is just below your mailing address — "
-        "two numbers, a dash, then a few more numbers. Do you see it?"
+    "collect_name":          "Can I get your name?",
+    "collect_asking_price":  "I understand. What number were you thinking?",
+    "collect_callback_time": "What is the best time to reach you?",
+    "confirm_callback":      "Is that the best number to reach you?",
+    "close_hot_base":        "Got it. Someone will call you within 24 to 48 hours. Have a great day.",
+    "close_cold": (
+        "That is completely fine. "
+        "Would it be okay if we followed up in a few months in case things change?"
     ),
-    "got_it_name":      "Got it. Can I get your first and last name?",
-    "interested":       "Are you interested in our cash offer for your property?",
-    "confirm_callback": "Is that the best number to reach you?",
-    "close_hot":        "Perfect. Someone will call you back shortly. Have a great day.",
-    "close_cold":       "I understand. Thank you for calling. Have a great day.",
-    # ── Auxiliary (Polly only — not pre-cached) ─────────────────────────────
-    "not_found":      "I wasn't able to find that code. Can you repeat it slowly, one number at a time?",
-    "no_code_name":   "No problem. Can I get your first and last name?",
-    "no_code_county": "And what county is the property located in?",
+    "follow_up_yes":  "We will reach out in a few months. Take care.",
+    "not_interested": "No problem. Take care.",
     "still_there":    "Are you still there?",
     "goodbye":        "Thank you for calling. Have a great day.",
-    "voicemail": (
-        "Hi, this is Dominion Land Group calling about your property. "
-        "We sent you a letter with a cash offer and would love to connect. "
-        "Please call us back at your earliest convenience. Thank you!"
+    "wrong_number":   "Sorry about that.",
+    "opt_out":        "Done. You will not hear from us again.",
+    "live_transfer":  "Hold on one moment. Let me connect you.",
+    "after_hours": (
+        "Thank you for calling Dominion Land Group. "
+        "We are currently closed. "
+        "Please leave a message or text us and we will get back to you within 24 hours."
     ),
-    "faq_redirect": (
-        "Great question. A team member will answer that when they call you back. "
-        "Can I get your first and last name?"
+    "voicemail": (
+        "Hi, this is Myra with Dominion Land Group. "
+        "We reached out about your property recently and just wanted to connect. "
+        "Give us a call back at {telnyx_number} or reply to our text. "
+        "Talk soon."
     ),
 }
 
 # ── FAQ knowledge base ────────────────────────────────────────────────────────────
 _DEFAULT_FAQ: list[dict] = [
     {
-        "question_keywords": ["how does this work", "how does it work", "how it works", "explain the process", "walk me through"],
-        "answer": "We buy land directly from owners like you for cash. No agents, no fees, no waiting. We make a fair offer and can close in as little as two to three weeks.",
+        "question_keywords": ["how does this work", "how does it work", "how it works", "explain the process", "walk me through", "what is the process", "how do you"],
+        "answer": "Simple. We sign a purchase agreement. Attorney does title search. We do our due diligence. Once everything clears we schedule closing. 30 days or less. We cover all closing costs except back taxes. Payment by wire or check.",
     },
     {
-        "question_keywords": ["are you legit", "are you legitimate", "is this legit", "is this legitimate", "real company", "really real"],
-        "answer": "Absolutely. Dominion Land Group is a licensed real estate company. We've purchased hundreds of properties across the country and you can verify us online.",
+        "question_keywords": ["are you legit", "are you legitimate", "is this legit", "is this legitimate", "real company", "really real", "is this a scam", "scam", "fraud", "fake"],
+        "answer": "We never ask for money upfront. You only get paid at closing through a licensed title company. You can look us up at dominionlandgroup.land.",
     },
     {
-        "question_keywords": ["what is dominion", "dominion land group", "who is dominion", "what company", "your company"],
-        "answer": "Dominion Land Group is a real estate investment company that specializes in purchasing vacant land directly from owners at fair cash prices.",
+        "question_keywords": ["what is dominion", "dominion land group", "who is dominion", "what company", "your company", "who are you", "what do you do"],
+        "answer": "Dominion Land Group. We buy vacant land directly from owners in Florida, Tennessee, North Carolina, South Carolina, Georgia, and Texas.",
     },
     {
-        "question_keywords": ["how much", "what's the offer", "what is the offer", "how much are you offering", "what's your offer", "offer amount", "price"],
-        "answer": "Your specific offer amount is printed on the letter we sent you, right next to your offer code. Would you like to provide that code so I can look up your exact offer?",
+        "question_keywords": ["why do you want", "why are you buying", "why buy my land", "why do you buy", "what do you do with it", "why are you calling me", "why did you call"],
+        "answer": "We saw you own vacant land and wanted to see if you had any interest in selling.",
     },
     {
-        "question_keywords": ["why do you want", "why are you buying", "why buy my land", "why do you buy", "what do you do with it"],
-        "answer": "We invest in land for future development and resale. We focus on making the process simple and fast for sellers who want a hassle-free cash sale.",
+        "question_keywords": ["how long does it take", "how long to close", "how long will it", "timeline", "when would i get paid", "how soon", "how long"],
+        "answer": "30 days or less.",
     },
     {
-        "question_keywords": ["is this a scam", "this a scam", "sounds like a scam", "scam", "fraud", "fake"],
-        "answer": "I completely understand that concern. We never ask for money upfront. You only receive payment at closing through a licensed title company, which protects you completely.",
+        "question_keywords": ["who pays closing", "closing costs", "fees", "cost to me"],
+        "answer": "We do. Except back taxes.",
     },
     {
-        "question_keywords": ["how long does it take", "how long to close", "how long will it", "timeline", "when would i get paid", "how soon"],
-        "answer": "We can typically close in two to three weeks once you accept the offer. The entire process goes through a licensed title company for your protection.",
+        "question_keywords": ["what is a title company", "title company", "title agent", "escrow"],
+        "answer": "They handle the closing paperwork and make sure you get paid. Either by wire or check, your choice.",
     },
     {
-        "question_keywords": ["tell me more", "what do you do", "who are you", "what's this about", "whats this about", "what is this about", "what's going on"],
-        "answer": "We're Dominion Land Group. We buy vacant land directly from owners with fair cash offers and a fast, simple closing process. We sent you a letter about your property.",
+        "question_keywords": ["how will i get paid", "get paid", "payment", "wire transfer", "check"],
+        "answer": "The title company handles payment. Wire transfer or check, whichever you prefer.",
+    },
+    {
+        "question_keywords": ["are you a realtor", "realtor", "real estate agent", "agent", "mls", "listing"],
+        "answer": "No. We are direct buyers.",
+    },
+    {
+        "question_keywords": ["are you a builder", "builder", "developer", "build on it"],
+        "answer": "We work with builders. We buy the land directly from owners.",
+    },
+    {
+        "question_keywords": ["do you have a website", "website", "web site", "online", "dominionlandgroup"],
+        "answer": "Yes. dominionlandgroup.land",
+    },
+    {
+        "question_keywords": ["where are you located", "where are you", "your office", "charlotte", "location"],
+        "answer": "Charlotte, North Carolina.",
+    },
+    {
+        "question_keywords": ["how did you get my number", "where did you get my number", "how did you find me", "public records", "county records"],
+        "answer": "Property records are public through the county. We found your number there.",
+    },
+    {
+        "question_keywords": ["how long in business", "how long have you been", "years in business", "established"],
+        "answer": "Several years.",
+    },
+    {
+        "question_keywords": ["what states", "what areas", "where do you buy", "coverage", "do you buy in"],
+        "answer": "Florida, Tennessee, North Carolina, South Carolina, Georgia, and Texas.",
+    },
+    {
+        "question_keywords": ["tell me more", "what's this about", "whats this about", "what is this about", "what's going on", "what is this"],
+        "answer": "We buy vacant land directly from owners for cash. No agents, no fees, 30 days or less to close.",
     },
 ]
 
 _FAQ_FALLBACK_ANSWER = (
-    "That's a great question. Let me have one of our team members call you back to answer that in detail."
+    "I will have Damien call you back and he can answer everything. When works for you?"
 )
 
 
 def _audio_path(cache_key: str) -> Path:
-    return _AUDIO_DIR / f"{cache_key}.mp3"
+    return _AUDIO_DIR / f"{cache_key}.wav"
 
 
 def _all_core_cached() -> bool:
-    """True only when every warmup phrase has a cached mp3 file on disk.
-    Used to enforce the all-ElevenLabs-or-all-Polly rule within a call."""
+    """True only when every warmup phrase has a cached WAV file on disk."""
     return all(_audio_path(k).exists() for k in _WARMUP_KEYS)
 
 
@@ -151,53 +180,46 @@ def _cached_url(cache_key: str) -> Optional[str]:
 
 
 async def _tts_generate(text: str, cache_key: str) -> bool:
-    """Generate ElevenLabs TTS and cache to disk. Returns True on success."""
-    api_key = _elevenlabs_key()
-    voice_id = _elevenlabs_voice()
-    if not api_key:
+    """Generate Cartesia TTS and cache to disk as WAV. Returns True on success."""
+    api_key = _cartesia_key()
+    voice_id = _cartesia_voice()
+    if not api_key or not voice_id:
         return False
     path = _audio_path(cache_key)
     if path.exists():
         return True
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            r = await client.post(
-                f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
-                json={
-                    "text": text,
-                    "model_id": "eleven_turbo_v2_5",
-                    "voice_settings": {
-                        "stability": 0.35,
-                        "similarity_boost": 0.8,
-                        "style": 0.0,
-                        "use_speaker_boost": True,
-                        "speed": 1.15,
-                    },
-                },
-                headers={
-                    "xi-api-key": api_key,
-                    "Content-Type": "application/json",
-                    "accept": "audio/mpeg",
-                },
-            )
-            if r.status_code == 200:
-                path.write_bytes(r.content)
-                return True
-            print(f"[comms] ElevenLabs {r.status_code}: {r.text[:200]}")
+        import cartesia as _cartesia_mod
+        client = _cartesia_mod.Cartesia(api_key=api_key)
+        audio_bytes = await asyncio.to_thread(
+            client.tts.bytes,
+            model_id="sonic-english",
+            transcript=text,
+            voice_id=voice_id,
+            output_format={
+                "container": "wav",
+                "encoding": "pcm_s16le",
+                "sample_rate": 16000,
+            },
+        )
+        if audio_bytes:
+            path.write_bytes(audio_bytes)
+            return True
+        print(f"[comms] Cartesia returned empty audio for key={cache_key}")
     except Exception as exc:
-        print(f"[comms] ElevenLabs TTS error: {exc}")
+        print(f"[comms] Cartesia TTS error for key={cache_key}: {exc}")
     return False
 
 
 @router.get("/api/calls/audio/{cache_key}")
 async def serve_tts_audio(cache_key: str) -> Response:
-    """Serve pre-cached ElevenLabs mp3 directly. No processing — pure file read."""
+    """Serve pre-cached Cartesia WAV directly. No processing — pure file read."""
     path = _audio_path(cache_key)
     if not path.exists():
         raise HTTPException(status_code=404, detail="Audio not found")
     return Response(
         path.read_bytes(),
-        media_type="audio/mpeg",
+        media_type="audio/wav",
         headers={
             "Cache-Control": "public, max-age=86400",
             "Accept-Ranges": "bytes",
@@ -215,7 +237,7 @@ async def calls_health() -> dict:
         "status": "ok",
         "warmup_done": _warmup_done,
         "core_cached": f"{cached_core}/{len(_WARMUP_KEYS)} core phrases ready",
-        "voice_mode": "elevenlabs" if all_ready else "polly",
+        "voice_mode": "cartesia" if all_ready else "polly",
         "polly_fallback": "active" if not all_ready else "standby",
     }
 
@@ -257,18 +279,17 @@ async def save_faq(request: Request) -> dict:
 
 
 async def warmup() -> None:
-    """Pre-cache the 7 core ElevenLabs phrases at startup.
-    Server accepts calls immediately via Polly fallback while warmup runs.
-    Sequential with 1 s gap → never hits the 6-concurrent rate limit.
-    Once all 7 are cached the agent switches to ElevenLabs for the whole call."""
+    """Pre-cache core Cartesia phrases at startup with 1 s gap each.
+    Server accepts calls immediately via Polly <Say> while warmup runs.
+    Once all core phrases are cached, Cartesia <Play> is used for the whole call."""
     global _warmup_done
-    if not _elevenlabs_key():
-        print("[comms] ElevenLabs not configured — Polly fallback active for all calls")
+    if not _cartesia_key() or not _cartesia_voice():
+        print("[comms] Cartesia not configured — Polly fallback active for all calls")
         _warmup_done = True
         return
 
     keys_to_cache = [(k, _PHRASES[k]) for k in _WARMUP_KEYS if k in _PHRASES]
-    print(f"[comms] Warmup starting — {len(keys_to_cache)} core phrases, 1 s gap each...")
+    print(f"[comms] Warmup starting — {len(keys_to_cache)} core phrases via Cartesia, 1 s gap each...")
 
     ok = 0
     for key, text in keys_to_cache:
@@ -285,7 +306,7 @@ async def warmup() -> None:
 
     _warmup_done = True
     all_ready = _all_core_cached()
-    voice_mode = "ElevenLabs" if all_ready else "Polly (some phrases missing)"
+    voice_mode = "Cartesia" if all_ready else "Polly (some phrases missing)"
     print(f"[comms] Warmup done — {ok}/{len(keys_to_cache)} cached, voice mode: {voice_mode}", flush=True)
 
 
@@ -305,8 +326,7 @@ def _say(text: str, audio_url: Optional[str] = None) -> str:
 
 
 def _phrase(key: str) -> str:
-    """Return a <Play> if ALL core phrases are cached, else Polly <Say>.
-    Never mixes voices within a call — either 100% ElevenLabs or 100% Polly."""
+    """Return a <Play> if ALL core phrases are Cartesia-cached, else Polly <Say>."""
     text = _PHRASES.get(key, key)
     if _all_core_cached() and _audio_path(key).exists():
         url = f"{_base_url()}/api/calls/audio/{key}"
@@ -371,170 +391,88 @@ def _texml_hangup(inner_xml: str) -> Response:
     return Response(xml, media_type="text/xml")
 
 
-# ── Offer-code matching ──────────────────────────────────────────────────────────
+# ── Business hours ──────────────────────────────────────────────────────────────
 
-_SPOKEN_DIGITS = {
-    "zero": "0", "one": "1", "two": "2", "three": "3", "four": "4",
-    "five": "5", "six": "6", "seven": "7", "eight": "8", "nine": "9",
-    "oh": "0", "to": "2", "too": "2", "for": "4",
-    "ten": "10", "eleven": "11", "twelve": "12", "thirteen": "13",
-    "fourteen": "14", "fifteen": "15", "sixteen": "16", "seventeen": "17",
-    "eighteen": "18", "nineteen": "19", "twenty": "20", "thirty": "30",
-    "forty": "40", "fifty": "50", "sixty": "60", "seventy": "70",
-    "eighty": "80", "ninety": "90",
-}
-
-_TENS_VALUES = {"twenty": 20, "thirty": 30, "forty": 40, "fifty": 50,
-                "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90}
-_UNITS_VALUES = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
-                 "six": 6, "seven": 7, "eight": 8, "nine": 9, "for": 4, "to": 2, "too": 2}
-_SKIP_WORDS = {"dash", "hyphen", "minus", "and", "my", "code", "is", "the",
-               "it", "number", "offer", "letter", "that", "at", "a"}
-
-
-def _normalize_code(code: str) -> str:
-    return re.sub(r"[\s\-_]", "", code).lower()
-
-
-def _speech_to_digits(speech: str) -> str:
-    """Convert spoken words/numbers to a digit string.
-
-    Handles compound numbers: 'thirty seven' → '37', 'oh two' → '02'.
-    """
-    words = re.split(r"[\s,]+", speech.lower())
-    parts: list[str] = []
-    i = 0
-    while i < len(words):
-        w = re.sub(r"[^\w]", "", words[i])
-        if not w or w in _SKIP_WORDS:
-            i += 1
-            continue
-        if w in _TENS_VALUES:
-            tens_val = _TENS_VALUES[w]
-            if i + 1 < len(words):
-                nw = re.sub(r"[^\w]", "", words[i + 1])
-                if nw in _UNITS_VALUES:
-                    # "thirty seven" → 37
-                    parts.append(str(tens_val + _UNITS_VALUES[nw]))
-                    i += 2
-                    continue
-            parts.append(str(tens_val))
-            i += 1
-            continue
-        if w in _SPOKEN_DIGITS:
-            parts.append(_SPOKEN_DIGITS[w])
-        elif re.match(r"^\d+$", w):
-            parts.append(w)
-        i += 1
-    return "".join(parts)
-
-
-def _extract_code_candidates(speech: str) -> list[str]:
-    """Generate all plausible code strings from spoken input.
-
-    Tries explicit dash splits, raw digit sequences, and spoken-word conversion.
-    For each digit string, tries all campaign-record split points (1 or 2 digits
-    for campaign) with zero-padded campaign number.
-    """
-    candidates: list[str] = []
-
-    def _add_splits(digit_str: str) -> None:
-        if not digit_str:
-            return
-        candidates.append(digit_str)
-        for split in range(1, min(3, len(digit_str))):
-            campaign_part = digit_str[:split]
-            record_part = digit_str[split:]
-            if record_part:
-                try:
-                    padded = f"{int(campaign_part):02d}-{record_part}"
-                    candidates.append(padded)
-                except ValueError:
-                    pass
-                candidates.append(f"{campaign_part}-{record_part}")
-
-    # Strategy 1: explicit spoken dash separates campaign from record
-    dash_parts = re.split(r"\b(?:dash|hyphen|minus)\b", speech.lower(), maxsplit=1)
-    if len(dash_parts) == 2:
-        p1 = _speech_to_digits(dash_parts[0])
-        p2 = _speech_to_digits(dash_parts[1])
-        if p1 and p2:
-            try:
-                candidates.append(f"{int(p1):02d}-{p2}")
-            except ValueError:
-                pass
-            candidates.append(f"{p1}-{p2}")
-
-    # Strategy 2: raw digit sequences already in speech text
-    raw_patterns = re.findall(r"\d[\d\s\-]*\d|\d", speech)
-    for p in raw_patterns:
-        norm = _normalize_code(p)
-        _add_splits(norm)
-
-    # Strategy 3: full spoken-word → digit conversion
-    spoken = _speech_to_digits(speech)
-    _add_splits(spoken)
-
-    return list(dict.fromkeys(candidates))
-
-
-async def _lookup_offer_code(speech: str) -> Optional[dict]:
-    """Look up a property by offer code extracted from speech.
-
-    Tries multiple strategies: exact ILIKE, normalized string match, and
-    digit-only match that ignores leading zeros on the campaign number.
-    """
-    candidates = _extract_code_candidates(speech)
-    if not candidates:
-        return None
-    sb = get_supabase()
-
-    # Pass 1 — ILIKE exact match for each candidate
-    for candidate in candidates:
-        try:
-            r = (
-                sb.table("crm_properties")
-                .select("id,owner_full_name,owner_first_name,owner_last_name,apn,county,state,campaign_code,offer_price,campaign_id")
-                .ilike("campaign_code", candidate)
-                .limit(1)
-                .execute()
-            )
-            if r.data:
-                return r.data[0]
-        except Exception:
-            pass
-
-    # Pass 2 — load all codes, compare by normalized string and digit-only
-    norm_candidates = {_normalize_code(c) for c in candidates}
-    digit_candidates = {re.sub(r"[^\d]", "", c) for c in candidates}
-    # also add versions without leading zero on campaign (e.g. "237" matches "0237")
-    expanded_digits: set[str] = set(digit_candidates)
-    for d in list(digit_candidates):
-        if d and d[0] == "0":
-            expanded_digits.add(d[1:])
-        elif len(d) >= 1:
-            expanded_digits.add(f"0{d}")
-
+def _is_business_hours() -> bool:
+    """True if current time is within business hours (8am–8pm Eastern Mon–Sun).
+    Covers FL/TN/NC/SC/GA (9am–7pm ET) and TX (8am–6pm CT) with margin."""
     try:
+        from datetime import timezone as _tz
+        import zoneinfo
+        eastern = zoneinfo.ZoneInfo("America/New_York")
+        now_et = datetime.now(eastern)
+        return 8 <= now_et.hour < 20
+    except Exception:
+        return True  # default open on zoneinfo error
+
+
+# ── Acquisitions manager helper ──────────────────────────────────────────────────
+
+_acq_manager_cache: dict = {"name": None, "ts": 0.0}
+_ACQ_MANAGER_TTL = 300.0
+
+
+def _get_acq_manager_name() -> str:
+    import time as _time
+    now = _time.time()
+    if _acq_manager_cache["name"] is not None and now - _acq_manager_cache["ts"] < _ACQ_MANAGER_TTL:
+        return _acq_manager_cache["name"]
+    try:
+        sb = get_supabase()
+        r = sb.table("crm_settings").select("value").eq("key", "acquisitions_manager_name").limit(1).execute()
+        if r.data:
+            name = str(r.data[0].get("value") or "Damien").strip()
+            _acq_manager_cache["name"] = name
+            _acq_manager_cache["ts"] = now
+            return name
+    except Exception:
+        pass
+    _acq_manager_cache["name"] = "Damien"
+    _acq_manager_cache["ts"] = now
+    return "Damien"
+
+
+# ── Offer price range ────────────────────────────────────────────────────────────
+
+def _offer_price_range(offer_price) -> tuple[str, str]:
+    """Return (low_str, high_str) rounded to nearest $1,000."""
+    try:
+        price = float(offer_price)
+        low = int(round(price * 0.90 / 1000) * 1000)
+        high = int(round(price * 1.15 / 1000) * 1000)
+        return f"${low:,}", f"${high:,}"
+    except Exception:
+        return "", ""
+
+
+# ── Lookup property by address (for call flow) ───────────────────────────────────
+
+async def _lookup_by_address(address: str) -> Optional[dict]:
+    """Fuzzy address search in crm_properties."""
+    if not address:
+        return None
+    try:
+        sb = get_supabase()
+        clean = address.strip()
         r = (
             sb.table("crm_properties")
-            .select("id,owner_full_name,owner_first_name,owner_last_name,apn,county,state,campaign_code,offer_price,campaign_id")
-            .not_.is_("campaign_code", "null")
+            .select("*")
+            .ilike("situs_address", f"%{clean[:30]}%")
+            .limit(1)
             .execute()
         )
-        for p in r.data or []:
-            code = p.get("campaign_code") or ""
-            norm = _normalize_code(code)
-            digits = re.sub(r"[^\d]", "", code)
-            if norm in norm_candidates:
-                return p
-            if digits in digit_candidates or digits in expanded_digits:
-                return p
-            # strip leading zero from campaign part and retry
-            if len(digits) >= 2 and digits[0] == "0":
-                stripped = digits[1:]
-                if stripped in digit_candidates or stripped in expanded_digits:
-                    return p
+        if r.data:
+            return r.data[0]
+        # Try property_address field
+        r = (
+            sb.table("crm_properties")
+            .select("*")
+            .ilike("property_address", f"%{clean[:30]}%")
+            .limit(1)
+            .execute()
+        )
+        if r.data:
+            return r.data[0]
     except Exception:
         pass
     return None
@@ -870,13 +808,92 @@ def _inc_step_retries(call_sid: str, state: dict, step: str) -> int:
     return retries[step]
 
 
+# ── Call flow helpers ─────────────────────────────────────────────────────────────
+
+async def _build_offer_intro(call_sid: str, state: dict) -> Response:
+    """Build the dynamic offer-intro TeXML and return it as a gather response."""
+    mgr = _get_acq_manager_name()
+    address = state.get("property_address", "")
+    city = state.get("property_city", "")
+    state_abbr = state.get("property_state", "")
+    offer_price = state.get("offer_price")
+    location = ", ".join(filter(None, [city, state_abbr]))
+    address_full = " ".join(filter(None, [address, location]))
+
+    if offer_price:
+        low_str, high_str = _offer_price_range(offer_price)
+        if address_full:
+            intro_text = (
+                f"Yes, we reached out because we saw you own some vacant land at {address_full}. "
+                f"Based on what we know about your property we are looking at somewhere "
+                f"in the range of {low_str} to {high_str} cash. "
+                "Is that something worth having a conversation about?"
+            )
+        else:
+            intro_text = (
+                f"Yes, we reached out because we saw you own some vacant land. "
+                f"Based on what we know about your property we are looking at somewhere "
+                f"in the range of {low_str} to {high_str} cash. "
+                "Is that something worth having a conversation about?"
+            )
+    elif address_full:
+        intro_text = (
+            f"Yes, we reached out because we saw you own some vacant land at {address_full} "
+            "and wanted to see if selling is something you would consider. Is it?"
+        )
+    else:
+        intro_text = (
+            "Yes, we reached out because we saw you own some vacant land "
+            "and wanted to see if selling is something you would consider. Is it?"
+        )
+
+    # Store for transcript logging in call_gather
+    if call_sid in _call_states:
+        _call_states[call_sid]["_offer_intro_text"] = intro_text
+    state["_offer_intro_text"] = intro_text
+
+    return _texml_gather("offer_intro", _say(intro_text), call_sid)
+
+
+async def _do_live_transfer(call_sid: str, state: dict, background_tasks: BackgroundTasks) -> Response:
+    """Bridge caller to acquisitions manager. Whisper to manager before connecting."""
+    mgr = _get_acq_manager_name()
+    address = state.get("property_address", "") or state.get("unmatched_info", "")
+    asking = state.get("seller_asking_price", "")
+    whisper = (
+        f"{mgr} — seller on the line. "
+        f"Property: {address or 'unknown'}. "
+        f"Asking: {asking or 'not stated'}. "
+        "Connecting now."
+    )
+    transfer_to = "+12023215846"
+    api_key = _telnyx_key()
+    if api_key and call_sid:
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                await client.post(
+                    f"https://api.telnyx.com/v2/calls/{call_sid}/actions/speak",
+                    json={"payload": whisper, "voice": "female", "language": "en-US"},
+                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                )
+                await asyncio.sleep(0.5)
+                await client.post(
+                    f"https://api.telnyx.com/v2/calls/{call_sid}/actions/transfer",
+                    json={"to": transfer_to},
+                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                )
+        except Exception as exc:
+            print(f"[comms] live transfer error: {exc}")
+    background_tasks.add_task(_finalize_call, call_sid)
+    return _texml_hangup(_phrase("live_transfer"))
+
+
 # ── Inbound call ──────────────────────────────────────────────────────────────────
 
 @router.post("/api/calls/inbound")
 async def inbound_call(request: Request) -> Response:
-    """Telnyx TeXML webhook — answers inbound call, asks for offer code.
-    Returns TeXML immediately. If ElevenLabs audio isn't cached yet, _phrase()
-    falls back to Polly <Say> with zero latency — call always answers within ms."""
+    """Telnyx TeXML webhook — answers inbound call with Myra (blind offer flow).
+    Returns TeXML immediately. Cartesia audio used if cached; Polly <Say> fallback."""
     call_sid = f"call_{_now()}"
     caller = ""
     try:
@@ -893,16 +910,34 @@ async def inbound_call(request: Request) -> Response:
         except Exception:
             pass
 
+    # Check business hours
+    if not _is_business_hours():
+        return _texml_hangup(_phrase("after_hours"))
+
+    # Pre-load property by caller phone (for offer price range)
+    prop: dict = {}
+    if caller:
+        try:
+            found = await _lookup_phone(caller)
+            if found:
+                prop = found
+        except Exception:
+            pass
+
     _call_states[call_sid] = {
         "caller": caller,
-        "property_id": None,
-        "offer_price": None,
-        "owner_name": "",
-        "caller_offer_code": None,
-        "attempted_codes": [],
+        "property_id": prop.get("id"),
+        "offer_price": prop.get("offer_price"),
+        "property_address": (
+            prop.get("situs_address") or prop.get("property_address") or ""
+        ),
+        "property_city": prop.get("situs_city") or prop.get("property_city") or "",
+        "property_state": prop.get("situs_state") or prop.get("state") or "",
+        "owner_name": prop.get("owner_full_name") or prop.get("owner_first_name") or "",
         "caller_name": None,
         "interest_score": "warm",
-        "code_attempts": 0,
+        "seller_asking_price": None,
+        "callback_time": None,
         "transcript": [],
         "started_at": _now(),
         "retries": {},
@@ -912,7 +947,7 @@ async def inbound_call(request: Request) -> Response:
     # Create the DB record immediately so missed/short calls are always logged
     try:
         comm = await _log_comm(
-            property_id=None,
+            property_id=prop.get("id"),
             comm_type="call_inbound",
             phone=caller,
             direction="inbound",
@@ -929,16 +964,12 @@ async def inbound_call(request: Request) -> Response:
 
 @router.post("/api/calls/gather/{step}")
 async def call_gather(step: str, request: Request, background_tasks: BackgroundTasks) -> Response:
-    """Telnyx gather callback — drives the conversation state machine.
+    """Telnyx gather callback — Myra blind-offer conversation state machine.
 
-    State transitions:
-      greeting  → confirm (code found) | name (no code / confused)
-      confirm   → interest (yes) | greeting retry once then name (no)
-      name      → interest
-      interest  → callback (yes/maybe) | close_cold (no)
-      callback  → ask_number (different number) | close_hot
-      ask_number → close_hot
-    Max 2 attempts per step, then auto-advance.
+    Steps: greeting → offer_intro → interest → collect_name →
+           collect_callback_time → confirm_callback_number → close_hot
+    Side paths: follow_up_check → close  |  collect_asking_price → callback_time
+    Any step: live_transfer trigger, opt-out, wrong number.
     """
     try:
         form = await request.form()
@@ -950,235 +981,256 @@ async def call_gather(step: str, request: Request, background_tasks: BackgroundT
         timed_out = False
 
     state = _call_states.get(call_sid, {})
-    state.setdefault("transcript", []).append({"step": step, "speech": speech, "timed_out": timed_out})
+    mgr = _get_acq_manager_name()
 
-    def _attempts(key: str) -> int:
-        return state.get("retries", {}).get(key, 0)
+    def _upd(**kw) -> None:
+        state.update(kw)
+        if call_sid in _call_states:
+            _call_states[call_sid].update(kw)
 
     def _inc(key: str) -> int:
         return _inc_step_retries(call_sid, state, key)
 
-    def _no_code_response(s: str) -> bool:
-        """True when caller clearly says they don't have / don't know the code."""
-        if re.search(r"\d", s):
-            return False
-        return bool(re.search(
-            r"\b(no|nope|huh)\b|"
-            r"don'?t (have|know)|do not have|no idea|not sure|no code|"
-            r"what (code|is that|'?s that)|never got|didn'?t get|lost it|can'?t find|"
-            r"^what$",
-            s.lower(),
-        ))
+    def _t(agent_text: str) -> None:
+        state.setdefault("transcript", []).append({
+            "step": step, "agent": agent_text, "speech": speech, "timed_out": timed_out,
+        })
+        if call_sid in _call_states:
+            _call_states[call_sid].setdefault("transcript", state["transcript"])
 
-    # ── Step: greeting — ask for offer code ──────────────────────────────
+    low = (speech or "").lower().strip()
+
+    # ── Global: opt-out / wrong number detection (any step) ──────────────
+    _STOP_RE = re.compile(r"\b(stop|remove me|take me off|unsubscribe|do not call|don'?t call|don'?t contact)\b")
+    _WRONG_RE = re.compile(r"\b(wrong number|wrong person|don'?t own|not my|no property|who is this)\b")
+    _TRANSFER_PHRASES = [
+        "talk to someone", "speak to a person", "real person", "human",
+        f"talk to {mgr.lower()}", "transfer me", "talk to your manager",
+        "talk to someone now", "speak to someone", "speak with someone",
+    ]
+
+    if not timed_out and speech:
+        if _STOP_RE.search(low):
+            caller = state.get("caller", "")
+            prop_id = state.get("property_id")
+            if prop_id:
+                try:
+                    get_supabase().table("crm_properties").update(
+                        {"opted_out": True, "sms_status": "opted_out", "updated_at": _now()}
+                    ).eq("id", prop_id).execute()
+                except Exception:
+                    pass
+            if caller:
+                try:
+                    get_supabase().table("crm_sms_opt_out").upsert(
+                        {"phone_number": caller, "opted_out_at": _now(), "source": "inbound_call"},
+                        on_conflict="phone_number",
+                    ).execute()
+                except Exception:
+                    pass
+            _upd(interest_score="cold")
+            background_tasks.add_task(_finalize_call, call_sid)
+            return _texml_hangup(_phrase("opt_out"))
+
+        if _WRONG_RE.search(low):
+            background_tasks.add_task(_finalize_call, call_sid)
+            return _texml_hangup(_phrase("wrong_number"))
+
+        if any(phrase in low for phrase in _TRANSFER_PHRASES):
+            return await _do_live_transfer(call_sid, state, background_tasks)
+
+    # ── Step: greeting ────────────────────────────────────────────────────
     if step == "greeting":
+        agent_text = _PHRASES["greeting"]
+        _t(agent_text)
+
         if timed_out or not speech:
             n = _inc("timeout_greeting")
             if n < 2:
-                # First silence: ask if still there, replay same question
                 return _texml_gather("greeting", _phrase("still_there"), call_sid)
-            # Second silence: give up on code, move to name
-            return _texml_gather("name", _phrase("no_code_name"), call_sid)
+            background_tasks.add_task(_finalize_call, call_sid)
+            return _texml_hangup(_phrase("goodbye"))
 
-        # FAQ question — answer inline, then collect name
-        if _is_faq_question(speech):
+        # "Are you a real person?" → honest deflect
+        if re.search(r"\b(real person|are you (a |an )?(real|human|person|bot|robot|ai))\b", low):
+            resp = _say("I am Myra, an assistant with Dominion Land Group. How can I help you?")
+            return _texml_gather("greeting", resp, call_sid)
+
+        # FAQ / objection before offer_intro
+        if _is_faq_question(speech) or _looks_like_question(speech):
             faq_list = await _load_faq()
-            answer = _match_faq_answer(speech, faq_list) or _FAQ_FALLBACK_ANSWER
-            inner = _say(answer) + _say("Can I get your first and last name?")
-            return _texml_gather("name", inner, call_sid)
+            answer = _match_faq_answer(speech, faq_list)
+            if answer:
+                inner = _say(answer) + _say("Is there anything else I can help you with?")
+                return _texml_gather("offer_intro", inner, call_sid)
 
-        # Caller says they don't have the code → skip to name immediately
-        if _no_code_response(speech):
-            return _texml_gather("name", _phrase("no_code_name"), call_sid)
+        # Fall through to offer intro in all cases
+        return await _build_offer_intro(call_sid, state)
 
-        state.setdefault("attempted_codes", []).append(speech.strip())
-        if call_sid in _call_states:
-            _call_states[call_sid].setdefault("attempted_codes", []).append(speech.strip())
+    # ── Step: offer_intro (dynamic — built by _build_offer_intro) ────────
+    elif step == "offer_intro":
+        agent_text = state.get("_offer_intro_text", "")
+        _t(agent_text)
 
-        prop = await _lookup_offer_code(speech)
-        if prop:
-            state.update({
-                "property_id": prop.get("id"),
-                "offer_price": prop.get("offer_price"),
-                "owner_name": prop.get("owner_full_name") or prop.get("owner_first_name") or "",
-                "caller_offer_code": speech.strip(),
-            })
-            if call_sid in _call_states:
-                _call_states[call_sid].update(state)
-            # Build property-confirm prompt
-            county = prop.get("county", "")
-            owner = state["owner_name"]
-            parts = ["I found a property associated with that code"]
-            if county:
-                parts.append(f"in {county} County")
-            if owner:
-                parts.append(f"for {owner}")
-            confirm_text = " ".join(parts) + ". Is that correct?"
-            return _texml_gather("confirm", _say(confirm_text), call_sid)
-
-        # Code not found — allow one retry, then skip to name
-        code_attempt = _inc("code")
-        if code_attempt < 2:
-            return _texml_gather("greeting", _phrase("not_found"), call_sid)
-        return _texml_gather("name", _phrase("no_code_name"), call_sid)
-
-    # ── Step: confirm — verify property matched by code ──────────────────
-    elif step == "confirm":
         if timed_out or not speech:
-            n = _inc("timeout_confirm")
-            if n >= 2:
-                return _texml_gather("name", _phrase("no_code_name"), call_sid)
-            return _texml_gather("confirm", _phrase("still_there"), call_sid)
+            n = _inc("timeout_offer")
+            if n < 2:
+                return _texml_gather("offer_intro", _phrase("still_there"), call_sid)
+            # Advance to collect name anyway
+            return _texml_gather("collect_name", _phrase("collect_name"), call_sid)
 
-        low = speech.lower()
-        is_yes = bool(re.search(r"\b(yes|yeah|yep|yup|correct|right|sure|uh.?huh)\b", low))
-        is_no = bool(re.search(r"\b(no|nope|wrong|incorrect|not me|not mine|not right)\b", low))
+        # FAQ / objections
+        if _is_faq_question(speech) or _looks_like_question(speech):
+            faq_list = await _load_faq()
+            answer = _match_faq_answer(speech, faq_list)
+            if answer:
+                inner = _say(answer) + _say("When is a good time for us to talk more?")
+                return _texml_gather("collect_callback_time", inner, call_sid)
 
-        if is_yes:
-            return _texml_gather("interest", _phrase("interested"), call_sid)
-        elif is_no:
-            n = _inc("confirm_retry")
-            if n < 1:
-                # One more code attempt
-                return _texml_gather("greeting", _phrase("not_found"), call_sid)
-            # Wrong property — clear match, collect name instead
-            if call_sid in _call_states:
-                _call_states[call_sid].update({"property_id": None, "offer_price": None})
-            return _texml_gather("name", _phrase("no_code_name"), call_sid)
-        else:
-            # Unclear — assume confirmed and continue
-            return _texml_gather("interest", _phrase("interested"), call_sid)
+        # "too low" / counter offer
+        _TOO_LOW_RE = re.compile(r"\b(too low|not enough|higher|more than that|need more|want more|expecting|looking for more)\b")
+        _PRICE_RE = re.compile(r"\$[\d,]+|\d+[\s,]*(?:thousand|k|hundred)|\d{4,6}")
+        if _TOO_LOW_RE.search(low) or (
+            _PRICE_RE.search(low) and re.search(r"\b(want|need|asking|expecting|looking|thinking)\b", low)
+        ):
+            _upd(interest_score="warm")
+            return _texml_gather(
+                "collect_asking_price",
+                _say("I understand. What number were you thinking?"),
+                call_sid,
+            )
 
-    # ── Step: name — capture caller name, then ask about interest ─────────
-    elif step == "name":
+        # NO / not interested
+        _NO_RE = re.compile(r"\b(no|not interested|nope|not selling|don'?t want|pass|not at this time)\b")
+        if _NO_RE.search(low):
+            _upd(interest_score="cold")
+            return _texml_gather("follow_up_check", _phrase("close_cold"), call_sid)
+
+        # YES / positive
+        _YES_RE = re.compile(r"\b(yes|yeah|yep|sure|sounds good|interested|tell me more|go ahead|okay|ok)\b")
+        if _YES_RE.search(low) or _score_interest(speech) in ("hot", "warm"):
+            _upd(interest_score="warm")
+            return _texml_gather("collect_name", _phrase("collect_name"), call_sid)
+
+        # Ambiguous — move to name collection
+        return _texml_gather("collect_name", _phrase("collect_name"), call_sid)
+
+    # ── Step: address_lookup (when property not found at greeting) ────────
+    elif step == "address_lookup":
+        _t(state.get("_address_lookup_text", ""))
+        if speech and not timed_out:
+            prop = await _lookup_by_address(speech)
+            if not prop:
+                prop = await _lookup_by_name_county(speech, "")
+                prop = (prop or [None])[0] if isinstance(prop, list) else prop
+            if prop:
+                _upd(
+                    property_id=prop.get("id"),
+                    offer_price=prop.get("offer_price"),
+                    property_address=prop.get("situs_address") or prop.get("property_address") or speech,
+                )
+                return await _build_offer_intro(call_sid, state)
+        # Couldn't find by address — proceed without price
+        return await _build_offer_intro(call_sid, state)
+
+    # ── Step: collect_asking_price ────────────────────────────────────────
+    elif step == "collect_asking_price":
+        _t("I understand. What number were you thinking?")
+        if speech and not timed_out:
+            _upd(seller_asking_price=speech.strip(), interest_score="warm")
+        close_text = (
+            f"I will pass that along to {mgr} and he will reach out to discuss further. "
+            f"What is the best time for him to call you?"
+        )
+        return _texml_gather("collect_callback_time", _say(close_text), call_sid)
+
+    # ── Step: collect_name ────────────────────────────────────────────────
+    elif step == "collect_name":
+        _t(_PHRASES["collect_name"])
         if timed_out or not speech:
             n = _inc("timeout_name")
             if n >= 2:
                 background_tasks.add_task(_finalize_call, call_sid)
                 return _texml_hangup(_phrase("goodbye"))
-            return _texml_gather("name", _phrase("still_there"), call_sid)
+            return _texml_gather("collect_name", _phrase("still_there"), call_sid)
 
-        # If caller asks a question instead of giving their name, answer it then re-ask
         if _is_faq_question(speech) or _looks_like_question(speech):
             faq_list = await _load_faq()
-            answer = _match_faq_answer(speech, faq_list) or _FAQ_FALLBACK_ANSWER
-            inner = _say(answer) + _say("Now, can I get your first and last name?")
-            return _texml_gather("name", inner, call_sid)
+            answer = _match_faq_answer(speech, faq_list)
+            if answer:
+                inner = _say(answer) + _phrase("collect_name")
+                return _texml_gather("collect_name", inner, call_sid)
 
-        caller_name = speech.strip()
-        state["caller_name"] = caller_name
-        if call_sid in _call_states:
-            _call_states[call_sid]["caller_name"] = caller_name
+        _upd(caller_name=speech.strip())
+        return _texml_gather("collect_callback_time", _phrase("collect_callback_time"), call_sid)
 
-        first = caller_name.split()[0].capitalize() if caller_name else ""
-        thanks = f"Thank you{', ' + first if first else ''}. Are you interested in our cash offer for your property?"
-        return _texml_gather("interest", _say(thanks), call_sid)
-
-    # ── Step: interest — yes/maybe → callback; no → cold close ──────────
-    elif step == "interest":
+    # ── Step: collect_callback_time ───────────────────────────────────────
+    elif step == "collect_callback_time":
+        _t(_PHRASES["collect_callback_time"])
         if timed_out or not speech:
-            n = _inc("timeout_interest")
+            n = _inc("timeout_callback")
             if n >= 2:
-                # Auto-advance after 2 silences — assume maybe
-                return _texml_gather("callback", _phrase("confirm_callback"), call_sid)
-            return _texml_gather("interest", _phrase("still_there"), call_sid)
+                # Close without callback time
+                _upd(interest_score="warm")
+                background_tasks.add_task(_finalize_call, call_sid)
+                return _texml_hangup(_phrase("close_hot_base"))
+            return _texml_gather("collect_callback_time", _phrase("still_there"), call_sid)
 
-        # FAQ question during interest step — answer it, then re-ask about interest
-        if _is_faq_question(speech) or _looks_like_question(speech):
-            faq_list = await _load_faq()
-            answer = _match_faq_answer(speech, faq_list) or _FAQ_FALLBACK_ANSWER
-            inner = _say(answer) + _phrase("interested")
-            return _texml_gather("interest", inner, call_sid)
+        _upd(callback_time=speech.strip())
 
-        score = _score_interest(speech)
-        if call_sid in _call_states:
-            _call_states[call_sid]["interest_score"] = score
-
-        if score == "cold":
-            background_tasks.add_task(_finalize_call, call_sid)
-            return _texml_hangup(_phrase("close_cold"))
-
-        # Hot or warm — confirm callback number
-        caller_phone = state.get("caller") or _call_states.get(call_sid, {}).get("caller", "")
+        # Confirm their phone number
+        caller_phone = state.get("caller", "")
         if caller_phone:
             digits = re.sub(r"\D", "", caller_phone)[-10:]
             fmt = f"{digits[:3]} {digits[3:6]} {digits[6:]}" if len(digits) == 10 else caller_phone
-            callback_q = f"Great. Is {fmt} the best number to reach you?"
+            confirm_q = f"Is {fmt} the best number to reach you?"
         else:
-            callback_q = "Great. Is the number you called from the best number to reach you?"
-        return _texml_gather("callback", _say(callback_q), call_sid)
+            confirm_q = "Is the number you called from the best number to reach you?"
+        return _texml_gather("confirm_callback_number", _say(confirm_q), call_sid)
 
-    # ── Step: callback — yes → close hot; no → collect new number ────────
-    elif step == "callback":
-        low = (speech or "").lower()
-        wants_different = bool(re.search(r"\b(no|nope|different|other|change|wrong|another)\b", low))
-
+    # ── Step: confirm_callback_number ────────────────────────────────────
+    elif step == "confirm_callback_number":
+        low2 = (speech or "").lower()
+        wants_different = bool(re.search(r"\b(no|nope|different|other|change|wrong|another)\b", low2))
         if wants_different and not timed_out:
-            return _texml_gather("ask_number", _say("What number would you like us to use?"), call_sid)
+            return _texml_gather("ask_different_number", _say("What number should we use?"), call_sid)
 
+        _upd(interest_score="hot")
+        close_text = (
+            f"Got it. I will have {mgr} give you a call within 24 to 48 hours. "
+            "Have a great day."
+        )
         background_tasks.add_task(_finalize_call, call_sid)
-        return _texml_hangup(_phrase("close_hot"))
+        return _texml_hangup(_say(close_text))
 
-    # ── Step: ask_number — store alternate callback number, then close ────
-    elif step == "ask_number":
+    # ── Step: ask_different_number ────────────────────────────────────────
+    elif step == "ask_different_number":
         if speech and not timed_out:
-            spoken_digits = _speech_to_digits(speech)
-            raw_digits = re.sub(r"\D", "", speech)
-            phone_candidate = spoken_digits or raw_digits
-            if phone_candidate:
-                state["preferred_callback"] = phone_candidate
-                if call_sid in _call_states:
-                    _call_states[call_sid]["preferred_callback"] = phone_candidate
+            _upd(preferred_callback=speech.strip())
+        _upd(interest_score="hot")
+        close_text = (
+            f"Got it. I will have {mgr} give you a call within 24 to 48 hours. "
+            "Have a great day."
+        )
         background_tasks.add_task(_finalize_call, call_sid)
-        return _texml_hangup(_phrase("close_hot"))
+        return _texml_hangup(_say(close_text))
 
-    # ── Step: fallback_name — code failed, ask for name ──────────────────
-    elif step == "fallback_name":
-        if speech and not timed_out:
-            if call_sid in _call_states:
-                _call_states[call_sid]["fallback_name"] = speech.strip()
-                _call_states[call_sid]["caller_name"] = speech.strip()
-            state["caller_name"] = speech.strip()
-        return _texml_gather("fallback_county", _phrase("no_code_county"), call_sid)
+    # ── Step: follow_up_check — ask if follow-up in months is OK ─────────
+    elif step == "follow_up_check":
+        _t(_PHRASES["close_cold"])
+        if timed_out or not speech:
+            background_tasks.add_task(_finalize_call, call_sid)
+            return _texml_hangup(_phrase("goodbye"))
 
-    # ── Step: fallback_county — lookup by name+county ────────────────────
-    elif step == "fallback_county":
-        fb_name = _call_states.get(call_sid, {}).get("fallback_name", "")
-        fb_county = speech.strip() if (speech and not timed_out) else ""
-        if call_sid in _call_states:
-            _call_states[call_sid]["fallback_county"] = fb_county
-
-        if fb_name and fb_county:
-            matches = await _lookup_by_name_county(fb_name, fb_county)
-            if matches:
-                prop = matches[0]
-                if call_sid in _call_states:
-                    _call_states[call_sid]["property_id"] = prop.get("id")
-                    _call_states[call_sid]["offer_price"] = prop.get("offer_price")
-                    _call_states[call_sid]["owner_name"] = prop.get("owner_full_name") or ""
-                    _call_states[call_sid].setdefault("caller_name", fb_name)
-                state["property_id"] = prop.get("id")
-                state["offer_price"] = prop.get("offer_price")
-                state.setdefault("caller_name", fb_name)
-                return _texml_gather("interest", _phrase("interested"), call_sid)
-
-        caller = state.get("caller") or _call_states.get(call_sid, {}).get("caller", "")
-        if caller:
-            prop_by_phone = await _lookup_phone(caller)
-            if prop_by_phone:
-                if call_sid in _call_states:
-                    _call_states[call_sid]["property_id"] = prop_by_phone.get("id")
-                    _call_states[call_sid]["offer_price"] = prop_by_phone.get("offer_price")
-                    _call_states[call_sid].setdefault("caller_name", fb_name)
-                state["property_id"] = prop_by_phone.get("id")
-                state.setdefault("caller_name", fb_name)
-                return _texml_gather("interest", _phrase("interested"), call_sid)
-
-        if call_sid in _call_states:
-            _call_states[call_sid]["unmatched_info"] = f"{fb_name} / {fb_county}"
-            _call_states[call_sid].setdefault("caller_name", fb_name)
-        background_tasks.add_task(_finalize_unmatched_call, call_sid)
-        return _texml_hangup(_phrase("goodbye"))
+        is_yes = bool(re.search(r"\b(yes|yeah|yep|sure|okay|ok|that'?s fine|fine)\b", low))
+        if is_yes:
+            _upd(interest_score="cold")  # warm cold = follow up later
+            background_tasks.add_task(_finalize_call, call_sid)
+            return _texml_hangup(_phrase("follow_up_yes"))
+        else:
+            _upd(interest_score="cold")
+            background_tasks.add_task(_finalize_call, call_sid)
+            return _texml_hangup(_phrase("not_interested"))
 
     # ── Fallback ─────────────────────────────────────────────────────────
     else:
@@ -1290,9 +1342,13 @@ async def _finalize_call(call_sid: str) -> None:
     property_id = state.get("property_id")
     caller = state.get("caller", "")
     interest_score = state.get("interest_score", "warm")
-    # Store only the successfully matched offer code; "NOT PROVIDED" if none matched
-    caller_offer_code = state.get("caller_offer_code") or "NOT PROVIDED"
     caller_name = state.get("caller_name", "")
+    seller_asking_price = state.get("seller_asking_price")
+    callback_time_spoken = state.get("callback_time")
+    prop_address = state.get("property_address", "")
+    prop_city = state.get("property_city", "")
+    prop_state_abbr = state.get("property_state", "")
+    mgr = _get_acq_manager_name()
 
     # Compute call duration
     duration_seconds: Optional[int] = None
@@ -1305,28 +1361,38 @@ async def _finalize_call(call_sid: str) -> None:
             pass
 
     transcript_text = "\n".join(
-        f"[{t['step'].upper()}] Agent: {_PHRASES.get(t['step'], t['step'])}\n"
+        f"[{t['step'].upper()}] Agent: {t.get('agent', t['step'])}\n"
         f"Caller: {t.get('speech', '[no response]')}"
         for t in transcript
     )
 
-    # Use Claude for final scoring (falls back to rule-based if unavailable)
+    # Use Claude for final scoring
     score, summary, disposition, callback_time = await _score_with_claude(transcript)
-    if score == "warm" and interest_score != "warm":
-        score = interest_score  # trust rule-based if Claude was neutral
+    if score == "warm" and interest_score == "hot":
+        score = "hot"
+    elif score == "warm" and interest_score == "cold":
+        score = "cold"
 
-    # Add caller name to summary
+    # Enrich summary
+    parts = []
     if caller_name:
-        summary = f"Caller name: {caller_name}. " + summary
+        parts.append(f"Name: {caller_name}")
+    if prop_address:
+        parts.append(f"Property: {' '.join(filter(None, [prop_address, prop_city, prop_state_abbr]))}")
+    if seller_asking_price:
+        parts.append(f"Asking: {seller_asking_price}")
+    if callback_time_spoken:
+        parts.append(f"Best time: {callback_time_spoken}")
+    if parts:
+        summary = ". ".join(parts) + ". " + summary
 
-    # Build callback_requested_at ISO string if callback time was extracted
     callback_requested_at: Optional[str] = None
-    if callback_time and disposition == "CALLBACK_NEEDED":
-        callback_requested_at = f"{_now()[:10]} (caller said: {callback_time})"
+    cb_time = callback_time_spoken or callback_time
+    if cb_time and disposition in ("CALLBACK_NEEDED", "INTERESTED"):
+        callback_requested_at = f"{_now()[:10]} (caller said: {cb_time})"
 
     comm_id = state.get("comm_id")
     if comm_id:
-        # Update the record created at call start
         await _update_comm(
             comm_id,
             property_id=property_id,
@@ -1334,7 +1400,6 @@ async def _finalize_call(call_sid: str) -> None:
             summary=summary,
             lead_score=score,
             duration_seconds=duration_seconds,
-            caller_offer_code=caller_offer_code,
             disposition=disposition,
             callback_requested_at=callback_requested_at,
         )
@@ -1349,7 +1414,6 @@ async def _finalize_call(call_sid: str) -> None:
             lead_score=score,
             call_id=call_sid,
             duration_seconds=duration_seconds,
-            caller_offer_code=caller_offer_code,
             disposition=disposition,
             callback_requested_at=callback_requested_at,
         )
@@ -1359,29 +1423,32 @@ async def _finalize_call(call_sid: str) -> None:
             sb = get_supabase()
             updates: dict = {"updated_at": _now()}
 
-            # Caller name
             if caller_name:
                 existing = sb.table("crm_properties").select("owner_first_name,notes,tags").eq("id", property_id).execute()
                 row = existing.data[0] if existing.data else {}
-                if not row.get("owner_first_name") and caller_name:
-                    parts = caller_name.strip().split(" ", 1)
-                    updates["owner_first_name"] = parts[0]
-                    if len(parts) > 1:
-                        updates["owner_last_name"] = parts[1]
+                if not row.get("owner_first_name"):
+                    parts_name = caller_name.strip().split(" ", 1)
+                    updates["owner_first_name"] = parts_name[0]
+                    if len(parts_name) > 1:
+                        updates["owner_last_name"] = parts_name[1]
             else:
                 existing = sb.table("crm_properties").select("tags").eq("id", property_id).execute()
                 row = existing.data[0] if existing.data else {}
 
-            # Status based on disposition
-            if disposition == "INTERESTED":
+            if seller_asking_price:
+                try:
+                    updates["seller_asking_price"] = float(re.sub(r"[^\d.]", "", seller_asking_price))
+                except Exception:
+                    pass
+
+            if disposition == "INTERESTED" or score == "hot":
                 updates["status"] = "prospect"
             elif disposition == "NOT_INTERESTED":
                 updates["status"] = "due_diligence"
-            elif score in ("hot", "warm") and disposition not in ("NOT_INTERESTED", "WRONG_NUMBER"):
+            elif score == "warm" and disposition not in ("NOT_INTERESTED", "WRONG_NUMBER"):
                 updates["status"] = "prospect"
 
-            # Auto-tags
-            existing_tags: list = row.get("tags") or []
+            existing_tags: list = (row.get("tags") if "row" in dir() else []) or []
             if isinstance(existing_tags, str):
                 try:
                     existing_tags = json.loads(existing_tags)
@@ -1409,7 +1476,7 @@ async def _finalize_call(call_sid: str) -> None:
         except Exception as exc:
             print(f"[comms] property update error: {exc}")
 
-    if score == "hot":
+    if score == "hot" or disposition == "INTERESTED":
         prop_data: dict = {}
         try:
             r = get_supabase().table("crm_properties").select("*").eq("id", property_id).execute()
@@ -1417,25 +1484,82 @@ async def _finalize_call(call_sid: str) -> None:
         except Exception:
             pass
         owner = prop_data.get("owner_full_name") or caller_name or "Unknown"
+        address_disp = " ".join(filter(None, [
+            prop_data.get("situs_address") or prop_address,
+            prop_data.get("situs_city") or prop_city,
+            prop_data.get("situs_state") or prop_state_abbr,
+        ]))
         apn = prop_data.get("apn", "")
         county = prop_data.get("county", "")
-        code = prop_data.get("campaign_code", "")
         offer = prop_data.get("offer_price")
         offer_str = f"${int(offer):,}" if offer else "N/A"
+        asking_str = seller_asking_price or "not stated"
+        cb_display = callback_time_spoken or callback_time or "not stated"
+
+        # SMS to Damien
+        try:
+            api_key = _telnyx_key()
+            from_phone_e164 = _telnyx_phone()
+            if api_key and from_phone_e164:
+                raw = re.sub(r"\D", "", from_phone_e164)
+                from_e164 = f"+1{raw}" if len(raw) == 10 else (f"+{raw}" if len(raw) == 11 else from_phone_e164)
+                sms_body = (
+                    f"HOT LEAD\n"
+                    f"Name: {owner}\n"
+                    f"Property: {address_disp or apn or 'unknown'}\n"
+                    f"Asking: {asking_str}\n"
+                    f"Best time: {cb_display}\n"
+                    f"View: https://land-dominator-frontend-production.up.railway.app/inbox"
+                )
+                payload: dict = {"from": from_e164, "to": "+12023215846", "text": sms_body}
+                profile_id = os.getenv("TELNYX_MESSAGING_PROFILE_ID", "")
+                if profile_id:
+                    payload["messaging_profile_id"] = profile_id
+                async with httpx.AsyncClient(timeout=15) as client:
+                    await client.post(
+                        "https://api.telnyx.com/v2/messages",
+                        json=payload,
+                        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                    )
+        except Exception as exc:
+            print(f"[comms] HOT call alert SMS error: {exc}")
+
+        # Auto-create deal
+        try:
+            sb = get_supabase()
+            if property_id:
+                existing_deal = sb.table("crm_deals").select("id").eq("property_id", property_id).limit(1).execute()
+                if not existing_deal.data:
+                    deal_title = " — ".join(filter(None, [owner, apn, county])).strip(" —")
+                    sb.table("crm_deals").insert({
+                        "title": deal_title or "Unknown Property",
+                        "property_id": property_id,
+                        "stage": "lead",
+                        "value": float(offer) if offer else None,
+                        "notes": f"Auto-created from HOT call. Asking: {asking_str}. Best time: {cb_display}",
+                        "tags": ["call", "hot_lead"],
+                        "updated_at": _now(),
+                    }).execute()
+        except Exception as exc:
+            print(f"[comms] auto-create deal (call) error: {exc}")
+
         html = (
-            "<h2 style='color:#B71C1C'>🔥 HOT LEAD ALERT</h2>"
+            f"<h2 style='color:#B71C1C'>🔥 HOT LEAD — Inbound Call</h2>"
             f"<ul>"
-            f"<li><strong>Owner:</strong> {owner}</li>"
+            f"<li><strong>Name:</strong> {owner}</li>"
             f"<li><strong>Phone:</strong> {caller}</li>"
-            f"<li><strong>APN:</strong> {apn}</li>"
+            f"<li><strong>Property:</strong> {address_disp or apn or '—'}</li>"
             f"<li><strong>County:</strong> {county}</li>"
-            f"<li><strong>Campaign Code:</strong> {code}</li>"
-            f"<li><strong>Offer Price:</strong> {offer_str}</li>"
+            f"<li><strong>Our Offer Range:</strong> {offer_str}</li>"
+            f"<li><strong>Seller Asking:</strong> {asking_str}</li>"
+            f"<li><strong>Best Callback Time:</strong> {cb_display}</li>"
             f"</ul>"
             f"<p><strong>Summary:</strong> {summary}</p>"
-            f"<p><a href='https://land-dominator-production.up.railway.app'>Open Land Dominator →</a></p>"
+            f"<p><a href='https://land-dominator-frontend-production.up.railway.app/inbox'>Open Seller Inbox →</a></p>"
         )
-        await _notify_email(f"🔥 HOT LEAD — {owner} — {apn} — {county}", html)
+        subject = f"🔥 HOT LEAD — {owner} — {address_disp or county}"
+        await _notify_email(subject, html)
+        await _notify_email(subject, html, to_email="dominionlandgroup@gmail.com")
 
 
 async def _finalize_unmatched_call(call_sid: str) -> None:
@@ -1444,15 +1568,10 @@ async def _finalize_unmatched_call(call_sid: str) -> None:
         return
     caller = state.get("caller", "")
     info = state.get("unmatched_info", "")
-    fallback_name = state.get("fallback_name", "")
-    attempted_codes = state.get("attempted_codes", [])
-    caller_offer_code = (
-        " | ".join(attempted_codes) if attempted_codes
-        else state.get("caller_offer_code")
-    )
+    caller_name = state.get("caller_name") or ""
     transcript = state.get("transcript", [])
     transcript_text = "\n".join(
-        f"[{t['step'].upper()}] Caller: {t.get('speech', '[no response]')}"
+        f"[{t['step'].upper()}] Agent: {t.get('agent', t['step'])}\nCaller: {t.get('speech', '[no response]')}"
         for t in transcript
     )
 
@@ -1466,7 +1585,6 @@ async def _finalize_unmatched_call(call_sid: str) -> None:
         except Exception:
             pass
 
-    caller_name = fallback_name or ""
     prop = await _create_unmatched_lead(caller, caller_name=caller_name, property_address=info)
     property_id = prop.get("id")
 
@@ -1479,7 +1597,7 @@ async def _finalize_unmatched_call(call_sid: str) -> None:
         except Exception:
             pass
 
-    detail = info or fallback_name or "N/A"
+    detail = info or caller_name or "N/A"
     comm_id = state.get("comm_id")
     summary_text = f"Could not match to property. Caller provided: {detail}. Next action: Review manually."
     if comm_id:
@@ -1490,7 +1608,6 @@ async def _finalize_unmatched_call(call_sid: str) -> None:
             summary=summary_text,
             lead_score="cold",
             duration_seconds=duration_seconds,
-            caller_offer_code=caller_offer_code,
             disposition="MAYBE",
         )
     else:
@@ -1504,7 +1621,6 @@ async def _finalize_unmatched_call(call_sid: str) -> None:
             lead_score="cold",
             call_id=call_sid,
             duration_seconds=duration_seconds,
-            caller_offer_code=caller_offer_code,
             disposition="MAYBE",
         )
 
@@ -2188,12 +2304,16 @@ async def outbound_amd_webhook(request: Request) -> Response:
     amd_result = ev_payload.get("result", "")  # "machine" | "human" | "not_sure"
 
     if event_type == "call.answered.amd" and amd_result == "machine" and call_control_id:
-        voicemail_url = f"{_base_url()}/api/calls/audio/voicemail"
         api_key = _telnyx_key()
+        telnyx_number = os.getenv("TELNYX_PHONE_NUMBER", "")
         if api_key:
             try:
-                # Ensure voicemail audio is cached
-                asyncio.create_task(_tts_generate(_PHRASES["voicemail"], "voicemail"))
+                # Build voicemail text with actual callback number
+                vm_text = _PHRASES["voicemail"].replace("{telnyx_number}", telnyx_number or "our number")
+                vm_cache_key = f"voicemail_{hash(vm_text) & 0xFFFFFF:06x}"
+                await _tts_generate(vm_text, vm_cache_key)
+                voicemail_url = f"{_base_url()}/api/calls/audio/{vm_cache_key}"
+
                 async with httpx.AsyncClient(timeout=10) as client:
                     # Play the voicemail
                     await client.post(
@@ -2201,13 +2321,23 @@ async def outbound_amd_webhook(request: Request) -> Response:
                         json={"audio_url": voicemail_url, "loop": 1},
                         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                     )
-                    # Schedule hangup after 30s (voicemail is ~15s)
                     await asyncio.sleep(30)
                     await client.post(
                         f"https://api.telnyx.com/v2/calls/{call_control_id}/actions/hangup",
                         json={},
                         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                     )
+
+                # Mark voicemail_left on the property
+                call_state = pending_outbound.get(call_control_id, {})
+                prop_id = call_state.get("property_id")
+                if prop_id:
+                    try:
+                        get_supabase().table("crm_properties").update(
+                            {"sms_status": "voicemail_left", "updated_at": _now()}
+                        ).eq("id", prop_id).execute()
+                    except Exception:
+                        pass
             except Exception as exc:
                 print(f"[comms] Voicemail drop error: {exc}")
 
@@ -2235,6 +2365,8 @@ CREATE TABLE IF NOT EXISTS crm_communications (
 );
 
 ALTER TABLE crm_communications ADD COLUMN IF NOT EXISTS caller_offer_code TEXT;
+
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS seller_asking_price NUMERIC;
 
 CREATE INDEX IF NOT EXISTS idx_crm_comms_property ON crm_communications(property_id);
 CREATE INDEX IF NOT EXISTS idx_crm_comms_created  ON crm_communications(created_at DESC);
