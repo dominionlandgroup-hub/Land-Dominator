@@ -2,14 +2,13 @@ import React, { useEffect, useRef, useState } from 'react'
 import { useApp } from '../context/AppContext'
 import {
   uploadComps,
-  uploadListings,
   getCompsInventory,
   clearAllComps,
   clearCompsByState,
   clearCompsByFile,
   type CompInventoryItem,
 } from '../api/client'
-import type { UploadStats, ListingsStats } from '../types'
+import type { UploadStats } from '../types'
 
 // ── Format badge ──────────────────────────────────────────────────────────────
 
@@ -65,28 +64,39 @@ function UploadResultRow({ result }: { result: FileUploadResult }) {
   }
   const s = result.stats!
   const fmt = s.detected_format ?? 'land_portal'
-  const newSaved = s.saved_to_db ?? s.valid_rows
+  const soldSaved = s.saved_to_db ?? s.valid_rows
+  const activeSaved = s.active_saved ?? 0
+  const skipped = (s.deduped_count ?? 0)
   const dbTotal = s.db_total
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid #F3F4F6' }}>
-      <span style={{ color: '#059669', fontSize: 14, flexShrink: 0 }}>✓</span>
-      <FormatBadge format={fmt} />
-      <span style={{ fontSize: 13, color: '#374151', fontFamily: 'monospace', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {result.filename}
-      </span>
-      <span style={{ fontSize: 12, color: '#059669', fontWeight: 600, whiteSpace: 'nowrap' }}>
-        +{newSaved.toLocaleString()} added
-      </span>
-      {(s.deduped_count ?? 0) > 0 && (
-        <span style={{ fontSize: 11, color: '#9CA3AF', whiteSpace: 'nowrap' }}>
-          {s.deduped_count} dupes skipped
+    <div style={{ padding: '10px 0', borderBottom: '1px solid #F3F4F6' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: activeSaved > 0 ? 6 : 0 }}>
+        <span style={{ color: '#059669', fontSize: 14, flexShrink: 0 }}>✓</span>
+        <FormatBadge format={fmt} />
+        <span style={{ fontSize: 13, color: '#374151', fontFamily: 'monospace', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {result.filename}
         </span>
-      )}
-      {dbTotal != null && (
-        <span style={{ fontSize: 11, color: '#4F46E5', fontWeight: 600, whiteSpace: 'nowrap' }}>
-          Total: {dbTotal.toLocaleString()} in DB
+        {dbTotal != null && (
+          <span style={{ fontSize: 11, color: '#4F46E5', fontWeight: 600, whiteSpace: 'nowrap' }}>
+            Total: {dbTotal.toLocaleString()} in DB
+          </span>
+        )}
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, paddingLeft: 24 }}>
+        <span style={{ fontSize: 12, color: '#059669', fontWeight: 600 }}>
+          ✓ {soldSaved.toLocaleString()} sold comps saved (used for pricing)
         </span>
-      )}
+        {activeSaved > 0 && (
+          <span style={{ fontSize: 12, color: '#0891B2', fontWeight: 600 }}>
+            ✓ {activeSaved.toLocaleString()} active listings saved (used for market velocity)
+          </span>
+        )}
+        {skipped > 0 && (
+          <span style={{ fontSize: 11, color: '#9CA3AF' }}>
+            {skipped} dupes skipped
+          </span>
+        )}
+      </div>
     </div>
   )
 }
@@ -140,7 +150,6 @@ function InventoryTable({
           </span>
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-          {/* Add More Comps */}
           <button
             onClick={onAddMore}
             style={{
@@ -152,7 +161,6 @@ function InventoryTable({
           >
             <span style={{ fontSize: 14 }}>+</span> Add More Comps
           </button>
-          {/* Clear by state */}
           {allStates.map(st => (
             <button
               key={st}
@@ -166,7 +174,6 @@ function InventoryTable({
               Clear {st}
             </button>
           ))}
-          {/* Clear all */}
           {!clearAllConfirm ? (
             <button
               onClick={() => setClearAllConfirm(true)}
@@ -280,15 +287,12 @@ function Th({ children }: { children?: React.ReactNode }) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function UploadComps() {
-  const { compsStats, setCompsStats, setDashboardData, setCurrentPage, listingsStats, setListingsStats } = useApp()
+  const { compsStats, setCompsStats, setDashboardData, setCurrentPage, setListingsStats } = useApp()
   const [uploadResults, setUploadResults] = useState<FileUploadResult[]>([])
   const [inventory, setInventory] = useState<{ items: CompInventoryItem[]; total_comps: number } | null>(null)
   const [loadingInventory, setLoadingInventory] = useState(false)
   const [showDropZone, setShowDropZone] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const listingsInputRef = useRef<HTMLInputElement>(null)
-  const [listingsUploading, setListingsUploading] = useState(false)
-  const [listingsError, setListingsError] = useState<string | null>(null)
 
   async function loadInventory() {
     setLoadingInventory(true)
@@ -308,7 +312,6 @@ export default function UploadComps() {
 
   const hasInventory = (inventory?.total_comps ?? 0) > 0
 
-  // Show drop zone initially when no comps exist; otherwise hidden until "Add More Comps" clicked
   useEffect(() => {
     if (!loadingInventory && !hasInventory) {
       setShowDropZone(true)
@@ -317,7 +320,6 @@ export default function UploadComps() {
 
   function handleAddMore() {
     setShowDropZone(true)
-    // Small delay so the drop zone renders before we click the input
     setTimeout(() => fileInputRef.current?.click(), 50)
   }
 
@@ -333,7 +335,7 @@ export default function UploadComps() {
 
     for (const file of fileArr) {
       try {
-        const stats = await uploadComps(file, true) // always append
+        const stats = await uploadComps(file, true)
         setUploadResults(prev =>
           prev.map(r =>
             r.filename === file.name && r.status === 'uploading'
@@ -343,6 +345,10 @@ export default function UploadComps() {
         )
         setCompsStats(stats)
         setDashboardData(null)
+        // Populate market velocity if active listings were detected in this file
+        if (stats.listings) {
+          setListingsStats(stats.listings)
+        }
       } catch (e: unknown) {
         const msg =
           (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
@@ -364,21 +370,6 @@ export default function UploadComps() {
   function handleDrop(e: React.DragEvent) {
     e.preventDefault()
     handleFiles(e.dataTransfer.files)
-  }
-
-  async function handleListingsFile(file: File) {
-    setListingsUploading(true)
-    setListingsError(null)
-    try {
-      const stats = await uploadListings(file)
-      setListingsStats(stats as ListingsStats)
-    } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? 'Upload failed'
-      setListingsError(msg)
-    } finally {
-      setListingsUploading(false)
-      if (listingsInputRef.current) listingsInputRef.current.value = ''
-    }
   }
 
   async function handleClearAll() {
@@ -406,10 +397,10 @@ export default function UploadComps() {
       <div className="page-header">
         <div>
           <h1 className="text-lg font-semibold" style={{ color: '#111827', fontWeight: 700 }}>
-            Upload Sold Comps
+            Upload Sold Comps &amp; Active Listings
           </h1>
           <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>
-            Land Portal or MLS format · Upload multiple files · Appends to existing inventory
+            Export from Land Portal including both Sold and Active listings in the same file — the system separates them automatically
           </p>
         </div>
         {compsStats && (
@@ -420,6 +411,17 @@ export default function UploadComps() {
       </div>
 
       <div style={{ padding: '24px 32px', maxWidth: 900, margin: '0 auto', width: '100%' }}>
+
+        {/* Auto-split info banner */}
+        <div style={{
+          background: 'rgba(79,70,229,0.04)', border: '1px solid rgba(79,70,229,0.12)',
+          borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#374151',
+        }}>
+          <strong style={{ color: '#4F46E5' }}>Auto-detection: </strong>
+          The system reads the <em>Current Sale Status</em> column and automatically separates your file:
+          <span style={{ color: '#059669', fontWeight: 600 }}> Sold records</span> → comp pricing ·
+          <span style={{ color: '#0891B2', fontWeight: 600 }}> Active records</span> → market velocity analysis
+        </div>
 
         {/* Comp inventory — shown when DB has comps */}
         {hasInventory && inventory && (
@@ -456,7 +458,7 @@ export default function UploadComps() {
           onChange={e => e.target.files && handleFiles(e.target.files)}
         />
 
-        {/* Drop zone — always shown when no inventory, toggled when inventory exists */}
+        {/* Drop zone */}
         {showDropZone && (
           <div
             onDrop={handleDrop}
@@ -491,13 +493,13 @@ export default function UploadComps() {
             )}
             <div style={{ fontSize: 28, marginBottom: 8 }}>📂</div>
             <p style={{ fontWeight: 600, fontSize: 14, color: '#4F46E5', margin: '0 0 4px' }}>
-              {hasInventory ? 'Drop CSV files here or click to browse' : 'Drop CSV files here or click to browse'}
+              Drop CSV files here or click to browse
             </p>
             <p style={{ fontSize: 12, color: '#6B7280', margin: 0 }}>
-              Accepts Land Portal exports, MLS exports, or generic CSV · Multiple files supported · Appends to existing comps · Duplicate APNs automatically skipped
+              Accepts Land Portal exports (Sold + Active in one file), MLS exports, or generic CSV · Multiple files · Appends to existing comps · Duplicate APNs skipped
             </p>
             <p style={{ fontSize: 11, color: '#4F46E5', margin: '6px 0 0', fontWeight: 500 }}>
-              💡 For best results upload comps covering all acreage ranges 0.1 to 10 acres (43,560 to 435,600 sq ft)
+              💡 Set acreage 0.1 (4,356 sq ft) to 10 acres (435,600 sq ft) and include both Sold and Active to capture all segments + market velocity
             </p>
           </div>
         )}
@@ -529,7 +531,7 @@ export default function UploadComps() {
               listStyle: 'none', display: 'flex', justifyContent: 'space-between',
             }}
           >
-            <span>Supported file formats</span>
+            <span>Land Portal export instructions &amp; supported formats</span>
             <span style={{ color: '#9CA3AF', fontSize: 11 }}>click to expand</span>
           </summary>
           <div
@@ -539,43 +541,71 @@ export default function UploadComps() {
               background: '#fff',
             }}
           >
+            {/* Land Portal step-by-step */}
+            <p style={{ fontWeight: 600, fontSize: 12, color: '#374151', marginBottom: 10 }}>Land Portal export steps:</p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 7, marginBottom: 16 }}>
+              {[
+                'Go to landportal.com and click Solds in the top menu',
+                'Set State: [your target state]',
+                'Set County: [your target county]',
+                'Set Property Type: Vacant Land General, Residential Vacant Land',
+                'Set Acreage: 0.1 acres (4,356 sq ft) minimum to 10 acres (435,600 sq ft) maximum',
+                'Set Date Range: Last 24 months',
+                'Set Status: Include BOTH Sold AND Active listings',
+                'Set Buyer Type: All buyers (LLC, Individual, Trust)',
+                'Exclude unknown sale dates for sold records: Yes',
+                'Click Export CSV and upload below',
+              ].map((s, i) => (
+                <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                  <span style={{ width: 18, height: 18, borderRadius: '50%', background: '#4F46E5', color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{i + 1}</span>
+                  <p style={{ fontSize: 12, color: '#6B7280', margin: 0 }}>{s}</p>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ background: 'rgba(8,145,178,0.06)', border: '1px solid rgba(8,145,178,0.2)', borderRadius: 6, padding: '8px 12px', marginBottom: 16, fontSize: 12, color: '#374151' }}>
+              <strong style={{ color: '#0891B2' }}>Note:</strong> Including active listings in the same export lets the system automatically calculate market velocity and flag oversupplied areas.
+            </div>
+
+            {/* Acreage band guide */}
+            <p style={{ fontWeight: 600, fontSize: 12, color: '#374151', marginBottom: 8 }}>Buy Box Lot Size — all acreage segments:</p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 6, marginBottom: 12 }}>
+              {[
+                { band: 'Micro',  range: '0–0.5 ac',   sqft: '0–21,780 sq ft' },
+                { band: 'Small',  range: '0.5–2 ac',   sqft: '21,780–87,120 sq ft' },
+                { band: 'Medium', range: '2–5 ac',     sqft: '87,120–217,800 sq ft' },
+                { band: 'Large',  range: '5–10 ac',    sqft: '217,800–435,600 sq ft' },
+              ].map(b => (
+                <div key={b.band} style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 6, padding: '8px 10px' }}>
+                  <p style={{ fontWeight: 700, fontSize: 12, color: '#374151', margin: '0 0 2px' }}>{b.band}</p>
+                  <p style={{ fontSize: 11, color: '#6B7280', margin: '0 0 1px' }}>{b.range}</p>
+                  <p style={{ fontSize: 10, color: '#9CA3AF', margin: 0 }}>{b.sqft}</p>
+                </div>
+              ))}
+            </div>
+            <p style={{ fontSize: 11, color: '#4F46E5', fontWeight: 600, margin: '0 0 16px' }}>
+              Recommended pull: 0.1 to 10 acres to capture all segments
+            </p>
+
+            {/* Format cards */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
               <FormatGuideCard
                 title="Land Portal"
                 badge="land_portal"
-                columns={['Current Sale Price', 'Current Sale Recording Date', 'Lot Acres', 'APN', 'Parcel State', 'Parcel County', 'Latitude/Longitude']}
-                note="Auto-detected. Full feature support including buildability, FEMA, and slope data."
+                columns={['Current Sale Status (Sold / Active)', 'Current Sale Price', 'Current Sale Recording Date', 'Lot Acres', 'APN', 'Parcel State', 'Parcel County', 'Latitude/Longitude']}
+                note="Auto-detected. Sold rows go to comp pricing; Active rows go to market velocity."
               />
               <FormatGuideCard
                 title="MLS Export"
                 badge="mls"
                 columns={['Close Price / Sold Price', 'Close Date', 'Acres / Approximate Acres', 'APN / Parcel Number', 'State', 'County', 'Address (geocoded)']}
-                note="Auto-detected. Coordinates geocoded via Census API. No buildability data — comps used for price-per-acre only."
+                note="Auto-detected. Coordinates geocoded via Census API. No buildability data."
               />
-            </div>
-
-            <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid #F3F4F6' }}>
-              <p style={{ fontWeight: 600, fontSize: 12, color: '#374151', marginBottom: 8 }}>Land Portal export steps:</p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 6 }}>
-                {[
-                  'Log in → Sold Data tab',
-                  'Property Type → "Vacant Land"',
-                  'Sale Date → Last 24 months',
-                  'Buyer Type → LLC + Corporation',
-                  'Set State + County + Acreage range',
-                  'Export → Export to CSV (all columns)',
-                ].map((s, i) => (
-                  <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                    <span style={{ width: 18, height: 18, borderRadius: '50%', background: '#4F46E5', color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{i + 1}</span>
-                    <p style={{ fontSize: 12, color: '#6B7280', margin: 0 }}>{s}</p>
-                  </div>
-                ))}
-              </div>
             </div>
           </div>
         </details>
 
-        {/* Merge strategy note */}
+        {/* Dedup note */}
         <div
           style={{
             background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8,
@@ -583,97 +613,7 @@ export default function UploadComps() {
           }}
         >
           <strong style={{ color: '#374151' }}>Deduplication: </strong>
-          Files are appended to the comp database. Duplicate APNs are automatically detected and skipped before inserting — you can safely re-upload the same file without creating duplicates. Use "Remove" next to each file to delete just those comps, or "Clear All Comps" to start fresh.
-        </div>
-
-        {/* Active Listings upload */}
-        <div
-          style={{
-            background: '#fff', border: '1px solid #E5E7EB', borderRadius: 10,
-            padding: '16px 20px', marginTop: 8,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <div>
-              <p style={{ fontWeight: 600, fontSize: 13, color: '#111827', margin: 0 }}>
-                Active Listings <span style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 400 }}>optional</span>
-              </p>
-              <p style={{ fontSize: 11, color: '#9CA3AF', margin: '2px 0 0' }}>
-                Upload an active listings CSV to add market velocity analysis (months of supply per ZIP)
-              </p>
-            </div>
-            {listingsStats && (
-              <button
-                onClick={() => setListingsStats(null)}
-                style={{ fontSize: 11, color: '#9CA3AF', background: 'transparent', border: '1px solid #E5E7EB', borderRadius: 4, padding: '2px 8px', cursor: 'pointer' }}
-              >
-                Remove
-              </button>
-            )}
-          </div>
-
-          {listingsStats ? (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, padding: '10px 14px', background: 'rgba(16,185,129,0.04)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: 8 }}>
-              <div>
-                <p style={{ fontSize: 10, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Active</p>
-                <p style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: '2px 0 0' }}>{listingsStats.total_active.toLocaleString()}</p>
-              </div>
-              <div>
-                <p style={{ fontSize: 10, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Pending</p>
-                <p style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: '2px 0 0' }}>{listingsStats.total_pending.toLocaleString()}</p>
-              </div>
-              <div>
-                <p style={{ fontSize: 10, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>ZIPs</p>
-                <p style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: '2px 0 0' }}>{listingsStats.zip_count}</p>
-              </div>
-              {listingsStats.counties_covered.length > 0 && (
-                <div>
-                  <p style={{ fontSize: 10, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Counties</p>
-                  <p style={{ fontSize: 12, color: '#374151', margin: '2px 0 0' }}>{listingsStats.counties_covered.slice(0, 4).join(', ')}{listingsStats.counties_covered.length > 4 ? ` +${listingsStats.counties_covered.length - 4}` : ''}</p>
-                </div>
-              )}
-              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
-                <span style={{ fontSize: 11, color: '#10B981', fontWeight: 600 }}>✓ Velocity data loaded — visible in Market Analysis</span>
-              </div>
-            </div>
-          ) : (
-            <div>
-              <input
-                ref={listingsInputRef}
-                type="file"
-                accept=".csv"
-                style={{ display: 'none' }}
-                onChange={e => { const f = e.target.files?.[0]; if (f) handleListingsFile(f) }}
-              />
-              <button
-                onClick={() => listingsInputRef.current?.click()}
-                disabled={listingsUploading}
-                style={{
-                  width: '100%', padding: '12px 0', border: '2px dashed #E5E7EB', borderRadius: 8,
-                  background: '#FAFAFA', color: '#9CA3AF', cursor: listingsUploading ? 'default' : 'pointer',
-                  fontSize: 13, fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                }}
-              >
-                {listingsUploading ? (
-                  <>
-                    <span style={{ width: 14, height: 14, border: '2px solid #E5E7EB', borderTopColor: '#4F46E5', borderRadius: '50%', animation: 'spin 0.8s linear infinite', display: 'inline-block' }} />
-                    Processing…
-                  </>
-                ) : (
-                  <>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                    Upload Active Listings CSV
-                  </>
-                )}
-              </button>
-              {listingsError && (
-                <p style={{ fontSize: 12, color: '#DC2626', marginTop: 6 }}>{listingsError}</p>
-              )}
-              <p style={{ fontSize: 11, color: '#9CA3AF', marginTop: 6 }}>
-                Expected columns: ZIP, Status (Active/Pending), List Price, DOM. Computes months-of-supply per ZIP vs. your sold comps.
-              </p>
-            </div>
-          )}
+          Files are appended to the comp database. Duplicate APNs are automatically detected and skipped — you can safely re-upload the same file without creating duplicates. Use "Remove" next to each file to delete just those comps, or "Clear All Comps" to start fresh.
         </div>
       </div>
 

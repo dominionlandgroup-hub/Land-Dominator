@@ -38,6 +38,8 @@ export interface UploadStats {
   geocoded_count?: number
   db_total?: number
   filename?: string
+  active_saved?: number
+  listings?: ListingsStats
 }
 
 // ─── Dashboard ─────────────────────────────────────────────────────────────

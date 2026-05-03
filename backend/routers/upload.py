@@ -677,7 +677,15 @@ async def upload_comps(
         print(f"  Row {_ri}: raw_price={_p_raw!r} parsed={_p} | raw_acres={_ac_raw!r} parsed={_ac} | county={_co!r} | lu={_lu!r} | price_ok={_p>0} acres_ok={_ac>0} lu_ok={_lu_ok}", flush=True)
     print("[comps] --- end trace ---", flush=True)
 
+    # Status column detection for sold/active auto-split
+    _STATUS_COL_ALIASES = {"current sale status", "sale status", "status", "mls status", "listing status"}
+    status_col = next((c for c in df.columns if c.lower().strip() in _STATUS_COL_ALIASES), None)
+    _SOLD_KWORDS  = ("sold", "closed", "closd", "cls")
+    _ACTIVE_KWORDS = ("active", "for sale", "act")
+
     rows = []
+    active_rows: list[dict] = []
+    active_skipped = 0
     skipped_no_price = 0
     skipped_no_acreage = 0
     skipped_no_county = 0
@@ -725,7 +733,35 @@ async def upload_comps(
             print(f"Row parsed: price={sale_price} acreage={acreage} county={county!r} lat={lat} lon={lon} land_use={land_use!r} date={sale_date}", flush=True)
             _logged_rows += 1
 
-        # ── Filters ──
+        # ── Classify as sold or active ──
+        _raw_status = str(row.get(status_col, "") if status_col else "").strip()
+        _sl = _raw_status.lower()
+        if any(k in _sl for k in _SOLD_KWORDS):
+            _row_type = "sold"
+        elif any(k in _sl for k in _ACTIVE_KWORDS):
+            _row_type = "active"
+        elif sale_price > 0:
+            _row_type = "sold"
+        else:
+            _row_type = "active"
+
+        if _row_type == "active":
+            if acreage > 0 and zip_code:
+                active_rows.append({
+                    "county":     county or None,
+                    "state":      state or None,
+                    "zip_code":   zip_code,
+                    "acreage":    float(acreage),
+                    "list_price": float(sale_price) if sale_price > 0 else None,
+                    "status":     _raw_status or "Active",
+                    "apn":        apn or None,
+                    "source":     filename,
+                })
+            else:
+                active_skipped += 1
+            continue
+
+        # ── Filters (sold rows only) ──
         if sale_price <= 0:
             skipped_no_price += 1
             continue
@@ -888,6 +924,74 @@ async def upload_comps(
     except Exception:
         pass
 
+    # Save active listings and compute market velocity
+    active_saved = 0
+    listings_data = None
+    if active_rows:
+        try:
+            for i in range(0, len(active_rows), 100):
+                chunk = active_rows[i:i + 100]
+                supabase.table("crm_active_listings").insert(chunk).execute()
+                active_saved += len(chunk)
+            print(f"[comps] Active listings saved: {active_saved}", flush=True)
+        except Exception as _ae:
+            print(f"[comps] Active listings save error: {_ae}", flush=True)
+
+        # Compute market velocity per ZIP from active rows
+        from datetime import timedelta as _td
+        _by_zip: dict[str, dict] = {}
+        for _ar in active_rows:
+            _z = (_ar.get("zip_code") or "").strip()
+            if not _z:
+                continue
+            if _z not in _by_zip:
+                _by_zip[_z] = {"active": 0, "prices": []}
+            _by_zip[_z]["active"] += 1
+            _lp = _ar.get("list_price")
+            if _lp and _lp > 0:
+                _by_zip[_z]["prices"].append(_lp)
+
+        _monthly_solds: dict[str, float] = {}
+        try:
+            _cutoff = (datetime.now(timezone.utc) - _td(days=365)).strftime("%Y-%m-%d")
+            _voff = 0
+            while True:
+                _vb = supabase.table("crm_sold_comps").select("zip_code").gte("sale_date", _cutoff).range(_voff, _voff + 999).execute()
+                for _vr in _vb.data or []:
+                    _vz = str(_vr.get("zip_code") or "").split(".")[0].strip()
+                    if _vz:
+                        _monthly_solds[_vz] = _monthly_solds.get(_vz, 0) + (1.0 / 12.0)
+                if len(_vb.data or []) < 1000:
+                    break
+                _voff += 1000
+        except Exception:
+            pass
+
+        _zip_vel: dict[str, dict] = {}
+        for _z, _d in _by_zip.items():
+            _ac = _d["active"]
+            _ms = round(_monthly_solds.get(_z, 0.0), 2)
+            _sup = round(_ac / _ms, 1) if _ms > 0 else (99.0 if _ac > 0 else 0.0)
+            _lbl = "HOT" if _sup < 3 else ("BALANCED" if _sup <= 6 else "SLOW")
+            _avg_p = round(sum(_d["prices"]) / len(_d["prices"])) if _d["prices"] else None
+            _zip_vel[_z] = {
+                "zip": _z, "active_count": _ac, "pending_count": 0,
+                "monthly_solds": _ms, "months_supply": _sup,
+                "absorption_rate": round(_ms / _ac, 3) if _ac > 0 else 0.0,
+                "velocity_label": _lbl, "avg_dom": None, "avg_list_price": _avg_p,
+            }
+
+        if _zip_vel:
+            listings_data = {
+                "listings_session_id": str(uuid.uuid4()),
+                "total_active": len(active_rows),
+                "total_pending": 0,
+                "zip_count": len(_zip_vel),
+                "counties_covered": sorted({_ar.get("county") or "" for _ar in active_rows if _ar.get("county")}),
+                "columns_found": [status_col] if status_col else [],
+                "zip_velocity": _zip_vel,
+            }
+
     # Build a safe preview (first 5 rows, string-only values)
     preview_cols = {
         "APN", "Parcel County", "County", "Parcel State", "State",
@@ -918,6 +1022,8 @@ async def upload_comps(
             "geocoded_count": 0,
             "db_total": db_total,
             "errors": errors[:5],
+            "active_saved": active_saved,
+            "listings": listings_data,
         }),
         media_type="application/json"
     )
