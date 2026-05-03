@@ -170,27 +170,34 @@ export async function addMatchResultsToCampaign(
   matchId: string,
   exportType: 'mailable' | 'matched' = 'mailable',
   records?: unknown[],
-  offerPct?: number
+  offerPct?: number,
+  onProgress?: (done: number, total: number) => void
 ): Promise<{ imported: number; total: number; campaign_id: string }> {
-  console.log('[addMatchResultsToCampaign] campaignId:', campaignId)
-  console.log('[addMatchResultsToCampaign] exportType:', exportType)
-  console.log('[addMatchResultsToCampaign] records count:', records?.length ?? 0)
-  if (records && records.length > 0) {
-    const r0 = records[0] as Record<string, unknown>
-    console.log('[addMatchResultsToCampaign] first record keys:', Object.keys(r0))
-    console.log('[addMatchResultsToCampaign] first record pricing_flag:', r0.pricing_flag)
-    console.log('[addMatchResultsToCampaign] first record sample:', { apn: r0.apn, pricing_flag: r0.pricing_flag, suggested_offer_mid: r0.suggested_offer_mid })
-  }
   const payload = {
     match_id: matchId,
     export_type: exportType,
     ...(records ? { records } : {}),
     ...(offerPct != null ? { offer_pct: offerPct } : {}),
   }
-  console.log('[addMatchResultsToCampaign] payload keys:', Object.keys(payload), 'records included:', 'records' in payload)
-  const { data } = await api.post(`/crm/campaigns/${campaignId}/add-match-results`, payload)
-  console.log('[addMatchResultsToCampaign] response:', data)
-  return data
+  // Start background job — returns {job_id, total} immediately
+  const { data: startData } = await api.post(`/crm/campaigns/${campaignId}/add-match-results`, payload)
+  const { job_id: jobId, total } = startData as { job_id: string; total: number }
+
+  // Poll for progress until done or error
+  while (true) {
+    await new Promise(r => setTimeout(r, 1000))
+    const { data: status } = await api.get(`/crm/campaigns/${campaignId}/add-match-status/${jobId}`)
+    const { done, imported, status: jobStatus, error } = status as {
+      done: number; imported: number; status: string; error?: string; total: number
+    }
+    if (onProgress) onProgress(done ?? 0, total)
+    if (jobStatus === 'done') {
+      return { imported: imported ?? 0, total, campaign_id: campaignId }
+    }
+    if (jobStatus === 'error') {
+      throw new Error(error ?? 'Add records job failed')
+    }
+  }
 }
 
 export async function initiateOutboundCall(

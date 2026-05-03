@@ -129,6 +129,7 @@ export default function MatchTargets() {
   const [excludeSlowMarkets, setExcludeSlowMarkets] = useState<boolean>(true)
   const [includeSlowInMailing, setIncludeSlowInMailing] = useState<boolean>(false)
   const [mailingDone, setMailingDone] = useState(false)
+  const [mailingProgress, setMailingProgress] = useState<{ done: number; total: number } | null>(null)
   const [showUnmatched, setShowUnmatched] = useState(false)
   const [showMatchedTable, setShowMatchedTable] = useState(false)
 
@@ -1320,6 +1321,7 @@ export default function MatchTargets() {
                   setMailingLoading(true)
                   setMailingError(null)
                   setMailingSuccess(null)
+                  setMailingProgress(null)
                   try {
                     let campaignId = selectedCampaignId
                     let campaignName = mailingCampaigns.find(c => c.id === campaignId)?.name ?? 'Campaign'
@@ -1341,8 +1343,10 @@ export default function MatchTargets() {
                       mailingExportType,
                       resultsForExport,
                       matchResult.offer_pct ?? offerPct,
+                      (done, total) => setMailingProgress({ done, total }),
                     )
-                    setMailingSuccess(`${result.imported.toLocaleString()} records added to "${campaignName}" with pricing saved.`)
+                    setMailingProgress(null)
+                    setMailingSuccess(`${result.imported.toLocaleString()} of ${result.total.toLocaleString()} records added to "${campaignName}" with pricing saved.`)
                     setSelectedCampaignId(campaignId)
                     setMailingDone(true)
                     setTimeout(() => {
@@ -1354,10 +1358,14 @@ export default function MatchTargets() {
                   } catch (e: unknown) {
                     const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
                     setMailingError(detail ?? 'Failed to add records.')
-                  } finally { setMailingLoading(false) }
+                  } finally { setMailingLoading(false); setMailingProgress(null) }
                 }}
               >
-                {mailingLoading ? 'Adding…' : mailingDone ? '✓ Done' : 'Add Records'}
+                {mailingLoading
+                  ? mailingProgress
+                    ? `Adding records… ${mailingProgress.done.toLocaleString()} of ${mailingProgress.total.toLocaleString()}`
+                    : 'Starting…'
+                  : mailingDone ? '✓ Done' : 'Add Records'}
               </button>
             </div>
           </div>

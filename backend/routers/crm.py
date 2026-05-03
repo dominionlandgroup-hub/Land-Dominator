@@ -32,6 +32,7 @@ router = APIRouter(prefix="/crm", tags=["crm"])
 # In-memory job stores (single-process Railway deployment)
 _import_jobs: dict[str, dict] = {}
 _lp_pull_jobs: dict[str, dict] = {}
+_add_match_jobs: dict[str, dict] = {}  # {job_id: {status, done, total, imported, warnings}}
 
 # Startup diagnostic — confirms LP token presence in Railway env
 _lp_token_at_startup = os.environ.get("LAND_PORTAL_TOKEN", "")
@@ -1206,16 +1207,30 @@ async def recalculate_campaign_spend(campaign_id: str) -> dict:
 
 # ── Add match results to campaign ─────────────────────────────────────
 
-@router.post("/campaigns/{campaign_id}/add-match-results", status_code=201)
-async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)) -> dict:
+@router.get("/campaigns/{campaign_id}/add-match-status/{job_id}")
+async def get_add_match_status(campaign_id: str, job_id: str) -> dict:
+    """Poll progress of a background add-match-results job."""
+    job = _add_match_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
+
+
+@router.post("/campaigns/{campaign_id}/add-match-results", status_code=202)
+async def add_match_results_to_campaign(
+    campaign_id: str,
+    background_tasks: BackgroundTasks,
+    body: dict = Body(...),
+) -> dict:
     """
-    Bulk-insert mailable matched parcels into a CRM campaign as 'lead' properties.
+    Start a background bulk-insert of mailable matched parcels.
+    Returns {job_id, total} immediately — poll add-match-status/{job_id} for progress.
     Body: {match_id: str, export_type?: 'mailable'|'matched', records?: list}
-    If records is provided it is used directly (avoids volatile in-memory session store).
     """
     try:
         match_id = body.get("match_id", "")
         export_type = body.get("export_type", "mailable")
+        offer_pct_body = body.get("offer_pct")
 
         # Prefer inline records sent from the frontend (resilient to server restarts)
         inline_records = body.get("records")
@@ -1228,26 +1243,13 @@ async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)
                 raise HTTPException(status_code=404, detail="Match result not found. Re-run matching engine.")
             raw_results = match_data.get("results", [])
 
-        print(f"[add-match-results] campaign_id={campaign_id} export_type={export_type} total_raw={len(raw_results)}", flush=True)
-        if raw_results:
-            print(f"[add-match-results] Sample record keys: {list(raw_results[0].keys())[:15]}", flush=True)
-            print(f"[add-match-results] Sample pricing_flag: {raw_results[0].get('pricing_flag')}", flush=True)
-
-        # Filter by export type
+        # Filter by export type (do this synchronously so we can return accurate total)
         if export_type == "mailable":
             results = [r for r in raw_results if r.get("pricing_flag") in ("MATCHED", "LP_FALLBACK")]
         elif export_type == "matched":
             results = [r for r in raw_results if r.get("pricing_flag") == "MATCHED"]
         else:
-            results = raw_results
-
-        print(f"[add-match-results] After filter: {len(results)} records to insert", flush=True)
-
-        if results:
-            r0 = results[0]
-            print(f"[add-match-results] RAW engine keys (ALL): {sorted(r0.keys())}", flush=True)
-            print(f"[add-match-results] APN={r0.get('apn')!r} lp_property_id={r0.get('lp_property_id')!r} fips={r0.get('fips')!r}", flush=True)
-            print(f"[add-match-results] owner_name={r0.get('owner_name')!r} suggested_offer_mid={r0.get('suggested_offer_mid')!r}", flush=True)
+            results = list(raw_results)
 
         if not results:
             flag_counts: dict[str, int] = {}
@@ -1259,13 +1261,31 @@ async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)
                 detail=f"No mailable records found (export_type='{export_type}'). Flag breakdown: {flag_counts}. Re-run the matching engine or switch to 'matched' export type."
             )
 
+        job_id = str(uuid.uuid4())
+        _add_match_jobs[job_id] = {"status": "running", "done": 0, "total": len(results), "imported": 0, "warnings": []}
+        background_tasks.add_task(_run_add_match_job, job_id, campaign_id, results, offer_pct_body)
+        return {"job_id": job_id, "total": len(results)}
+
+    except HTTPException:
+        raise
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        print(f"[add-match-results] ERROR: {exc}", flush=True)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+def _run_add_match_job(job_id: str, campaign_id: str, results: list[dict], offer_pct_arg: object) -> None:
+    """Background worker: batch-insert match results into crm_properties (200 per batch)."""
+    job = _add_match_jobs[job_id]
+    try:
         sb = get_supabase()
-        # Verify campaign exists
+
         c_r = sb.table("crm_campaigns").select("id,name,campaign_code").eq("id", campaign_id).execute()
         if not c_r.data:
-            raise HTTPException(status_code=404, detail="Campaign not found")
+            _add_match_jobs[job_id] = {**job, "status": "error", "error": "Campaign not found"}
+            return
 
-        # Derive a short 2-digit campaign number for campaign_code prefix
         all_camp = sb.table("crm_campaigns").select("id").order("created_at").execute()
         camp_num = next((i + 1 for i, c in enumerate(all_camp.data or []) if c["id"] == campaign_id), 1)
         code_prefix = f"{camp_num:02d}"
@@ -1274,62 +1294,33 @@ async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)
         for seq, r in enumerate(results, start=1):
             owner_full_raw = r.get("owner_name") or r.get("owner_full_name") or ""
             owner_full = reformat_name(owner_full_raw) if owner_full_raw else ""
-
-            # Derive first/last from the reformatted name (first owner before &)
             primary = re.split(r"\s*&\s*", owner_full)[0].strip() if owner_full else ""
             primary_parts = primary.split()
             if len(primary_parts) >= 3:
-                owner_first = primary_parts[0]
-                owner_last = primary_parts[-1]
+                owner_first = primary_parts[0]; owner_last = primary_parts[-1]
             elif len(primary_parts) == 2:
-                owner_first = primary_parts[0]
-                owner_last = primary_parts[1]
+                owner_first = primary_parts[0]; owner_last = primary_parts[1]
             elif primary_parts:
-                owner_first = primary_parts[0]
-                owner_last = ""
+                owner_first = primary_parts[0]; owner_last = ""
             else:
-                owner_first = ""
-                owner_last = ""
+                owner_first = ""; owner_last = ""
 
-            if owner_full_raw != owner_full:
-                print(f"[add-match-results] Name fix: '{owner_full_raw}' → '{owner_full}' (first='{owner_first}' last='{owner_last}')", flush=True)
-
-            # Resolve FIPS and Land Portal property_id with broad key fallbacks
-            prop_id = (
-                r.get("lp_property_id")
-                or r.get("property_id")
-                or r.get("propertyid")
-                or r.get("Property ID")
-                or r.get("LP Property ID")
-                or None
-            )
-            fips_val = (
-                r.get("fips")
-                or r.get("fips_code")
-                or r.get("Parcel FIPS")
-                or r.get("County FIPS")
-                or r.get("parcel_fips")
-                or r.get("county_fips")
-                or None
-            )
-            print(f"[add-match-results] FIPS: {fips_val}, Property ID: {prop_id}", flush=True)
-
+            prop_id = (r.get("lp_property_id") or r.get("property_id") or r.get("propertyid")
+                       or r.get("Property ID") or r.get("LP Property ID") or None)
+            fips_val = (r.get("fips") or r.get("fips_code") or r.get("Parcel FIPS")
+                        or r.get("County FIPS") or r.get("parcel_fips") or r.get("county_fips") or None)
             rows.append({
-                # Basic
                 "campaign_id": campaign_id,
                 "status": "lead",
                 "campaign_code": f"{code_prefix}-{seq}",
-                # Owner
                 "owner_full_name": owner_full,
                 "owner_first_name": owner_first,
                 "owner_last_name": owner_last,
                 "owner_phone": r.get("owner_phone") or None,
-                # Mailing address
                 "owner_mailing_address": r.get("mail_address") or None,
                 "owner_mailing_city": r.get("mail_city") or None,
                 "owner_mailing_state": r.get("mail_state") or None,
                 "owner_mailing_zip": r.get("mail_zip") or None,
-                # Parcel location
                 "apn": r.get("apn") or None,
                 "property_address": r.get("parcel_address") or None,
                 "property_city": r.get("parcel_city") or None,
@@ -1337,42 +1328,34 @@ async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)
                 "state": r.get("parcel_state") or None,
                 "county": (lambda v: v.lower().strip().replace(" county", "").replace("county", "").strip() or None)(str(r.get("parcel_county") or "")),
                 "acreage": r.get("lot_acres"),
-                # LP IDs
                 "property_id": prop_id,
                 "fips": fips_val,
-                # Pricing
                 "offer_price": float(r["suggested_offer_mid"]) if r.get("suggested_offer_mid") is not None else None,
                 "lp_estimate": r.get("retail_estimate"),
                 "recommended_offer": float(r["suggested_offer_mid"]) if r.get("suggested_offer_mid") is not None else None,
                 "confidence_level": r.get("confidence") or None,
                 "pricing_method_used": r.get("pricing_method") or None,
-                # Geo
                 "latitude": r.get("latitude"),
                 "longitude": r.get("longitude"),
-                # Comp 1
                 "comp1_price": r.get("comp_1_price") or r.get("Comp 1 Sale Price"),
                 "comp1_acreage": r.get("comp_1_acreage") or r.get("comp_1_acres") or r.get("Comp 1 Acreage"),
                 "comp_1_address": r.get("comp_1_address") or r.get("Comp 1 Address") or None,
                 "comp_1_date": r.get("comp_1_date") or r.get("Comp 1 Sale Date") or None,
                 "comp_1_distance": r.get("comp_1_distance") or r.get("Comp 1 Distance"),
                 "comp_1_ppa": r.get("comp_1_ppa") or r.get("Comp 1 $/Acre"),
-                # Comp 2
                 "comp2_price": r.get("comp_2_price") or r.get("Comp 2 Sale Price"),
                 "comp2_acreage": r.get("comp_2_acreage") or r.get("comp_2_acres") or r.get("Comp 2 Acreage"),
                 "comp_2_address": r.get("comp_2_address") or r.get("Comp 2 Address") or None,
                 "comp_2_date": r.get("comp_2_date") or r.get("Comp 2 Sale Date") or None,
                 "comp_2_distance": r.get("comp_2_distance") or r.get("Comp 2 Distance"),
                 "comp_2_ppa": r.get("comp_2_ppa") or r.get("Comp 2 $/Acre"),
-                # Comp 3
                 "comp3_price": r.get("comp_3_price") or r.get("Comp 3 Sale Price"),
                 "comp3_acreage": r.get("comp_3_acreage") or r.get("comp_3_acres") or r.get("Comp 3 Acreage"),
                 "comp_3_address": r.get("comp_3_address") or r.get("Comp 3 Address") or None,
                 "comp_3_date": r.get("comp_3_date") or r.get("Comp 3 Sale Date") or None,
                 "comp_3_distance": r.get("comp_3_distance") or r.get("Comp 3 Distance"),
                 "comp_3_ppa": r.get("comp_3_ppa") or r.get("Comp 3 $/Acre"),
-                # Comp metadata
                 "comp_quality_flags": r.get("comp_quality_flags") or None,
-                # Comp-derived pricing
                 "comp_median_ppa": r.get("comp_median_ppa") or r.get("median_ppa"),
                 "comp_derived_value": r.get("comp_derived_value") or r.get("retail_estimate"),
                 "pricing_description": r.get("pricing_description"),
@@ -1394,7 +1377,6 @@ async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)
                     "comp_1_ppa": r.get("comp_1_ppa"),
                     "comp_1_distance": r.get("comp_1_distance"),
                 }) if r.get("retail_estimate") else None,
-                # Match engine metadata
                 "match_radius_used": r.get("match_radius_used"),
                 "num_comps_used": r.get("num_comps_used"),
                 "owner_proximity": r.get("owner_proximity") or None,
@@ -1402,7 +1384,6 @@ async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)
                 "score": r.get("score"),
                 "retail_estimate": r.get("retail_estimate"),
                 "acreage_band": r.get("acreage_band") or None,
-                # Land analysis (present when LP CSV columns were in target file)
                 "buildability": r.get("buildability_pct"),
                 "land_locked": r.get("land_locked") or None,
                 "dd_flood_zone": r.get("flood_zone") or None,
@@ -1418,31 +1399,23 @@ async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)
                 "updated_at": _now(),
             })
 
-        print(f"[add-match-results] Inserting {len(rows)} rows in chunks of 25", flush=True)
-        if rows:
-            print(f"[add-match-results] ALL column names in first row: {list(rows[0].keys())}", flush=True)
-            print(f"[add-match-results] First row sample: campaign_id={rows[0].get('campaign_id')} apn={rows[0].get('apn')} offer_price={rows[0].get('offer_price')} lp_estimate={rows[0].get('lp_estimate')}", flush=True)
+        print(f"[add-match-job] {job_id} inserting {len(rows)} rows in batches of 200", flush=True)
 
-        # Insert in chunks of 25 so any per-row error is isolated
-        CHUNK = 25
+        BATCH = 200
         imported = 0
         all_warnings: list[str] = []
-        for chunk_start in range(0, len(rows), CHUNK):
-            chunk = rows[chunk_start:chunk_start + CHUNK]
-            n, warns = _safe_batch_insert(sb, chunk)
+        for batch_start in range(0, len(rows), BATCH):
+            batch = rows[batch_start:batch_start + BATCH]
+            n, warns = _safe_batch_insert(sb, batch)
             imported += n
             all_warnings.extend(warns)
-            print(f"[add-match-results] chunk {chunk_start}–{chunk_start+len(chunk)}: inserted {n}/{len(chunk)}", flush=True)
+            _add_match_jobs[job_id]["done"] = batch_start + len(batch)
+            _add_match_jobs[job_id]["imported"] = imported
+            print(f"[add-match-job] {job_id} batch {batch_start}–{batch_start+len(batch)}: {n}/{len(batch)} inserted (total {imported})", flush=True)
 
-        print(f"[add-match-results] Total imported={imported}/{len(rows)} warnings={all_warnings[:3]}", flush=True)
+        print(f"[add-match-job] {job_id} done: imported={imported}/{len(rows)}", flush=True)
 
-        if imported == 0 and (all_warnings or len(rows) > 0):
-            raise HTTPException(
-                status_code=500,
-                detail=f"Insert failed — 0 of {len(rows)} records written. First error: {all_warnings[0] if all_warnings else 'unknown'}. Run POST /crm/db-migrate to add missing columns."
-            )
-
-        # Post-insert name fix: catch any remaining backwards names in this campaign
+        # Post-insert name fix
         names_fixed = 0
         try:
             camp_recs = sb.table("crm_properties").select("id,owner_full_name,owner_first_name,owner_last_name").eq("campaign_id", campaign_id).execute()
@@ -1470,11 +1443,9 @@ async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)
                 }).eq("id", rec["id"]).execute()
                 names_fixed += 1
         except Exception as ne:
-            print(f"[add-match-results] post-insert name fix error (non-fatal): {ne}", flush=True)
+            print(f"[add-match-job] post-insert name fix error (non-fatal): {ne}", flush=True)
 
-        print(f"[add-match-results] Post-insert name fix: {names_fixed} names corrected", flush=True)
-
-        # Update amount_spent based on newly inserted records
+        # Update amount_spent
         if imported > 0:
             try:
                 camp_res = sb.table("crm_campaigns").select("cost_per_piece,amount_spent").eq("id", campaign_id).single().execute()
@@ -1483,32 +1454,26 @@ async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)
                 prev_spent = float(camp_data.get("amount_spent") or 0)
                 new_spent = prev_spent + cpp * imported
                 camp_update: dict = {"amount_spent": new_spent, "updated_at": _now()}
-                # Store offer_pct if provided in the request body
-                _req_offer_pct = body.get("offer_pct")
-                if _req_offer_pct is not None:
+                if offer_pct_arg is not None:
                     try:
-                        camp_update["offer_pct"] = float(_req_offer_pct)
+                        camp_update["offer_pct"] = float(offer_pct_arg)  # type: ignore[arg-type]
                     except (TypeError, ValueError):
                         pass
                 sb.table("crm_campaigns").update(camp_update).eq("id", campaign_id).execute()
-                print(f"[add-match-results] amount_spent updated: {prev_spent:.2f} → {new_spent:.2f} ({imported} records × ${cpp}/piece)", flush=True)
             except Exception as spend_err:
-                print(f"[add-match-results] amount_spent update error (non-fatal): {spend_err}", flush=True)
+                print(f"[add-match-job] amount_spent update error (non-fatal): {spend_err}", flush=True)
 
-        return {
+        _add_match_jobs[job_id] = {
+            "status": "done",
+            "done": len(rows),
+            "total": len(rows),
             "imported": imported,
-            "total": len(results),
-            "campaign_id": campaign_id,
             "warnings": all_warnings[:5],
             "names_fixed": names_fixed,
         }
-    except HTTPException:
-        raise
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
     except Exception as exc:
-        print(f"[add-match-results] ERROR: {exc}", flush=True)
-        raise HTTPException(status_code=500, detail=str(exc))
+        print(f"[add-match-job] {job_id} ERROR: {exc}", flush=True)
+        _add_match_jobs[job_id] = {**_add_match_jobs.get(job_id, {}), "status": "error", "error": str(exc)}
 
 
 # ── Land Portal bulk pull (campaign) ──────────────────────────────────
