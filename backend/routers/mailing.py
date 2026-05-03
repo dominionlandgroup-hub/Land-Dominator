@@ -32,7 +32,6 @@ OUTPUT_HEADERS = [
     "APN",
     "County",
     "FIPS",
-    "State",
     "Acreage",
     "Campaign Code",
     "Offer Price",
@@ -387,7 +386,6 @@ def _build_csv(parcels: list[MatchedParcel]) -> bytes:
             p.apn or "",
             p.parcel_county or "",
             p.fips or "",
-            p.parcel_state or "",
             f"{p.lot_acres:.2f}" if p.lot_acres is not None else "",
             "",  # Campaign Code — not available in match result context
             _fmt_currency(p.suggested_offer_mid),

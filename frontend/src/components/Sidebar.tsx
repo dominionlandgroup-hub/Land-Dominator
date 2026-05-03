@@ -241,7 +241,9 @@ export default function Sidebar() {
       <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
 
         <NavBtn id="crm-dashboard" label="Dashboard"    icon={<IconDashboard />} active={currentPage === 'crm-dashboard'} onClick={() => nav('crm-dashboard')} />
-        <NavBtn id="seller-inbox"  label="Seller Inbox" icon={<IconInbox />}     active={currentPage === 'seller-inbox'}  onClick={() => nav('seller-inbox')}
+        <NavBtn id="upload-comps"  label="Match Targets" icon={<IconUpload />}   active={currentPage === 'upload-comps' || currentPage === 'dashboard' || currentPage === 'match-targets'} onClick={() => nav('upload-comps')} />
+        <NavBtn id="crm-campaigns" label="Campaigns"    icon={<IconCampaign />} active={currentPage === 'crm-campaigns'} onClick={() => nav('crm-campaigns')} />
+        <NavBtn id="seller-inbox"  label="Seller Inbox" icon={<IconInbox />}    active={currentPage === 'seller-inbox'}  onClick={() => nav('seller-inbox')}
           rightEl={unreadCount > 0 ? (
             <span style={{
               background: '#DC2626', color: '#fff', borderRadius: 10,
@@ -249,59 +251,8 @@ export default function Sidebar() {
             }}>{unreadCount > 99 ? '99+' : unreadCount}</span>
           ) : undefined}
         />
-        <NavBtn id="buyer-inbox"   label="Buyer Inbox"   icon={<IconInbox />}     active={currentPage === 'buyer-inbox'}   onClick={() => nav('buyer-inbox')} />
-
-        {/* Boards accordion */}
-        <button
-          onClick={() => setBoardsOpen((v) => !v)}
-          className="w-full flex items-center gap-2.5 text-left transition-all duration-150"
-          style={{
-            padding: '7px 12px',
-            background: boardsActive ? ACTIVE_BG : 'transparent',
-            color: boardsActive ? TEXT_ACTIVE : TEXT_DEFAULT,
-            borderLeft: boardsActive ? `2px solid ${ACTIVE_GOLD}` : '2px solid transparent',
-            borderRadius: boardsActive ? '0 6px 6px 0' : '6px',
-          }}
-          onMouseEnter={(e) => { if (!boardsActive) { (e.currentTarget as HTMLElement).style.background = HOVER_BG; (e.currentTarget as HTMLElement).style.color = '#111827' } }}
-          onMouseLeave={(e) => { if (!boardsActive) { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = TEXT_DEFAULT } }}
-        >
-          <span className="flex-none" style={{ opacity: boardsActive ? 1 : 0.75 }}><IconBoard /></span>
-          <span className="text-sm font-medium flex-1">Boards</span>
-          <span style={{ opacity: 0.5, transition: 'transform 0.15s', transform: boardsOpen ? 'rotate(0deg)' : 'rotate(-90deg)', display: 'inline-flex' }}>
-            <IconChevronDown />
-          </span>
-        </button>
-
-        {boardsOpen && BOARD_SUBITEMS.map((sub) => (
-          <NavBtn
-            key={sub.id}
-            id={sub.id}
-            label={sub.label}
-            active={currentPage === sub.id}
-            onClick={() => nav(sub.id)}
-            indent
-          />
-        ))}
 
         <div style={{ borderTop: '1px solid #E5E7EB', margin: '6px 4px' }} />
-
-        <NavBtn id="crm-campaigns"  label="Campaigns"      icon={<IconCampaign />} active={currentPage === 'crm-campaigns'}  onClick={() => nav('crm-campaigns')} />
-        <NavBtn id="mail-calendar" label="Mail Calendar"  icon={<IconCalendar />} active={currentPage === 'mail-calendar'}  onClick={() => nav('mail-calendar')} />
-        <NavBtn id="crm-properties" label="Properties"     icon={<IconHome />}     active={currentPage === 'crm-properties'} onClick={() => nav('crm-properties')} />
-        <NavBtn id="crm-contacts"   label="Contacts"       icon={<IconPerson />}   active={currentPage === 'crm-contacts'}   onClick={() => nav('crm-contacts')} />
-        <NavBtn id="crm-deals"      label="Deals Pipeline" icon={<IconPipeline />} active={currentPage === 'crm-deals'}      onClick={() => nav('crm-deals')} />
-
-        <div style={{ borderTop: '1px solid #E5E7EB', margin: '6px 4px' }} />
-
-        <NavBtn id="lead-stacker" label="Lead Stacker" icon={<IconStack />}    active={currentPage === 'lead-stacker'} onClick={() => nav('lead-stacker')} />
-        <NavBtn id="upload-comps" label="Upload Comps" icon={<IconUpload />}   active={currentPage === 'upload-comps' || currentPage === 'dashboard' || currentPage === 'match-targets'} onClick={() => nav('upload-comps')} />
-
-        {/* Setup Guide — opens drawer, not a page */}
-        <SetupGuideBtn
-          active={showSetupGuide}
-          incompleteCount={incompleteCount}
-          onClick={() => setShowSetupGuide(!showSetupGuide)}
-        />
 
         <NavBtn id="settings"     label="Settings"     icon={<IconSettings />} active={currentPage === 'settings'}     onClick={() => nav('settings')} />
       </nav>

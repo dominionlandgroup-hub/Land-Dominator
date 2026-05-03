@@ -1116,6 +1116,13 @@ async def upload_targets(file: UploadFile = File(...)) -> UploadResponse:
     except Exception as _pe:
         print(f"[targets] persist warning: {_pe}", flush=True)
 
+    # Detect primary state from "Parcel State" column
+    _detected_state: str | None = None
+    if "Parcel State" in df.columns:
+        _state_counts = df["Parcel State"].dropna().astype(str).str.strip().str.upper().value_counts()
+        if len(_state_counts) > 0:
+            _detected_state = str(_state_counts.index[0])
+
     return UploadResponse(
         session_id=session_id,
         total_rows=stats["total_rows"],
@@ -1125,6 +1132,7 @@ async def upload_targets(file: UploadFile = File(...)) -> UploadResponse:
         preview=stats["preview"],
         uploaded_at=datetime.now(timezone.utc).isoformat(),
         filename=file.filename,
+        detected_state=_detected_state,
     )
 
 

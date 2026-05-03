@@ -18,6 +18,7 @@ class UploadResponse(BaseModel):
     deduped_count: Optional[int] = None     # APNs skipped because already in DB
     geocoded_count: Optional[int] = None    # MLS rows that got coordinates
     filename: Optional[str] = None
+    detected_state: Optional[str] = None   # primary state from target CSV "Parcel State" column
 
 
 class CompInventoryItem(BaseModel):

@@ -104,7 +104,7 @@ export default function MatchTargets() {
     () => localStorage.getItem('matchTargets_acreage_min') ?? '0.1'
   )
   const [maxAcreage, setMaxAcreage] = useState<string>(
-    () => localStorage.getItem('matchTargets_acreage_max') ?? '10.0'
+    () => localStorage.getItem('matchTargets_acreage_max') ?? '2.0'
   )
   // Only pre-fill from sweet spot if localStorage has no saved value
   const acreagePrefilled = React.useRef(
@@ -130,12 +130,26 @@ export default function MatchTargets() {
   const [includeSlowInMailing, setIncludeSlowInMailing] = useState<boolean>(false)
   const [mailingDone, setMailingDone] = useState(false)
   const [showUnmatched, setShowUnmatched] = useState(false)
+  const [showMatchedTable, setShowMatchedTable] = useState(false)
 
   // Persist acreage + offer pct to localStorage whenever values change
   useEffect(() => {
     localStorage.setItem('matchTargets_acreage_min', minAcreage)
     localStorage.setItem('matchTargets_acreage_max', maxAcreage)
   }, [minAcreage, maxAcreage])
+
+  // Auto-set offer % based on detected state from target CSV
+  useEffect(() => {
+    if (!targetStats?.detected_state) return
+    const state = targetStats.detected_state.toUpperCase()
+    let defaultPct: number | null = null
+    if (state === 'TN') defaultPct = 62.5
+    else if (state === 'FL') defaultPct = 55.0
+    else if (['NC', 'SC', 'GA', 'TX'].includes(state)) defaultPct = 52.5
+    if (defaultPct !== null) {
+      setOfferPct(defaultPct)
+    }
+  }, [targetStats?.detected_state])
 
   useEffect(() => {
     localStorage.setItem('matchTargets_offer_pct', String(offerPct))
@@ -152,7 +166,7 @@ export default function MatchTargets() {
     else if (b === '2-5')   { setMinAcreage('2.0'); setMaxAcreage('5.0') }
     else if (b === '5-10')  { setMinAcreage('5.0'); setMaxAcreage('10.0') }
     else if (b === '10+')   { setMinAcreage('10.0'); setMaxAcreage('40.0') }
-    else                    { setMinAcreage('0.1'); setMaxAcreage('10.0') }
+    else                    { setMinAcreage('0.1'); setMaxAcreage('2.0') }
   }, [dashboardData])
 
   // Top 20 ZIPs from dashboard for "Use Buy Box ZIPs" — exclude outliers (ppa > 3x market median) and <5 sales
@@ -488,6 +502,16 @@ export default function MatchTargets() {
             <FileUpload label="Drop Target Parcels CSV" hint="Land Portal export — same format as comps" onFile={handleFile} loading={uploadLoading} />
           )}
           {uploadError && <p className="text-red-400 text-sm mt-2">{uploadError}</p>}
+          {targetStats?.detected_state && (() => {
+            const state = targetStats.detected_state!.toUpperCase()
+            const pct = state === 'TN' ? 62.5 : state === 'FL' ? 55.0 : ['NC','SC','GA','TX'].includes(state) ? 52.5 : null
+            if (!pct) return null
+            return (
+              <div className="mt-2 px-3 py-2 rounded-lg text-xs flex items-center gap-2" style={{ background: 'rgba(79,70,229,0.06)', border: '1px solid rgba(79,70,229,0.15)', color: '#4F46E5' }}>
+                <span>Detected: {state} targets — offer % set to {pct}%</span>
+              </div>
+            )
+          })()}
         </div>
 
         {/* ── Filters ─────────────────────────────────────────── */}
@@ -846,38 +870,6 @@ export default function MatchTargets() {
               )
             })()}
 
-            {/* Acreage band breakdown */}
-            {(() => {
-              const bandDefs = [
-                { key: 'micro',  label: 'Micro',  range: '0–0.5 ac',  emoji: '🟢' },
-                { key: 'small',  label: 'Small',  range: '0.5–2 ac',  emoji: '🟡' },
-                { key: 'medium', label: 'Medium', range: '2–5 ac',    emoji: '🟡' },
-                { key: 'large',  label: 'Large',  range: '5–10 ac',   emoji: '⚪' },
-              ]
-              const total = matchResult.results.length
-              const counts = bandDefs.map(b => ({
-                ...b,
-                count: matchResult.results.filter(r => (r.acreage_band as string) === b.key).length,
-              }))
-              const anyCount = counts.some(b => b.count > 0)
-              if (!anyCount) return null
-              return (
-                <div className="mb-4 px-4 py-3 rounded-xl flex flex-wrap gap-4 items-center" style={{ background: 'rgba(79,70,229,0.04)', border: '1px solid rgba(79,70,229,0.12)' }}>
-                  <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#9CA3AF' }}>Matched by Band</span>
-                  {counts.map(b => (
-                    <span key={b.key} className="flex items-center gap-1.5">
-                      <span style={{ fontSize: 12 }}>{b.emoji}</span>
-                      <span className="text-xs font-semibold" style={{ color: '#4F46E5' }}>{b.label}</span>
-                      <span className="text-xs" style={{ color: '#9CA3AF' }}>{b.range}</span>
-                      <span className="text-xs font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(79,70,229,0.1)', color: '#4F46E5' }}>{b.count.toLocaleString()}</span>
-                      {total > 0 && b.count > 0 && (
-                        <span className="text-xs" style={{ color: '#9CA3AF' }}>{Math.round(b.count / total * 100)}%</span>
-                      )}
-                    </span>
-                  ))}
-                </div>
-              )
-            })()}
 
             {/* Result summary cards */}
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
@@ -894,84 +886,7 @@ export default function MatchTargets() {
               </div>
             )}
 
-            {/* Pricing method breakdown */}
-            {(matchResult as any).pricing_breakdown && (() => {
-              const pb = (matchResult as any).pricing_breakdown as Record<string, number>
-              const rows = [
-                { label: 'Within 1 mile', key: '1mi', color: '#059669' },
-                { label: 'LP fallback', key: 'LP_FALLBACK', color: '#C084FC' },
-                { label: 'No data', key: 'NO_DATA', color: '#6B7280' },
-              ].filter(r => pb[r.key] > 0)
-              if (rows.length === 0) return null
-              return (
-                <div className="card mb-6">
-                  <h2 className="font-semibold mb-3" style={{ color: '#111827' }}>Pricing Method Breakdown</h2>
-                  <div className="flex flex-col gap-1.5">
-                    {rows.map(r => (
-                      <div key={r.key} className="flex items-center gap-3">
-                        <span className="text-xs w-36 shrink-0" style={{ color: '#6B7280' }}>{r.label}</span>
-                        <div className="flex-1 rounded-full h-2 overflow-hidden" style={{ background: '#E5E7EB' }}>
-                          <div className="h-full rounded-full" style={{
-                            width: `${Math.round(pb[r.key] / matchResult.total_targets * 100)}%`,
-                            background: r.color,
-                            minWidth: pb[r.key] > 0 ? 4 : 0,
-                          }} />
-                        </div>
-                        <span className="text-xs tabular-nums font-semibold w-14 text-right" style={{ color: r.color }}>
-                          {(pb[r.key] ?? 0).toLocaleString()}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )
-            })()}
 
-            {/* Assignment fee calculator */}
-            {(() => {
-              const fee = parseFloat(assignmentFee) || 0
-              const compMatched = matchResult.results.filter(r => {
-                const retail = r.retail_estimate
-                const offer = r.suggested_offer_mid
-                return r.pricing_flag === 'MATCHED' && retail != null && offer != null && retail >= offer + fee
-              }).length
-              const lpSupporting = matchResult.results.filter(r => {
-                const retail = r.retail_estimate
-                const offer = r.suggested_offer_mid
-                return r.pricing_flag === 'LP_FALLBACK' && retail != null && offer != null && retail >= offer + fee
-              }).length
-              return (
-                <div className="card mb-6">
-                  <h2 className="font-semibold mb-3" style={{ color: '#111827' }}>Assignment Fee Calculator</h2>
-                  <div className="flex items-end gap-4 flex-wrap">
-                    <div>
-                      <label className="text-xs block mb-1" style={{ color: '#9CA3AF' }}>Target Assignment Fee</label>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm" style={{ color: '#9CA3AF' }}>$</span>
-                        <input type="number" min="0" step="500" placeholder="5000"
-                          className="input-base text-sm py-2"
-                          style={{ width: 120 }}
-                          value={assignmentFee}
-                          onChange={e => setAssignmentFee(e.target.value)} />
-                      </div>
-                    </div>
-                    <div className="rounded-xl px-4 py-3" style={{ background: compMatched > 0 ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)', border: `1px solid ${compMatched > 0 ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)'}` }}>
-                      <p className="text-sm font-semibold" style={{ color: compMatched > 0 ? '#10B981' : '#EF4444' }}>
-                        {fmt(compMatched)} comp-matched record{compMatched !== 1 ? 's' : ''} support a ${fmt(Number(assignmentFee || 0))} assignment fee
-                      </p>
-                      {lpSupporting > 0 && (
-                        <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>
-                          {fmt(lpSupporting)} additional LP estimate record{lpSupporting !== 1 ? 's' : ''} may also support the fee (not comp-verified)
-                        </p>
-                      )}
-                      <p className="text-xs mt-0.5" style={{ color: '#6B7280' }}>
-                        Formula: retail estimate ≥ offer + ${fmt(Number(assignmentFee || 0))} assignment fee
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )
-            })()}
 
             {matchResult.warnings && matchResult.warnings.filter(w => w.includes('Excluded') || w.includes('WARNING')).length > 0 && (
               <div className="mb-4 p-3 rounded-lg" style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)' }}>
@@ -1005,53 +920,6 @@ export default function MatchTargets() {
                       <span className="text-sm font-normal ml-2" style={{ color: '#9CA3AF' }}>({noCompRecords.length.toLocaleString()} records couldn't be comp-matched)</span>
                     </h2>
                     <span className="text-sm" style={{ color: '#6B7280' }}>{showUnmatched ? '▲ Hide' : '▼ Show'}</span>
-                  </div>
-
-                  {/* County diagnostics — always visible */}
-                  {(matchResult as any).county_diagnostics && (() => {
-                    const cd = (matchResult as any).county_diagnostics as {
-                      target_county_count: number; comp_county_count: number;
-                      covered_county_count: number; uncovered_counties: string[];
-                      coverage_pct: number; message: string;
-                    }
-                    const pct = cd.coverage_pct
-                    const color = pct >= 80 ? '#059669' : pct >= 50 ? '#D97706' : '#DC2626'
-                    return (
-                      <div className="rounded-lg p-2.5 mt-3" style={{ background: 'rgba(79,70,229,0.04)', border: '1px solid rgba(79,70,229,0.12)' }}>
-                        <p className="text-xs font-semibold mb-1" style={{ color }}>
-                          County coverage: {cd.covered_county_count} of {cd.target_county_count} counties ({pct}%)
-                        </p>
-                        <p className="text-[10px] mb-1" style={{ color: '#4F46E5' }}>{cd.message}</p>
-                        {cd.uncovered_counties.length > 0 && (
-                          <p className="text-[10px]" style={{ color: '#EF4444' }}>
-                            No comps for: <span className="font-semibold">{cd.uncovered_counties.slice(0, 8).join(', ')}{cd.uncovered_counties.length > 8 ? ` +${cd.uncovered_counties.length - 8} more` : ''}</span>
-                            {' '}—{' '}
-                            <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4F46E5', textDecoration: 'underline', fontSize: 'inherit', padding: 0 }} onClick={() => setCurrentPage('upload-comps')}>
-                              upload comps
-                            </button>
-                            {' '}from these counties to increase match rate
-                          </p>
-                        )}
-                      </div>
-                    )
-                  })()}
-
-                  {/* ZIP coverage */}
-                  <div className="rounded-lg p-2.5 mt-2" style={{ background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.15)' }}>
-                    <p className="text-xs font-semibold mb-0.5" style={{ color: '#3B82F6' }}>
-                      ZIP coverage: {matchedZipSet.size} of {targetZips.length} target ZIPs have comp-matched records
-                    </p>
-                    {uncoveredZips.length > 0 && uncoveredZips.length <= 20 && (
-                      <p className="text-[10px]" style={{ color: '#60A5FA' }}>
-                        No comps within 1 mile for: <span className="font-mono">{uncoveredZips.join(', ')}</span>
-                        {' '}— match rate reflects only 1-mile comps, this is by design for accuracy
-                      </p>
-                    )}
-                    {uncoveredZips.length > 20 && (
-                      <p className="text-[10px]" style={{ color: '#60A5FA' }}>
-                        {uncoveredZips.length} ZIPs have no comps within 1 mile — match rate reflects only 1-mile comps, this is by design for accuracy
-                      </p>
-                    )}
                   </div>
 
                   {showUnmatched && noCompRecords.length > 0 && (
@@ -1097,19 +965,6 @@ export default function MatchTargets() {
               )
             })()}
 
-            <div className="flex items-center gap-3 mb-5">
-              <span className="text-xs" style={{ color: '#9CA3AF' }}>Score distribution:</span>
-              {[5, 4, 3, 2, 1, 0].map(s => {
-                const count = matchResult.results.filter(r => r.match_score === s).length
-                if (count === 0) return null
-                return (
-                  <span key={s} className="flex items-center gap-1.5">
-                    <ScoreBadge score={s} />
-                    <span className="text-xs" style={{ color: '#9CA3AF' }}>{count.toLocaleString()}</span>
-                  </span>
-                )
-              })}
-            </div>
 
             {/* Slow market warnings */}
             {slowMarketZips.length > 0 && !excludeSlowMarkets && (
@@ -1135,32 +990,45 @@ export default function MatchTargets() {
             )}
 
             <div className="card">
-              <div className="flex items-center justify-between mb-4">
+              <div
+                className="flex items-center justify-between cursor-pointer"
+                style={{ marginBottom: showMatchedTable ? 16 : 0 }}
+                onClick={() => setShowMatchedTable(v => !v)}
+              >
                 <h2 className="font-semibold" style={{ color: '#111827' }}>
                   Matched Parcels
-                  <span className="text-sm font-normal ml-2" style={{ color: '#9CA3AF' }}>sorted by score</span>
+                  <span className="text-sm font-normal ml-2" style={{ color: '#9CA3AF' }}>{displayedResults.length.toLocaleString()} records</span>
                   {excludeSlowMarkets && slowMarketZips.length > 0 && (
                     <span className="ml-2 text-xs font-normal px-2 py-0.5 rounded-full" style={{ background: 'rgba(107,114,128,0.1)', color: '#6B7280' }}>
                       slow markets excluded
                     </span>
                   )}
                 </h2>
-                <div className="inline-flex gap-1">
-                  <button className={`toggle-btn${resultView === 'table' ? ' active' : ''}`} onClick={() => setResultView('table')}>Table</button>
-                  <button className={`toggle-btn${resultView === 'map' ? ' active' : ''}`} onClick={() => setResultView('map')}>Map</button>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm" style={{ color: '#6B7280' }}>{showMatchedTable ? '▲ Hide' : '▼ Show'}</span>
                 </div>
               </div>
-              {resultView === 'table' ? (
-                <DataTable<MatchedParcel>
-                  columns={cols}
-                  data={displayedResults}
-                  pageSize={50}
-                  emptyMessage="No parcels matched with current filters"
-                  searchable
-                  searchKeys={['apn', 'owner_name', 'parcel_zip', 'parcel_city']}
-                />
-              ) : (
-                <MatchMap targets={displayedResults} comps={dashboardData?.comp_locations ?? []} radiusMiles={1} />
+              {showMatchedTable && (
+                <>
+                  <div className="flex justify-end mb-3">
+                    <div className="inline-flex gap-1">
+                      <button className={`toggle-btn${resultView === 'table' ? ' active' : ''}`} onClick={e => { e.stopPropagation(); setResultView('table') }}>Table</button>
+                      <button className={`toggle-btn${resultView === 'map' ? ' active' : ''}`} onClick={e => { e.stopPropagation(); setResultView('map') }}>Map</button>
+                    </div>
+                  </div>
+                  {resultView === 'table' ? (
+                    <DataTable<MatchedParcel>
+                      columns={cols}
+                      data={displayedResults}
+                      pageSize={50}
+                      emptyMessage="No parcels matched with current filters"
+                      searchable
+                      searchKeys={['apn', 'owner_name', 'parcel_zip', 'parcel_city']}
+                    />
+                  ) : (
+                    <MatchMap targets={displayedResults} comps={dashboardData?.comp_locations ?? []} radiusMiles={1} />
+                  )}
+                </>
               )}
             </div>
 

@@ -104,12 +104,17 @@ def _load_comps_from_db(states: "list[str] | None" = None) -> "pd.DataFrame | No
         state_filter = [s.strip().upper() for s in (states or []) if s and s.strip()]
 
         while True:
-            # Load ALL comps — no state filter. County/coordinate matching handles geography.
             q = sb.table("crm_sold_comps").select(
                 "apn,sale_price,acreage,latitude,longitude,zip_code,state,county,sale_date,"
                 "price_per_acre,road_frontage,buildability,fema_coverage,wetlands_coverage,"
                 "slope_avg,elevation_avg,land_use,buyer_name,buyer_type,full_address,fips"
             )
+            # Filter to target state(s) for faster loading and better relevance
+            if state_filter:
+                if len(state_filter) == 1:
+                    q = q.eq("state", state_filter[0])
+                else:
+                    q = q.in_("state", state_filter)
             r = q.range(offset, offset + batch_size - 1).execute()
             batch = r.data or []
             rows.extend(batch)
@@ -118,9 +123,11 @@ def _load_comps_from_db(states: "list[str] | None" = None) -> "pd.DataFrame | No
             offset += batch_size
 
         if not rows:
-            print(f"[match] No comps found in DB", flush=True)
+            state_msg = f" for state(s): {state_filter}" if state_filter else ""
+            print(f"[match] No comps found in DB{state_msg}", flush=True)
             return None
-        print(f"Loaded {len(rows)} total comps from database across all states", flush=True)
+        state_label = ", ".join(state_filter) if state_filter else "all states"
+        print(f"Loaded {len(rows)} comps from database ({state_label})", flush=True)
 
         # Map DB column names → LP export column names used by matching engine
         def _norm_county(v: object) -> str:
@@ -274,8 +281,15 @@ async def run_match(filters: MatchFilters) -> Response:
             detail="Target session not found. Please re-upload your targets CSV.",
         )
 
-    # Always load ALL comps from DB — no state filtering.
-    comps_df = _load_comps_from_db()
+    # Detect target state from "Parcel State" column for state-scoped comp loading
+    _target_states: list[str] = []
+    if "Parcel State" in targets_df.columns:
+        _state_counts = targets_df["Parcel State"].dropna().astype(str).str.strip().str.upper().value_counts()
+        if len(_state_counts) > 0:
+            _target_states = [str(_state_counts.index[0])]
+            print(f"[match] Detected target state: {_target_states[0]} — loading state-specific comps", flush=True)
+
+    comps_df = _load_comps_from_db(states=_target_states if _target_states else None)
     if comps_df is None or len(comps_df) == 0:
         raise HTTPException(
             status_code=404,

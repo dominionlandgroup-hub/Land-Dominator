@@ -527,15 +527,7 @@ function VelocitySection({
   }
 
   const hotZips = velEntries.filter(v => v.velocity_label === 'HOT').sort((a, b) => a.months_supply - b.months_supply)
-  const balancedZips = velEntries.filter(v => v.velocity_label === 'BALANCED')
   const slowZips = velEntries.filter(v => v.velocity_label === 'SLOW' && v.months_supply < 99)
-
-  const hotCountyCounts = new Map<string, number>()
-  hotZips.forEach(v => {
-    const c = velCountyLabel(v) || 'Unknown'
-    hotCountyCounts.set(c, (hotCountyCounts.get(c) || 0) + 1)
-  })
-  const hotCountyList = [...hotCountyCounts.entries()].sort((a, b) => b[1] - a[1])
   const displayedHotZips = showAllHot ? hotZips : hotZips.slice(0, 10)
 
   function handleCopyLandPortal() {
@@ -572,101 +564,82 @@ function VelocitySection({
   if (velEntries.length === 0) {
     return (
       <div className="rounded-xl p-4 lg:col-span-3" style={cardStyle}>
-        <p className="text-[10px] uppercase tracking-wider font-semibold mb-3" style={{ color: '#6B7280' }}>7 · Market Velocity — buy box counties only</p>
-        <p style={{ fontSize: 12, color: '#9CA3AF' }}>No velocity data available for buy box counties — upload active listings to see market supply</p>
+        <p className="text-[10px] uppercase tracking-wider font-semibold mb-3" style={{ color: '#6B7280' }}>7 · Market Velocity</p>
+        <p style={{ fontSize: 12, color: '#9CA3AF' }}>No velocity data — upload active listings to see market supply</p>
       </div>
     )
   }
 
   return (
     <div className="rounded-xl p-4 lg:col-span-3" style={cardStyle}>
-      <p className="text-[10px] uppercase tracking-wider font-semibold mb-3" style={{ color: '#6B7280' }}>7 · Market Velocity — buy box counties only</p>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs mb-3">
-        {/* HOT */}
-        <div>
-          <p className="mb-1.5" style={{ color: '#DC2626', fontWeight: 600 }}>HOT — under 3 months supply ({hotZips.length} ZIPs)</p>
-          {hotZips.length > 0 ? (
-            <>
-              {hotCountyList.length > 0 && (
-                <div className="mb-2 rounded-lg p-2" style={{ background: 'rgba(220,38,38,0.04)', border: '1px solid rgba(220,38,38,0.12)' }}>
-                  <p style={{ fontSize: 10, color: '#9CA3AF', marginBottom: 3 }}>{hotZips.length} HOT ZIPs across buy box counties:</p>
-                  {hotCountyList.map(([county, count]) => (
-                    <p key={county} style={{ fontSize: 10, color: '#6B7280', marginBottom: 1 }}>
-                      <span style={{ color: '#DC2626', fontWeight: 600 }}>{county}:</span> {count} ZIP{count !== 1 ? 's' : ''}
-                    </p>
-                  ))}
-                </div>
-              )}
-              <div className="flex flex-wrap gap-1.5">
-                {displayedHotZips.map(v => (
-                  <span key={v.zip} style={{ fontSize: 11, fontFamily: 'monospace', padding: '2px 7px', borderRadius: 4, background: 'rgba(220,38,38,0.08)', color: '#DC2626', border: '1px solid rgba(220,38,38,0.2)' }}>
-                    {v.zip}{velCountyLabel(v) ? <span style={{ fontFamily: 'sans-serif', fontSize: 9, opacity: 0.85 }}> · {velCountyLabel(v)}</span> : null} · {fmtSupply(v.months_supply)}
-                  </span>
-                ))}
-              </div>
-              {hotZips.length > 10 && (
-                <button
-                  className="mt-2 text-[10px]"
-                  style={{ color: '#DC2626', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
-                  onClick={() => setShowAllHot(v => !v)}
-                >
-                  {showAllHot ? 'Show Less ▲' : `Show All ${hotZips.length} HOT ZIPs ▼`}
-                </button>
-              )}
-              <div className="flex gap-2 mt-2 flex-wrap">
-                <button
-                  onClick={handleCopyLandPortal}
-                  style={{ fontSize: 10, padding: '3px 8px', borderRadius: 4, background: lpCopied ? 'rgba(5,150,105,0.1)' : 'rgba(220,38,38,0.08)', color: lpCopied ? '#059669' : '#DC2626', border: `1px solid ${lpCopied ? 'rgba(5,150,105,0.2)' : 'rgba(220,38,38,0.2)'}`, cursor: 'pointer', fontWeight: 600 }}
-                >
-                  {lpCopied ? `✓ Copied!` : `Copy for Land Portal`}
-                </button>
-                <button
-                  onClick={handleCopyCsv}
-                  style={{ fontSize: 10, padding: '3px 8px', borderRadius: 4, background: csvCopied ? 'rgba(5,150,105,0.1)' : 'rgba(220,38,38,0.08)', color: csvCopied ? '#059669' : '#DC2626', border: `1px solid ${csvCopied ? 'rgba(5,150,105,0.2)' : 'rgba(220,38,38,0.2)'}`, cursor: 'pointer', fontWeight: 600 }}
-                >
-                  {csvCopied ? `✓ Copied!` : `Copy as CSV`}
-                </button>
-                <button
-                  onClick={handleDownloadHotZips}
-                  style={{ fontSize: 10, padding: '3px 8px', borderRadius: 4, background: 'rgba(79,70,229,0.06)', color: '#4F46E5', border: '1px solid rgba(79,70,229,0.2)', cursor: 'pointer', fontWeight: 600 }}
-                >
-                  ↓ Download CSV
-                </button>
-              </div>
-              <div className="mt-2 rounded-lg p-2" style={{ background: 'rgba(79,70,229,0.04)', border: '1px solid rgba(79,70,229,0.12)' }}>
-                <p style={{ fontSize: 10, color: '#4F46E5', fontWeight: 600, marginBottom: 2 }}>Pro tip: Use the {hotZips.length} HOT ZIPs for a targeted pull</p>
-                <p style={{ fontSize: 10, color: '#6B7280' }}>Go to Land Portal → Location → ZIP Code (instead of County) → paste the HOT ZIPs list for the most active markets only</p>
-              </div>
-            </>
-          ) : <span style={{ color: '#9CA3AF' }}>None in buy box counties</span>}
-        </div>
-        {/* BALANCED */}
-        <div>
-          <p className="mb-1.5" style={{ color: '#D97706', fontWeight: 600 }}>BALANCED — 3–6 months supply ({balancedZips.length} ZIPs)</p>
-          {balancedZips.length > 0 ? (
-            <div className="flex flex-wrap gap-1.5">
-              {balancedZips.slice(0, 8).map(v => (
-                <span key={v.zip} style={{ fontSize: 11, fontFamily: 'monospace', padding: '2px 7px', borderRadius: 4, background: 'rgba(217,119,6,0.08)', color: '#D97706', border: '1px solid rgba(217,119,6,0.2)' }}>
-                  {v.zip}{velCountyLabel(v) ? <span style={{ fontFamily: 'sans-serif', fontSize: 9, opacity: 0.85 }}> · {velCountyLabel(v)}</span> : null} · {fmtSupply(v.months_supply)}
-                </span>
-              ))}
-            </div>
-          ) : <span style={{ color: '#9CA3AF' }}>None in buy box counties</span>}
-        </div>
-        {/* SLOW */}
-        <div>
-          <p className="mb-1.5" style={{ color: '#6B7280', fontWeight: 600 }}>SLOW — 6+ months supply ({slowZips.length} ZIPs)</p>
-          {slowZips.length > 0 ? (
-            <div className="flex flex-wrap gap-1.5">
-              {slowZips.slice(0, 6).map(v => (
-                <span key={v.zip} style={{ fontSize: 11, fontFamily: 'monospace', padding: '2px 7px', borderRadius: 4, background: '#F3F4F6', color: '#9CA3AF', border: '1px solid #E5E7EB' }}>
-                  {v.zip}{velCountyLabel(v) ? <span style={{ fontFamily: 'sans-serif', fontSize: 9 }}> · {velCountyLabel(v)}</span> : null} · {fmtSupply(v.months_supply)}
-                </span>
-              ))}
-            </div>
-          ) : <span style={{ color: '#9CA3AF' }}>None in buy box counties</span>}
-        </div>
+      <p className="text-[10px] uppercase tracking-wider font-semibold mb-3" style={{ color: '#6B7280' }}>7 · Market Velocity</p>
+
+      {/* Summary headline */}
+      <div className="flex items-center gap-3 mb-3 flex-wrap">
+        <span style={{ fontSize: 14, fontWeight: 700, color: '#DC2626' }}>{hotZips.length} HOT ZIPs</span>
+        {slowZips.length > 0 && (
+          <>
+            <span style={{ color: '#D1D5DB' }}>·</span>
+            <span style={{ fontSize: 14, fontWeight: 700, color: '#6B7280' }}>{slowZips.length} SLOW ZIP{slowZips.length !== 1 ? 's' : ''} to avoid</span>
+          </>
+        )}
       </div>
+
+      {/* HOT ZIPs */}
+      {hotZips.length > 0 && (
+        <div className="mb-3">
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {displayedHotZips.map(v => (
+              <span key={v.zip} style={{ fontSize: 11, fontFamily: 'monospace', padding: '2px 7px', borderRadius: 4, background: 'rgba(220,38,38,0.08)', color: '#DC2626', border: '1px solid rgba(220,38,38,0.2)' }}>
+                {v.zip}{velCountyLabel(v) ? <span style={{ fontFamily: 'sans-serif', fontSize: 9, opacity: 0.85 }}> · {velCountyLabel(v)}</span> : null} · {fmtSupply(v.months_supply)}
+              </span>
+            ))}
+          </div>
+          {hotZips.length > 10 && (
+            <button
+              className="mb-2 text-[10px]"
+              style={{ color: '#DC2626', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
+              onClick={() => setShowAllHot(v => !v)}
+            >
+              {showAllHot ? 'Show Less ▲' : `Show All ${hotZips.length} HOT ZIPs ▼`}
+            </button>
+          )}
+          <div className="flex gap-2 flex-wrap">
+            <button
+              onClick={handleCopyLandPortal}
+              style={{ fontSize: 10, padding: '3px 8px', borderRadius: 4, background: lpCopied ? 'rgba(5,150,105,0.1)' : 'rgba(220,38,38,0.08)', color: lpCopied ? '#059669' : '#DC2626', border: `1px solid ${lpCopied ? 'rgba(5,150,105,0.2)' : 'rgba(220,38,38,0.2)'}`, cursor: 'pointer', fontWeight: 600 }}
+            >
+              {lpCopied ? `✓ Copied!` : `Copy for Land Portal`}
+            </button>
+            <button
+              onClick={handleCopyCsv}
+              style={{ fontSize: 10, padding: '3px 8px', borderRadius: 4, background: csvCopied ? 'rgba(5,150,105,0.1)' : 'rgba(220,38,38,0.08)', color: csvCopied ? '#059669' : '#DC2626', border: `1px solid ${csvCopied ? 'rgba(5,150,105,0.2)' : 'rgba(220,38,38,0.2)'}`, cursor: 'pointer', fontWeight: 600 }}
+            >
+              {csvCopied ? `✓ Copied!` : `Copy as CSV`}
+            </button>
+            <button
+              onClick={handleDownloadHotZips}
+              style={{ fontSize: 10, padding: '3px 8px', borderRadius: 4, background: 'rgba(79,70,229,0.06)', color: '#4F46E5', border: '1px solid rgba(79,70,229,0.2)', cursor: 'pointer', fontWeight: 600 }}
+            >
+              ↓ Download CSV
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* SLOW ZIPs warning */}
+      {slowZips.length > 0 && (
+        <div className="rounded-lg p-2.5" style={{ background: 'rgba(107,114,128,0.06)', border: '1px solid rgba(107,114,128,0.2)' }}>
+          <p style={{ fontSize: 10, fontWeight: 700, color: '#374151', marginBottom: 4 }}>⚠️ DO NOT MAIL — oversupplied ZIPs (6+ months supply):</p>
+          <div className="flex flex-wrap gap-1.5">
+            {slowZips.map(v => (
+              <span key={v.zip} style={{ fontSize: 11, fontFamily: 'monospace', padding: '2px 7px', borderRadius: 4, background: '#FEF2F2', color: '#DC2626', border: '1px solid rgba(220,38,38,0.2)' }}>
+                ⚠️ {v.zip}{velCountyLabel(v) ? <span style={{ fontFamily: 'sans-serif', fontSize: 9 }}> · {velCountyLabel(v)}</span> : null} · {fmtSupply(v.months_supply)}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1078,26 +1051,6 @@ ${sec('6. Owner',
                 </div>
               </div>
             )}
-            <div>
-              <p className="mb-1" style={{ color: '#6B7280' }}>Top ZIPs within buy box counties — reference only · don't filter by ZIP in LP</p>
-              <div className="flex flex-wrap gap-1.5">
-                {topZipItems.map(z => (
-                  <span key={z.zip} className="font-mono text-[11px] px-2 py-0.5 rounded" style={{ background: '#F3F4F6', color: '#6B7280', border: '1px solid #E5E7EB' }}>
-                    {z.zip}{z.county ? <span style={{ color: '#9CA3AF' }}> · {titleCase(z.county)}</span> : null}
-                  </span>
-                ))}
-              </div>
-              {suggestCounties.length > 0 && (
-                <div className="mt-3 rounded-lg p-2.5" style={{ background: 'rgba(79,70,229,0.05)', border: '1px solid rgba(79,70,229,0.15)' }}>
-                  <p className="text-[10px] font-semibold mb-1.5" style={{ color: '#4F46E5' }}>Strong sales outside your buy box — consider adding:</p>
-                  {suggestCounties.map(s => (
-                    <p key={s.county} className="text-[10px] mb-0.5" style={{ color: '#6B7280' }}>
-                      → <span style={{ color: '#1A0A2E', fontWeight: 600 }}>{titleCase(s.county)}</span> — {s.sales} sales · top ZIP {s.topZip}
-                    </p>
-                  ))}
-                </div>
-              )}
-            </div>
           </div>
         </div>
 
@@ -1121,51 +1074,12 @@ ${sec('6. Owner',
         <div className="rounded-xl p-4" style={cardStyle}>
           {hdr('3 · Lot Size')}
           <div className="space-y-3 text-xs">
-            {/* Acreage band breakdown */}
-            {bandStats.some(b => b.count > 0) && (
-              <div>
-                <p className="text-[10px] uppercase tracking-wider mb-2" style={{ color: '#9CA3AF' }}>Acreage Band Breakdown</p>
-                <div className="space-y-1.5">
-                  {bandStats.map(b => (
-                    <div key={b.key} className="flex items-center gap-2">
-                      <span style={{ fontSize: 11 }}>{b.emoji}</span>
-                      <span style={{ color: '#374151', fontWeight: 600, minWidth: 52 }}>{b.label}</span>
-                      <span style={{ color: '#9CA3AF', fontSize: 10, minWidth: 54 }}>{b.range}</span>
-                      <span style={{ color: '#4F46E5', fontWeight: 700, minWidth: 36 }}>{b.pct}%</span>
-                      {b.medianPpa != null && (
-                        <span style={{ color: '#6B7280', fontSize: 10 }}>
-                          ${Math.round(b.medianPpa / 1000)}K/ac
-                        </span>
-                      )}
-                      {sweetBand && b.key === sweetBand.key && (
-                        <span style={{ fontSize: 9, fontWeight: 700, color: '#059669', background: 'rgba(5,150,105,0.1)', borderRadius: 3, padding: '1px 4px' }}>sweet spot</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {/* Pull range */}
-            <div className="pt-2" style={{ borderTop: '1px solid #F3F4F6' }}>
+            {/* Pull range — simplified */}
+            <div>
               <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: '#9CA3AF' }}>Pull Range <span style={{ color: '#059669' }}>← enter in Land Portal</span></p>
-              <p style={{ color: '#059669', fontWeight: 600 }}>0.1 to 10 acres</p>
-              <p style={{ color: '#9CA3AF', fontSize: '10px' }}>captures 100% of market across all segments</p>
-              {sweetBand && sweetBand.count > 0 && (
-                <div className="mt-1.5 space-y-0.5">
-                  <p style={{ color: '#6B7280', fontSize: 10 }}>Primary: 0.1–0.5 ac ({bandStats[0].pct}% of sales)</p>
-                  <p style={{ color: '#6B7280', fontSize: 10 }}>Secondary: 0.5–2 ac ({bandStats[1].pct}% of sales)</p>
-                  <p style={{ color: '#6B7280', fontSize: 10 }}>Tertiary: 2–10 ac ({bandStats[2].pct + bandStats[3].pct}% of sales)</p>
-                </div>
-              )}
+              <p style={{ color: '#059669', fontWeight: 600 }}>0.1 to 2.0 acres</p>
+              <p style={{ color: '#9CA3AF', fontSize: '10px' }}>94% of market · micro (0–0.5 ac) + small (0.5–2 ac) lots only</p>
             </div>
-            {/* Comp range */}
-            {acres.length > 0 && (
-              <div className="pt-2" style={{ borderTop: '1px solid #F3F4F6' }}>
-                <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: '#9CA3AF' }}>Comp Range</p>
-                <p style={{ color: '#6B7280', fontWeight: 500 }}>{compMin}–{compMax} acres</p>
-                <p style={{ color: '#9CA3AF', fontSize: '10px' }}>actual min–max from your sold comps</p>
-              </div>
-            )}
           </div>
         </div>
 
@@ -1179,24 +1093,9 @@ ${sec('6. Owner',
             <div className="flex gap-2"><span style={{ color: '#EF4444', fontWeight: 700 }}>✗</span><span style={{ color: '#9CA3AF' }}>FEMA flood zones (exclude all)</span></div>
             <div className="flex gap-2"><span style={{ color: '#EF4444', fontWeight: 700 }}>✗</span><span style={{ color: '#9CA3AF' }}>Landlocked parcels (exclude)</span></div>
             <LQRow label="Road frontage" value={roadFrontageLabel} highlight adjusted={roadFrontageAdjusted} />
-            {lqHasLimitedData && (
-              <p className="text-[9px] pt-1 border-t" style={{ color: '#9CA3AF', borderColor: '#F3F4F6' }}>
-                * Field counts vary — not all comps include every data point. Total comps: {totalComps.toLocaleString()}
-              </p>
-            )}
           </div>
         </div>
 
-        {/* Section 5 — Sale History */}
-        <div className="rounded-xl p-4" style={cardStyle}>
-          {hdr('5 · Comp Filters (Land Portal Export)')}
-          <div className="space-y-2 text-xs">
-            <div className="flex gap-2"><span style={{ color: '#059669', fontWeight: 700 }}>✓</span><span style={{ color: '#374151' }}>Sale Date: last 24 months</span></div>
-            <div className="flex gap-2"><span style={{ color: '#059669', fontWeight: 700 }}>✓</span><span style={{ color: '#374151' }}>Buyer Type: LLC / Corporation only</span></div>
-            <div className="flex gap-2"><span style={{ color: '#DC2626', fontWeight: 700 }}>✗</span><span style={{ color: '#6B7280' }}>Individual / Trust buyers (exclude — less reliable pricing)</span></div>
-          </div>
-          <p className="text-[10px] mt-2 italic" style={{ color: '#6B7280' }}>LLC buyers are professional investors who pay retail — best benchmark for offer pricing</p>
-        </div>
 
         {/* Section 6 — Owner */}
         <div className="rounded-xl p-4" style={cardStyle}>

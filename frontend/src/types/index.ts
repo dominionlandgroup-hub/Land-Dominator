@@ -41,6 +41,7 @@ export interface UploadStats {
   filename?: string
   active_saved?: number
   listings?: ListingsStats
+  detected_state?: string
 }
 
 // ─── Dashboard ─────────────────────────────────────────────────────────────
