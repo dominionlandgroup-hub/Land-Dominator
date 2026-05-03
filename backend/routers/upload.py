@@ -321,7 +321,7 @@ def _save_comps_to_db(
                 skipped_filter += 1; continue
             if not sale_date or sale_date.lower() in ("nan", "none", ""):
                 skipped_filter += 1; continue
-            if land_use and "vacant" not in land_use.lower() and "land" not in land_use.lower():
+            if land_use and not any(x in land_use.lower() for x in ["vacant", "land", "recreational", "rural", "agricultural"]):
                 # MLS comps rarely have land_use; skip filter if column absent
                 if "Land Use" in df.columns:
                     skipped_filter += 1; continue
@@ -672,7 +672,7 @@ async def upload_comps(
         _co  = str(_co_raw or "").strip()
         _lu  = str(_lu_raw or "").strip()
         _ok  = _p > 0 and _ac > 0
-        _lu_ok = not _lu or ("vacant" in _lu.lower() or "land" in _lu.lower())
+        _lu_ok = not _lu or any(x in _lu.lower() for x in ["vacant", "land", "recreational", "rural", "agricultural"])
         print(f"  Row {_ri}: raw_price={_p_raw!r} parsed={_p} | raw_acres={_ac_raw!r} parsed={_ac} | county={_co!r} | lu={_lu!r} | price_ok={_p>0} acres_ok={_ac>0} lu_ok={_lu_ok}", flush=True)
     print("[comps] --- end trace ---", flush=True)
 
@@ -733,11 +733,20 @@ async def upload_comps(
             _logged_rows += 1
 
         # ── Classify as sold or active ──
-        _raw_status = str(row.get(status_col, "") if status_col else "").strip()
+        # Check multiple possible status column names directly
+        _raw_status = str(
+            row.get("Current Sale Status") or
+            row.get("MLS Status") or
+            row.get("Status") or
+            row.get("status") or
+            ""
+        ).strip()
         _sl = _raw_status.lower()
-        if any(k in _sl for k in _SOLD_KWORDS):
+        is_sold = any(k in _sl for k in _SOLD_KWORDS) or (not _sl and sale_price > 0)
+        is_active = any(k in _sl for k in _ACTIVE_KWORDS)
+        if is_sold:
             _row_type = "sold"
-        elif any(k in _sl for k in _ACTIVE_KWORDS):
+        elif is_active:
             _row_type = "active"
         elif sale_price > 0:
             _row_type = "sold"
@@ -770,8 +779,8 @@ async def upload_comps(
         if not county:
             skipped_no_county += 1
             continue
-        # Land use: if present, must contain "Vacant" or "Land"
-        if land_use and "vacant" not in land_use.lower() and "land" not in land_use.lower():
+        # Land use: if present, must be recognizable vacant/land type
+        if land_use and not any(x in land_use.lower() for x in ["vacant", "land", "recreational", "rural", "agricultural"]):
             skipped_land_use += 1
             continue
         if sale_price > 5_000_000:
