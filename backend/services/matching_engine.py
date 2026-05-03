@@ -1171,21 +1171,9 @@ def run_matching(
         dnm = targets["Do Not Mail"].astype(str).str.strip().str.upper()
         targets = targets[~dnm.isin(["YES", "Y", "1", "TRUE"])]
 
-    # ── Filter out targets that are also in the solds/comps file ─────
-    # Only exclude targets whose APN appears in solds WITH a valid sale price
-    # (many solds files contain unsold properties with $0/NaN price)
-    if "APN" in targets.columns and "APN" in comps_df.columns:
-        sold_comps = comps_df[
-            (comps_df["Current Sale Price"].notna()) & (comps_df["Current Sale Price"] > 0)
-        ] if "Current Sale Price" in comps_df.columns else comps_df
-        comp_apns = set(sold_comps["APN"].astype(str).str.strip())
-        target_apn_col = targets["APN"].astype(str).str.strip()
-        overlap_mask = target_apn_col.isin(comp_apns)
-        n_overlap = overlap_mask.sum()
-        if n_overlap > 0:
-            targets = targets[~overlap_mask]
-            warnings.append(f"Excluded {n_overlap} targets that also appear in solds/comps file")
-            print(f"Solds overlap filter: removed {n_overlap} targets that are also comp sales")
+    # NOTE: We do NOT exclude targets that appear in crm_sold_comps.
+    # A property can be in both — sold at some point (comp) but currently owned
+    # by someone we want to mail (target). These serve different purposes.
     filter_counts['after_solds_overlap_filter'] = len(targets)
 
     # ── Filter out recently sold properties ──────────────────────────
