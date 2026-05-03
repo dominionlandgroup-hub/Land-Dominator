@@ -2,6 +2,7 @@
 
 export interface ZipVelocity {
   zip: string
+  county?: string
   active_count: number
   pending_count: number
   monthly_solds: number

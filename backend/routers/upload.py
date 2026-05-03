@@ -960,6 +960,30 @@ async def upload_comps(
             if _lp and _lp > 0:
                 _by_zip[_z]["prices"].append(_lp)
 
+        # Build ZIP → county from ALL sold comps so velocity entries carry their county
+        _zip_county: dict[str, str] = {}
+        try:
+            _zc_off = 0
+            while True:
+                _zc_b = (
+                    supabase.table("crm_sold_comps")
+                    .select("zip_code,county")
+                    .not_.is_("county", "null")
+                    .range(_zc_off, _zc_off + 999)
+                    .execute()
+                )
+                for _zr in (_zc_b.data or []):
+                    _zk = str(_zr.get("zip_code") or "").split(".")[0].strip()
+                    _ck = str(_zr.get("county") or "").strip()
+                    if _zk and _ck and _ck.lower() not in ("nan", "none", "") and _zk not in _zip_county:
+                        _zip_county[_zk] = _ck
+                if len(_zc_b.data or []) < 1000:
+                    break
+                _zc_off += 1000
+            print(f"[velocity] ZIP-county lookup: {len(_zip_county)} ZIPs mapped", flush=True)
+        except Exception as _zce:
+            print(f"[velocity] ZIP-county lookup failed: {_zce}", flush=True)
+
         _monthly_solds: dict[str, float] = {}
         try:
             _cutoff = (datetime.now(timezone.utc) - _td(days=365)).strftime("%Y-%m-%d")
@@ -984,7 +1008,9 @@ async def upload_comps(
             _lbl = "HOT" if _sup < 3 else ("BALANCED" if _sup <= 6 else "SLOW")
             _avg_p = round(sum(_d["prices"]) / len(_d["prices"])) if _d["prices"] else None
             _zip_vel[_z] = {
-                "zip": _z, "active_count": _ac, "pending_count": 0,
+                "zip": _z,
+                "county": _zip_county.get(_z, ""),
+                "active_count": _ac, "pending_count": 0,
                 "monthly_solds": _ms, "months_supply": _sup,
                 "absorption_rate": round(_ms / _ac, 3) if _ac > 0 else 0.0,
                 "velocity_label": _lbl, "avg_dom": None, "avg_list_price": _avg_p,
