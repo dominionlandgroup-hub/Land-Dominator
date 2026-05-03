@@ -87,11 +87,17 @@ export default function CRMCampaigns() {
   }
 
   async function handleDelete(id: string) {
+    console.log('Delete button clicked for campaign:', id)
     try {
-      await deleteCrmCampaign(id)
+      const result = await deleteCrmCampaign(id)
+      console.log('Delete API response:', result)
       setCampaigns(prev => prev.filter(c => c.id !== id))
-    } catch { setError('Failed to delete campaign.') }
-    finally { setConfirmDeleteCampaign(null) }
+    } catch (err) {
+      console.error('Delete campaign error:', err)
+      setError('Failed to delete campaign.')
+    } finally {
+      setConfirmDeleteCampaign(null)
+    }
   }
 
   function openDetail(camp: CRMCampaign) { setSelectedCampaign(camp); setView('detail') }

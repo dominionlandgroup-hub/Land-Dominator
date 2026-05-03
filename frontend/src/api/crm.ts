@@ -126,8 +126,10 @@ export async function updateCrmCampaign(
   return data
 }
 
-export async function deleteCrmCampaign(id: string): Promise<void> {
-  await api.delete(`/crm/campaigns/${id}`)
+export async function deleteCrmCampaign(id: string): Promise<{ deleted: boolean }> {
+  console.log('Calling DELETE /crm/campaigns/', id)
+  const { data } = await api.delete<{ deleted: boolean }>(`/crm/campaigns/${id}`)
+  return data
 }
 
 export async function autoCreateCampaign(opts?: {
