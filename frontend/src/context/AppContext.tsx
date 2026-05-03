@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 import type { ReactNode } from 'react'
 import type {
   UploadStats,
+  ListingsStats,
   DashboardData,
   MatchFilters,
   MatchResult,
@@ -23,6 +24,10 @@ interface AppState {
   // Dashboard
   dashboardData: DashboardData | null
   setDashboardData: (d: DashboardData | null) => void
+
+  // Active listings / market velocity
+  listingsStats: ListingsStats | null
+  setListingsStats: (s: ListingsStats | null) => void
 
   // Targets
   targetStats: UploadStats | null
@@ -81,6 +86,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   })
   const [compsRestoring, setCompsRestoring] = useState(true)
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
+  const [listingsStats, setListingsStats] = useState<ListingsStats | null>(() => {
+    try {
+      const cached = localStorage.getItem('ld_listings_stats')
+      return cached ? JSON.parse(cached) : null
+    } catch { return null }
+  })
   const [targetStats, _setTargetStats] = useState<UploadStats | null>(() => {
     try {
       const cached = localStorage.getItem(LS_TARGET_KEY)
@@ -190,6 +201,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     compsRestoring,
     dashboardData,
     setDashboardData: useCallback((d) => setDashboardData(d), []),
+    listingsStats,
+    setListingsStats: useCallback((s: ListingsStats | null) => {
+      setListingsStats(s)
+      if (s) { try { localStorage.setItem('ld_listings_stats', JSON.stringify(s)) } catch {} }
+      else { try { localStorage.removeItem('ld_listings_stats') } catch {} }
+    }, []),
     targetStats,
     setTargetStats,
     targetRestoring,

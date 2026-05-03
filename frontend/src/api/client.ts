@@ -1,6 +1,7 @@
 import axios from 'axios'
 import type {
   UploadStats,
+  ListingsStats,
   DashboardData,
   MatchFilters,
   MatchResult,
@@ -23,6 +24,13 @@ export async function uploadComps(file: File, append = true): Promise<UploadStat
   const form = new FormData()
   form.append('file', file)
   const { data } = await api.post<UploadStats>(`/upload/comps?append=${append}`, form)
+  return data
+}
+
+export async function uploadListings(file: File): Promise<ListingsStats> {
+  const form = new FormData()
+  form.append('file', file)
+  const { data } = await api.post<ListingsStats>('/upload/listings', form)
   return data
 }
 

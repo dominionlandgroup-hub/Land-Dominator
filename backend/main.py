@@ -14,6 +14,7 @@ from routers import mail_calendar as mail_cal_router
 from routers import communications as comms_router
 from routers import market_research as market_research_router
 from routers import lead_stacker as lead_stacker_router
+from routers import listings as listings_router
 
 load_dotenv()
 
@@ -61,6 +62,7 @@ app.include_router(mail_cal_router.router)
 app.include_router(comms_router.router)
 app.include_router(market_research_router.router)
 app.include_router(lead_stacker_router.router)
+app.include_router(listings_router.router)
 
 
 # ── Startup migration check ───────────────────────────────────────────

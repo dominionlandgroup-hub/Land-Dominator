@@ -2,13 +2,14 @@ import React, { useEffect, useRef, useState } from 'react'
 import { useApp } from '../context/AppContext'
 import {
   uploadComps,
+  uploadListings,
   getCompsInventory,
   clearAllComps,
   clearCompsByState,
   clearCompsByFile,
   type CompInventoryItem,
 } from '../api/client'
-import type { UploadStats } from '../types'
+import type { UploadStats, ListingsStats } from '../types'
 
 // ── Format badge ──────────────────────────────────────────────────────────────
 
@@ -279,12 +280,15 @@ function Th({ children }: { children?: React.ReactNode }) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function UploadComps() {
-  const { compsStats, setCompsStats, setDashboardData, setCurrentPage } = useApp()
+  const { compsStats, setCompsStats, setDashboardData, setCurrentPage, listingsStats, setListingsStats } = useApp()
   const [uploadResults, setUploadResults] = useState<FileUploadResult[]>([])
   const [inventory, setInventory] = useState<{ items: CompInventoryItem[]; total_comps: number } | null>(null)
   const [loadingInventory, setLoadingInventory] = useState(false)
   const [showDropZone, setShowDropZone] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const listingsInputRef = useRef<HTMLInputElement>(null)
+  const [listingsUploading, setListingsUploading] = useState(false)
+  const [listingsError, setListingsError] = useState<string | null>(null)
 
   async function loadInventory() {
     setLoadingInventory(true)
@@ -360,6 +364,21 @@ export default function UploadComps() {
   function handleDrop(e: React.DragEvent) {
     e.preventDefault()
     handleFiles(e.dataTransfer.files)
+  }
+
+  async function handleListingsFile(file: File) {
+    setListingsUploading(true)
+    setListingsError(null)
+    try {
+      const stats = await uploadListings(file)
+      setListingsStats(stats as ListingsStats)
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? 'Upload failed'
+      setListingsError(msg)
+    } finally {
+      setListingsUploading(false)
+      if (listingsInputRef.current) listingsInputRef.current.value = ''
+    }
   }
 
   async function handleClearAll() {
@@ -562,6 +581,96 @@ export default function UploadComps() {
         >
           <strong style={{ color: '#374151' }}>Deduplication: </strong>
           Files are appended to the comp database. Duplicate APNs are automatically detected and skipped before inserting — you can safely re-upload the same file without creating duplicates. Use "Remove" next to each file to delete just those comps, or "Clear All Comps" to start fresh.
+        </div>
+
+        {/* Active Listings upload */}
+        <div
+          style={{
+            background: '#fff', border: '1px solid #E5E7EB', borderRadius: 10,
+            padding: '16px 20px', marginTop: 8,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <div>
+              <p style={{ fontWeight: 600, fontSize: 13, color: '#111827', margin: 0 }}>
+                Active Listings <span style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 400 }}>optional</span>
+              </p>
+              <p style={{ fontSize: 11, color: '#9CA3AF', margin: '2px 0 0' }}>
+                Upload an active listings CSV to add market velocity analysis (months of supply per ZIP)
+              </p>
+            </div>
+            {listingsStats && (
+              <button
+                onClick={() => setListingsStats(null)}
+                style={{ fontSize: 11, color: '#9CA3AF', background: 'transparent', border: '1px solid #E5E7EB', borderRadius: 4, padding: '2px 8px', cursor: 'pointer' }}
+              >
+                Remove
+              </button>
+            )}
+          </div>
+
+          {listingsStats ? (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, padding: '10px 14px', background: 'rgba(16,185,129,0.04)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: 8 }}>
+              <div>
+                <p style={{ fontSize: 10, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Active</p>
+                <p style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: '2px 0 0' }}>{listingsStats.total_active.toLocaleString()}</p>
+              </div>
+              <div>
+                <p style={{ fontSize: 10, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Pending</p>
+                <p style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: '2px 0 0' }}>{listingsStats.total_pending.toLocaleString()}</p>
+              </div>
+              <div>
+                <p style={{ fontSize: 10, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>ZIPs</p>
+                <p style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: '2px 0 0' }}>{listingsStats.zip_count}</p>
+              </div>
+              {listingsStats.counties_covered.length > 0 && (
+                <div>
+                  <p style={{ fontSize: 10, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Counties</p>
+                  <p style={{ fontSize: 12, color: '#374151', margin: '2px 0 0' }}>{listingsStats.counties_covered.slice(0, 4).join(', ')}{listingsStats.counties_covered.length > 4 ? ` +${listingsStats.counties_covered.length - 4}` : ''}</p>
+                </div>
+              )}
+              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
+                <span style={{ fontSize: 11, color: '#10B981', fontWeight: 600 }}>✓ Velocity data loaded — visible in Market Analysis</span>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <input
+                ref={listingsInputRef}
+                type="file"
+                accept=".csv"
+                style={{ display: 'none' }}
+                onChange={e => { const f = e.target.files?.[0]; if (f) handleListingsFile(f) }}
+              />
+              <button
+                onClick={() => listingsInputRef.current?.click()}
+                disabled={listingsUploading}
+                style={{
+                  width: '100%', padding: '12px 0', border: '2px dashed #E5E7EB', borderRadius: 8,
+                  background: '#FAFAFA', color: '#9CA3AF', cursor: listingsUploading ? 'default' : 'pointer',
+                  fontSize: 13, fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                }}
+              >
+                {listingsUploading ? (
+                  <>
+                    <span style={{ width: 14, height: 14, border: '2px solid #E5E7EB', borderTopColor: '#4F46E5', borderRadius: '50%', animation: 'spin 0.8s linear infinite', display: 'inline-block' }} />
+                    Processing…
+                  </>
+                ) : (
+                  <>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    Upload Active Listings CSV
+                  </>
+                )}
+              </button>
+              {listingsError && (
+                <p style={{ fontSize: 12, color: '#DC2626', marginTop: 6 }}>{listingsError}</p>
+              )}
+              <p style={{ fontSize: 11, color: '#9CA3AF', marginTop: 6 }}>
+                Expected columns: ZIP, Status (Active/Pending), List Price, DOM. Computes months-of-supply per ZIP vs. your sold comps.
+              </p>
+            </div>
+          )}
         </div>
       </div>
 

@@ -3,12 +3,12 @@ import { useApp } from '../context/AppContext'
 import { fetchDashboard, getDbCompsCount, getCompsInventory, clearAllComps, clearCompsByFile, type CompInventoryItem } from '../api/client'
 import { createCrmCampaign, saveBuyBox } from '../api/crm'
 import LoadingSpinner from '../components/LoadingSpinner'
-import type { ZipStats, CompLocation, SweetSpot, LandQualityStats } from '../types'
+import type { ZipStats, CompLocation, SweetSpot, LandQualityStats, ZipVelocity } from '../types'
 import CompMap from '../components/CompMap'
 import WelcomeScreen from './WelcomeScreen'
 
 export default function Dashboard() {
-  const { compsStats, dashboardData, setDashboardData, setCurrentPage } = useApp()
+  const { compsStats, dashboardData, setDashboardData, setCurrentPage, listingsStats } = useApp()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [dbCompsCount, setDbCompsCount] = useState<number | null>(null)
@@ -238,12 +238,14 @@ export default function Dashboard() {
               topStates={dashboardData.top_states ?? []}
               topCounties={dashboardData.top_counties ?? []}
               landQuality={dashboardData.land_quality}
+              zipVelocity={listingsStats?.zip_velocity}
             />
 
             {/* ── Section 3: Top 10 Markets ────────────────────────── */}
             <TopMarketsCard
               zipStats={dashboardData.zip_stats}
               comps={dashboardData.comp_locations}
+              zipVelocity={listingsStats?.zip_velocity}
             />
 
             {/* ── Section 4: Full ZIP Data ─────────────────────────── */}
@@ -270,7 +272,7 @@ function zipDotColor(z: ZipStats, outlierSet: Set<string>): string {
   return '#DC2626'
 }
 
-function TopMarketsCard({ zipStats, comps }: { zipStats: ZipStats[]; comps: CompLocation[] }) {
+function TopMarketsCard({ zipStats, comps, zipVelocity }: { zipStats: ZipStats[]; comps: CompLocation[]; zipVelocity?: Record<string, ZipVelocity> }) {
   const [showMap, setShowMap] = useState(false)
   const [showOutliers, setShowOutliers] = useState(false)
   const [showThin, setShowThin] = useState(false)
@@ -315,17 +317,19 @@ function TopMarketsCard({ zipStats, comps }: { zipStats: ZipStats[]; comps: Comp
 
       {/* Top 20 ranked list */}
       <div className="rounded-xl overflow-hidden mb-4" style={{ border: '1px solid #E5E7EB' }}>
-        <div className="grid text-[10px] uppercase tracking-wider px-4 py-2" style={{ gridTemplateColumns: '32px 12px 1fr 90px 100px 80px', color: '#6B7280', background: '#F9FAFB', borderBottom: '1px solid #E5E7EB' }}>
-          <span>#</span><span></span><span>ZIP</span><span className="text-right">Sales</span><span className="text-right">Median $/Acre</span><span></span>
+        <div className="grid text-[10px] uppercase tracking-wider px-4 py-2" style={{ gridTemplateColumns: zipVelocity ? '32px 12px 1fr 90px 100px 90px 80px' : '32px 12px 1fr 90px 100px 80px', color: '#6B7280', background: '#F9FAFB', borderBottom: '1px solid #E5E7EB' }}>
+          <span>#</span><span></span><span>ZIP</span><span className="text-right">Sales</span><span className="text-right">Median $/Acre</span>{zipVelocity && <span className="text-right">Supply</span>}<span></span>
         </div>
         {top20.map((z, i) => {
           const dot = zipDotColor(z, outlierSet)
           const isThinWarning = warningZips.has(z.zip_code)
+          const vel = zipVelocity?.[z.zip_code]
+          const velColor = vel?.velocity_label === 'HOT' ? '#DC2626' : vel?.velocity_label === 'BALANCED' ? '#D97706' : '#6B7280'
           return (
             <div
               key={z.zip_code}
               className="grid items-center px-4 py-2.5"
-              style={{ gridTemplateColumns: '32px 12px 1fr 90px 100px 80px', background: i % 2 === 0 ? '#FFFFFF' : '#F9FAFB', borderBottom: i < top20.length - 1 ? '1px solid #F3F4F6' : 'none' }}
+              style={{ gridTemplateColumns: zipVelocity ? '32px 12px 1fr 90px 100px 90px 80px' : '32px 12px 1fr 90px 100px 80px', background: i % 2 === 0 ? '#FFFFFF' : '#F9FAFB', borderBottom: i < top20.length - 1 ? '1px solid #F3F4F6' : 'none' }}
             >
               <span className="text-xs font-bold" style={{ color: '#9CA3AF' }}>{i + 1}</span>
               <div className="w-2 h-2 rounded-full" style={{ background: dot }} />
@@ -334,6 +338,15 @@ function TopMarketsCard({ zipStats, comps }: { zipStats: ZipStats[]; comps: Comp
               <span className="text-xs text-right" style={{ color: '#4F46E5' }}>
                 {z.median_price_per_acre != null ? `$${Math.round(z.median_price_per_acre).toLocaleString()}` : '—'}
               </span>
+              {zipVelocity && (
+                <span className="text-right">
+                  {vel ? (
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 5px', borderRadius: 4, color: velColor, background: `${velColor}12`, border: `1px solid ${velColor}30` }}>
+                      {vel.velocity_label} {vel.months_supply}mo
+                    </span>
+                  ) : <span style={{ color: '#D1D5DB', fontSize: 10 }}>—</span>}
+                </span>
+              )}
               <span className="flex justify-end">
                 {isThinWarning && (
                   <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 6, background: 'rgba(245,158,11,0.15)', color: '#F59E0B', border: '1px solid rgba(245,158,11,0.25)' }}>Thin Data</span>
@@ -488,6 +501,7 @@ function BuyBoxRecipe({
   topStates,
   topCounties,
   landQuality,
+  zipVelocity,
 }: {
   zipStats: ZipStats[]
   comps: Array<{ lot_acres: number; sale_price: number; zip?: string }>
@@ -495,6 +509,7 @@ function BuyBoxRecipe({
   topStates: string[]
   topCounties: string[]
   landQuality?: LandQualityStats | null
+  zipVelocity?: Record<string, ZipVelocity>
 }) {
   const [copied, setCopied] = useState(false)
   const [building, setBuilding] = useState(false)
@@ -858,6 +873,73 @@ ${sec('6. Owner',
             <div className="flex justify-between"><span style={{ color: '#6B7280' }}>Absentee</span><span style={{ color: '#4F46E5', fontWeight: 600 }}>Cross-county preferred</span></div>
           </div>
         </div>
+
+        {/* Section 7 — Market Velocity (only shown when listings data is available) */}
+        {zipVelocity && (() => {
+          const velEntries = Object.values(zipVelocity)
+          if (velEntries.length === 0) return null
+          const hotZips = velEntries.filter(v => v.velocity_label === 'HOT').sort((a, b) => a.months_supply - b.months_supply)
+          const balancedZips = velEntries.filter(v => v.velocity_label === 'BALANCED')
+          const slowZips = velEntries.filter(v => v.velocity_label === 'SLOW')
+          const targetZips = velEntries.filter(v => v.months_supply < 4).sort((a, b) => a.months_supply - b.months_supply)
+          return (
+            <div className="rounded-xl p-4 lg:col-span-3" style={cardStyle}>
+              {hdr('7 · Market Velocity')}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs mb-3">
+                <div>
+                  <p className="mb-1.5" style={{ color: '#DC2626', fontWeight: 600 }}>HOT — under 3 months supply ({hotZips.length} ZIPs)</p>
+                  {hotZips.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {hotZips.slice(0, 10).map(v => (
+                        <span key={v.zip} style={{ fontSize: 11, fontFamily: 'monospace', padding: '1px 6px', borderRadius: 4, background: 'rgba(220,38,38,0.08)', color: '#DC2626', border: '1px solid rgba(220,38,38,0.2)' }}>
+                          {v.zip} {v.months_supply}mo
+                        </span>
+                      ))}
+                    </div>
+                  ) : <span style={{ color: '#9CA3AF' }}>None</span>}
+                </div>
+                <div>
+                  <p className="mb-1.5" style={{ color: '#D97706', fontWeight: 600 }}>BALANCED — 3–6 months supply ({balancedZips.length} ZIPs)</p>
+                  {balancedZips.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {balancedZips.slice(0, 8).map(v => (
+                        <span key={v.zip} style={{ fontSize: 11, fontFamily: 'monospace', padding: '1px 6px', borderRadius: 4, background: 'rgba(217,119,6,0.08)', color: '#D97706', border: '1px solid rgba(217,119,6,0.2)' }}>
+                          {v.zip} {v.months_supply}mo
+                        </span>
+                      ))}
+                    </div>
+                  ) : <span style={{ color: '#9CA3AF' }}>None</span>}
+                </div>
+                <div>
+                  <p className="mb-1.5" style={{ color: '#6B7280', fontWeight: 600 }}>SLOW — 6+ months supply ({slowZips.length} ZIPs)</p>
+                  {slowZips.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {slowZips.slice(0, 6).map(v => (
+                        <span key={v.zip} style={{ fontSize: 11, fontFamily: 'monospace', padding: '1px 6px', borderRadius: 4, background: '#F3F4F6', color: '#9CA3AF', border: '1px solid #E5E7EB' }}>
+                          {v.zip} {v.months_supply}mo
+                        </span>
+                      ))}
+                    </div>
+                  ) : <span style={{ color: '#9CA3AF' }}>None</span>}
+                </div>
+              </div>
+              {targetZips.length > 0 && (
+                <div className="rounded-lg p-2.5" style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)' }}>
+                  <p style={{ fontSize: 11, color: '#059669', fontWeight: 600, marginBottom: 4 }}>
+                    Recommendation: Target ZIPs with under 4 months supply — faster resale exit
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {targetZips.slice(0, 15).map(v => (
+                      <span key={v.zip} style={{ fontSize: 11, fontFamily: 'monospace', padding: '1px 6px', borderRadius: 4, background: 'rgba(16,185,129,0.1)', color: '#059669', border: '1px solid rgba(16,185,129,0.2)' }}>
+                        {v.zip} ({v.months_supply}mo)
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })()}
       </div>
     </div>
   )

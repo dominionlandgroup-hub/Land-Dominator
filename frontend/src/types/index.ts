@@ -1,3 +1,27 @@
+// ─── Active Listings / Market Velocity ────────────────────────────────────
+
+export interface ZipVelocity {
+  zip: string
+  active_count: number
+  pending_count: number
+  monthly_solds: number
+  months_supply: number
+  absorption_rate: number
+  velocity_label: 'HOT' | 'BALANCED' | 'SLOW'
+  avg_dom: number | null
+  avg_list_price: number | null
+}
+
+export interface ListingsStats {
+  listings_session_id: string
+  total_active: number
+  total_pending: number
+  zip_count: number
+  counties_covered: string[]
+  columns_found: string[]
+  zip_velocity: Record<string, ZipVelocity>
+}
+
 // ─── Upload ────────────────────────────────────────────────────────────────
 
 export interface UploadStats {

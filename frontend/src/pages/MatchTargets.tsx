@@ -33,6 +33,7 @@ export default function MatchTargets() {
     dashboardData,
     lastFilters,
     mailingPreview, setMailingPreview,
+    listingsStats,
   } = useApp()
 
   const [uploadLoading, setUploadLoading] = useState(false)
@@ -353,6 +354,19 @@ export default function MatchTargets() {
           {(v as number).toFixed(0)}%
         </span>
       ),
+    },
+    {
+      key: 'parcel_zip', header: 'Market Supply', defaultHidden: true,
+      render: (_, row) => {
+        const vel = listingsStats?.zip_velocity?.[row.parcel_zip]
+        if (!vel) return <span style={{ color: '#9CA3AF' }}>—</span>
+        const color = vel.velocity_label === 'HOT' ? '#DC2626' : vel.velocity_label === 'BALANCED' ? '#D97706' : '#6B7280'
+        return (
+          <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 5px', borderRadius: 4, color, background: `${color}12`, border: `1px solid ${color}30` }}>
+            {vel.velocity_label} {vel.months_supply}mo
+          </span>
+        )
+      },
     },
   ]
 
