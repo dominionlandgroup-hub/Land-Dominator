@@ -110,6 +110,7 @@ export default function MatchTargets() {
     localStorage.getItem('matchTargets_acreage_min') !== null
   )
   const [floodZoneFilter, setFloodZoneFilter] = useState<'all' | 'exclude' | 'only'>((init?.flood_zone_filter as 'all' | 'exclude' | 'only') ?? 'exclude')
+  const [ownerLocationFilter, setOwnerLocationFilter] = useState<'all' | 'out-of-state' | 'in-state'>('all')
   const [minOfferFloor, setMinOfferFloor] = useState<string>('10000')
   const [minLpEstimate, setMinLpEstimate] = useState<string>('20000')
   const [assignmentFee, setAssignmentFee] = useState<string>('5000')
@@ -319,13 +320,18 @@ export default function MatchTargets() {
         return !vel || vel.velocity_label !== 'SLOW'
       })
     }
+    if (ownerLocationFilter === 'out-of-state') {
+      results = results.filter(r => r.owner_out_of_state === true)
+    } else if (ownerLocationFilter === 'in-state') {
+      results = results.filter(r => r.owner_out_of_state === false)
+    }
     // Default sort: highest estimated assignment fee first
     return [...results].sort((a, b) => {
       const fa = calcMatchFee(a.retail_estimate, a.suggested_offer_mid) ?? -1
       const fb = calcMatchFee(b.retail_estimate, b.suggested_offer_mid) ?? -1
       return fb - fa
     })
-  }, [matchResult, excludeSlowMarkets, listingsStats])
+  }, [matchResult, excludeSlowMarkets, listingsStats, ownerLocationFilter])
   const filterSummary = filterParts.length > 0
     ? `Active filters: ${filterParts.join(' · ')}`
     : 'No filters active — matching all targets'
@@ -440,7 +446,8 @@ export default function MatchTargets() {
   ]
 
   function renderCompDetails(row: MatchedParcel, pct: number): React.ReactNode {
-    const comps: { n: number; addr: string | null; price: number | null; acres: number | null; date: string | null; dist: number | null; ppa: number | null }[] = []
+    const usedSet = new Set<number>(row.comp_used_for_pricing ?? [])
+    const comps: { n: number; addr: string | null; price: number | null; acres: number | null; date: string | null; dist: number | null; ppa: number | null; used: boolean }[] = []
     for (const n of [1, 2, 3] as const) {
       const addr = row[`comp_${n}_address` as keyof MatchedParcel] as string | null
       const price = row[`comp_${n}_price` as keyof MatchedParcel] as number | null
@@ -448,21 +455,28 @@ export default function MatchTargets() {
       const date = row[`comp_${n}_date` as keyof MatchedParcel] as string | null
       const dist = row[`comp_${n}_distance` as keyof MatchedParcel] as number | null
       const ppa = row[`comp_${n}_ppa` as keyof MatchedParcel] as number | null
-      if (addr || price) comps.push({ n, addr, price, acres, date, dist, ppa })
+      if (addr || price) comps.push({ n, addr, price, acres, date, dist, ppa, used: usedSet.has(n) })
     }
     const hasComps = comps.length > 0
-    const hasCalc = row.median_ppa != null && row.lot_acres != null
-    if (!hasComps && !hasCalc) return null
+    if (!hasComps && !row.retail_estimate) return null
     return (
       <div style={{ background: '#F9FAFB', borderTop: '1px solid #E5E7EB', padding: '12px 16px 14px' }}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {hasComps && (
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-wide mb-2" style={{ color: '#6B7280' }}>Comps Used</p>
+              <p className="text-[10px] font-bold uppercase tracking-wide mb-2" style={{ color: '#6B7280' }}>Comps</p>
               <div className="flex flex-col gap-2">
                 {comps.map(c => (
-                  <div key={c.n} className="rounded-lg px-3 py-2" style={{ background: '#FFFFFF', border: '1px solid #E5E7EB' }}>
-                    <p className="text-[10px] font-semibold uppercase mb-1" style={{ color: '#9CA3AF' }}>Comp {c.n}</p>
+                  <div key={c.n} className="rounded-lg px-3 py-2" style={{
+                    background: c.used ? '#FFFBEB' : '#FFFFFF',
+                    border: c.used ? '1px solid #F59E0B' : '1px solid #E5E7EB',
+                  }}>
+                    <div className="flex items-center gap-1 mb-1">
+                      {c.used && <span style={{ color: '#D97706', fontSize: 13 }}>★</span>}
+                      <p className="text-[10px] font-semibold uppercase" style={{ color: c.used ? '#D97706' : '#9CA3AF' }}>
+                        {c.used ? 'USED FOR PRICING' : `Comp ${c.n} (reference)`}
+                      </p>
+                    </div>
                     {c.addr && <p className="text-xs mb-1" style={{ color: '#374151' }}>{c.addr}</p>}
                     <div className="flex flex-wrap gap-2 text-xs">
                       {c.price != null && <span className="font-semibold" style={{ color: '#059669' }}>{fmtPrice(c.price)}</span>}
@@ -476,35 +490,33 @@ export default function MatchTargets() {
               </div>
             </div>
           )}
-          {hasCalc && (
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wide mb-2" style={{ color: '#6B7280' }}>Pricing Calculation</p>
-              <div className="rounded-lg px-3 py-2.5" style={{ background: '#FFFFFF', border: '1px solid #E5E7EB' }}>
-                <div className="flex justify-between text-xs mb-1.5">
-                  <span style={{ color: '#6B7280' }}>Comp Median $/Acre</span>
-                  <span className="font-semibold" style={{ color: '#4F46E5' }}>{fmtPrice(row.median_ppa!)}/ac</span>
-                </div>
-                <div className="flex justify-between text-xs mb-1.5">
-                  <span style={{ color: '#6B7280' }}>Your Lot</span>
-                  <span className="font-semibold" style={{ color: '#374151' }}>{row.lot_acres!.toFixed(2)}ac</span>
-                </div>
-                <div className="flex justify-between text-xs mb-1.5" style={{ borderTop: '1px solid #F3F4F6', paddingTop: 6 }}>
-                  <span style={{ color: '#6B7280' }}>Comp-Derived Value</span>
-                  <span className="font-semibold" style={{ color: '#059669' }}>{fmtPrice(row.retail_estimate)}</span>
-                </div>
-                <div className="flex justify-between text-xs font-semibold" style={{ borderTop: '1px solid #F3F4F6', paddingTop: 6 }}>
-                  <span style={{ color: '#6B7280' }}>Offer at {pct.toFixed(1)}%</span>
-                  <span style={{ color: '#4F46E5', fontSize: 13 }}>{fmtPrice(row.suggested_offer_mid)}</span>
-                </div>
-                {row.suggested_offer_mid != null && row.retail_estimate != null && (
-                  <div className="flex justify-between text-xs mt-1.5" style={{ borderTop: '1px solid #F3F4F6', paddingTop: 6 }}>
-                    <span style={{ color: '#6B7280' }}>Est. Assignment Fee</span>
-                    <span className="font-bold" style={{ color: '#10B981' }}>{fmtPrice(calcMatchFee(row.retail_estimate, row.suggested_offer_mid))}</span>
-                  </div>
-                )}
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wide mb-2" style={{ color: '#6B7280' }}>Pricing</p>
+            <div className="rounded-lg px-3 py-2.5" style={{ background: '#FFFFFF', border: '1px solid #E5E7EB' }}>
+              {row.pricing_description && (
+                <p className="text-xs mb-2 font-medium" style={{ color: '#374151' }}>{row.pricing_description}</p>
+              )}
+              {row.size_adjusted_pricing && (
+                <p className="text-[10px] mb-2 px-2 py-1 rounded" style={{ background: '#FEF3C7', color: '#92400E' }}>
+                  Size-adjusted pricing — no similar-sized comp found
+                </p>
+              )}
+              <div className="flex justify-between text-xs mb-1.5" style={{ borderTop: '1px solid #F3F4F6', paddingTop: 6 }}>
+                <span style={{ color: '#6B7280' }}>Retail Est.</span>
+                <span className="font-semibold" style={{ color: '#059669' }}>{fmtPrice(row.retail_estimate)}</span>
               </div>
+              <div className="flex justify-between text-xs font-semibold" style={{ borderTop: '1px solid #F3F4F6', paddingTop: 6 }}>
+                <span style={{ color: '#6B7280' }}>Offer at {pct.toFixed(1)}%</span>
+                <span style={{ color: '#4F46E5', fontSize: 13 }}>{fmtPrice(row.suggested_offer_mid)}</span>
+              </div>
+              {row.suggested_offer_mid != null && row.retail_estimate != null && (
+                <div className="flex justify-between text-xs mt-1.5" style={{ borderTop: '1px solid #F3F4F6', paddingTop: 6 }}>
+                  <span style={{ color: '#6B7280' }}>Est. Assignment Fee</span>
+                  <span className="font-bold" style={{ color: '#10B981' }}>{fmtPrice(calcMatchFee(row.retail_estimate, row.suggested_offer_mid))}</span>
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
       </div>
     )
@@ -634,6 +646,17 @@ export default function MatchTargets() {
                 <button className="px-4 py-2 text-xs transition-all" style={floodZoneFilter === 'only' ? { background: '#4F46E5', color: '#FFFFFF' } : { background: '#FFFFFF', color: '#6B7280' }} onClick={() => setFloodZoneFilter('only')}>Only Flood</button>
               </div>
               <p className="text-[10px] mt-1.5" style={{ color: '#6B7280' }}>Exclude = no FEMA flood zones (recommended)</p>
+            </div>
+
+            {/* Owner Location */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#6B7280' }}>Owner Location</p>
+              <div className="inline-flex rounded-lg overflow-hidden" style={{ border: '1px solid #E5E7EB' }}>
+                <button className="px-4 py-2 text-xs transition-all" style={ownerLocationFilter === 'all' ? { background: '#4F46E5', color: '#FFFFFF' } : { background: '#FFFFFF', color: '#6B7280' }} onClick={() => setOwnerLocationFilter('all')}>All Owners</button>
+                <button className="px-4 py-2 text-xs transition-all" style={ownerLocationFilter === 'out-of-state' ? { background: '#4F46E5', color: '#FFFFFF' } : { background: '#FFFFFF', color: '#6B7280' }} onClick={() => setOwnerLocationFilter('out-of-state')}>Out-of-State</button>
+                <button className="px-4 py-2 text-xs transition-all" style={ownerLocationFilter === 'in-state' ? { background: '#4F46E5', color: '#FFFFFF' } : { background: '#FFFFFF', color: '#6B7280' }} onClick={() => setOwnerLocationFilter('in-state')}>In-State</button>
+              </div>
+              <p className="text-[10px] mt-1.5" style={{ color: '#6B7280' }}>Filter by mailing state vs property state</p>
             </div>
 
             {/* 3. Minimum Offer Floor */}
@@ -931,6 +954,18 @@ export default function MatchTargets() {
                     </div>
                   )}
 
+                  {/* Out-of-state owner count */}
+                  {(() => {
+                    const outOfStateCt = matchResult.results.filter(r => r.owner_out_of_state === true && r.pricing_flag === 'MATCHED').length
+                    const matchedCt = matchResult.results.filter(r => r.pricing_flag === 'MATCHED').length
+                    if (outOfStateCt === 0) return null
+                    return (
+                      <p className="text-[11px] mb-2" style={{ color: '#6B7280' }}>
+                        Out-of-state owners: <strong style={{ color: '#374151' }}>{outOfStateCt.toLocaleString()}</strong> of {matchedCt.toLocaleString()} matched records
+                      </p>
+                    )
+                  })()}
+
                   {/* Three-category breakdown */}
                   <div className="flex flex-col gap-2 mb-4">
                     <div className="rounded-lg px-3 py-2 flex items-center justify-between" style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)' }}>
@@ -973,6 +1008,34 @@ export default function MatchTargets() {
                     <a href={getMailingDownloadUrl(matchId, 'full-list', 'full')} download className="btn-secondary text-sm no-underline">
                       Full List
                     </a>
+                    {(() => {
+                      const outOfStateRows = matchResult.results.filter(r => r.owner_out_of_state === true && r.pricing_flag === 'MATCHED')
+                      const inStateRows = matchResult.results.filter(r => r.owner_out_of_state === false && r.pricing_flag === 'MATCHED')
+                      const mkCsv = (rows: typeof matchResult.results) => {
+                        const cols = ['apn','owner_name','mail_address','mail_city','mail_state','mail_zip','parcel_zip','lot_acres','retail_estimate','suggested_offer_mid','pricing_description','pricing_flag']
+                        const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g,'""')}"`
+                        return [cols.join(','), ...rows.map(r => cols.map(c => esc(r[c as keyof typeof r])).join(','))].join('\n')
+                      }
+                      const dl = (content: string, name: string) => {
+                        const a = document.createElement('a')
+                        a.href = URL.createObjectURL(new Blob([content], { type: 'text/csv' }))
+                        a.download = name; a.click()
+                      }
+                      return (
+                        <>
+                          {outOfStateRows.length > 0 && (
+                            <button className="btn-secondary text-sm" onClick={() => dl(mkCsv(outOfStateRows), `out-of-state-owners-${matchId}.csv`)}>
+                              Out-of-State Only ({outOfStateRows.length.toLocaleString()})
+                            </button>
+                          )}
+                          {inStateRows.length > 0 && (
+                            <button className="btn-secondary text-sm" onClick={() => dl(mkCsv(inStateRows), `in-state-owners-${matchId}.csv`)}>
+                              In-State Only ({inStateRows.length.toLocaleString()})
+                            </button>
+                          )}
+                        </>
+                      )
+                    })()}
                   </div>
                 </div>
               )

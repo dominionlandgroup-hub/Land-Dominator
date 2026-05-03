@@ -602,6 +602,20 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
               <Field label="City" field="owner_mailing_city" placeholder="Austin" />
               <Field label="Mailing State" field="owner_mailing_state" placeholder="TX" />
               <Field label="Zip" field="owner_mailing_zip" placeholder="78701" />
+              {(() => {
+                const mailState = (form.owner_mailing_state as string | undefined)?.toUpperCase().trim()
+                const parcelState = (form.state as string | undefined)?.toUpperCase().trim()
+                if (!mailState || !parcelState) return null
+                const isOut = mailState !== parcelState
+                return (
+                  <div>
+                    <label className="label-caps">Owner Location</label>
+                    <p className="text-xs mt-1 font-semibold" style={{ color: isOut ? '#059669' : '#6B7280' }}>
+                      {isOut ? `Out of State (${mailState})` : `In State (${mailState})`}
+                    </p>
+                  </div>
+                )
+              })()}
             </div>
             <div className="mt-4">
               <label className="label-caps">Additional Phone Numbers</label>
@@ -639,31 +653,30 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
             {(() => {
               const offer = form.offer_price ?? 0
               if (offer <= 0) return null
-              const compMedianPpa = form.comp_median_ppa as number | undefined
-              const compDerivedValue = form.comp_derived_value as number | undefined
-              const retail = compDerivedValue ?? (form.lp_estimate && form.lp_estimate > 0 ? form.lp_estimate : offer / 0.525)
+              const retail = (form.comp_derived_value ?? (form.lp_estimate && form.lp_estimate > 0 ? form.lp_estimate : offer / 0.525)) as number
               const fee = Math.max(0, Math.round(retail - offer))
-              const isCompBased = compDerivedValue != null && compMedianPpa != null
+              const pricingDesc = form.pricing_description as string | undefined
+              const isLpFallback = !form.comp_derived_value && form.lp_estimate
               return (
                 <div className="mt-4 rounded-xl p-4" style={{ background: '#F7F3FC', border: '1px solid #E8E0F0' }}>
                   <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#9B8AAE' }}>
-                    {isCompBased ? 'Comp-Based Pricing' : 'Assignment Fee Breakdown'}
+                    Assignment Fee Breakdown
                   </p>
-                  {isCompBased && form.acreage != null && (
+                  {pricingDesc && (
+                    <div className="mb-3 pb-3 text-xs" style={{ borderBottom: '1px solid #E8E0F0', color: '#374151' }}>
+                      {pricingDesc}
+                    </div>
+                  )}
+                  {isLpFallback && (
                     <div className="mb-3 pb-3" style={{ borderBottom: '1px solid #E8E0F0' }}>
-                      <div className="flex justify-between text-xs mb-1.5">
-                        <span style={{ color: '#6B5B8A' }}>Comp Median $/Acre</span>
-                        <span style={{ fontWeight: 600, color: '#5C2977' }}>{fmtCurrency(compMedianPpa!)}/ac</span>
-                      </div>
-                      <div className="flex justify-between text-xs mb-1.5">
-                        <span style={{ color: '#6B5B8A' }}>Your Lot ({Number(form.acreage).toFixed(2)}ac)</span>
-                        <span style={{ fontWeight: 600, color: '#1A0A2E' }}>{fmtCurrency(compDerivedValue!)}</span>
-                      </div>
+                      <p className="text-[10px] px-2 py-1 rounded" style={{ background: '#FEF3C7', color: '#92400E' }}>
+                        LP Estimate fallback — no comp found within 1 mile
+                      </p>
                     </div>
                   )}
                   <div className="space-y-1.5">
                     {[
-                      { label: isCompBased ? 'Comp-Derived Value' : 'Estimated Retail Value', value: retail, color: '#1A0A2E' },
+                      { label: 'Retail Value', value: retail, color: '#1A0A2E' },
                       { label: 'Your Offer', value: -offer, color: '#DC2626' },
                     ].map(({ label, value, color }) => (
                       <div key={label} className="flex justify-between items-center">

@@ -78,6 +78,8 @@ export interface CRMProperty {
   comp_median_ppa?: number
   comp_derived_value?: number
   pricing_calculation?: Record<string, unknown>
+  pricing_description?: string
+  pricing_tier?: string
 
   marketing_price?: number
   marketing_title?: string

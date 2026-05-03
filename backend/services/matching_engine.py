@@ -2,14 +2,15 @@
 Matching engine: Haversine-based radius filtering + scoring + pricing.
 Fully vectorized numpy throughout — no DataFrame creation inside the inner loop.
 
-Pricing model (client-approved March 2026):
-    Retail Estimate = median(comp sale prices)  — NOT ppa × acres
-    Offer Low  = 50% of retail
-    Offer Mid  = 52% of retail
-    Offer High = 55% of retail
+Pricing model (May 2026 - simplified):
+    Comp priority: same street > 0.25mi > 0.5mi > 1mi
+    Same street / ≤0.25mi / ≤0.5mi: average ALL comps in that tier
+    Within 1mi (no closer tier): use closest single comp's sale price
+    Fallback: PPA × acres when no comp within acreage band (flagged SIZE_ADJUSTED)
 
-Search order: 0.25mi → 0.50mi → 1mi (stop at first step with 1+ comp)
-Minimum 1 comp required for pricing. No TLP cap. No fallback beyond 1 mile.
+    Offer Low  = (offer_pct - 2.5)% of retail
+    Offer Mid  = offer_pct% of retail
+    Offer High = (offer_pct + 2.5)% of retail
 
 Data cleaning removes bulk sales, PPA outliers, and data errors.
 Acreage band matching prevents cross-band distortion.
@@ -768,43 +769,21 @@ def calculate_offer_price(
     }
 
     if matched_comps_df is None or len(matched_comps_df) == 0:
-        # No comps within 1 mile — return NO_MATCH/NO_COMPS
         return empty
 
     total_before_clean = len(matched_comps_df)
     comps = matched_comps_df.copy()
 
-    # Ensure ppa column exists
     if 'ppa' not in comps.columns:
         comps['ppa'] = comps['Current Sale Price'] / comps['Lot Acres']
 
-    # Outlier removal (IQR logic + hard sanity guard for extreme prices)
+    # Market cap guard only — global comp cleaning already handled IQR outliers
     outliers_removed = 0
-    if len(comps) >= 1:
-        market_cap = 2_000_000
-        market_mask = comps['Current Sale Price'] <= market_cap
-        removed_market_extremes = int((~market_mask).sum())
-        if removed_market_extremes > 0:
-            outliers_removed += removed_market_extremes
-            comps = comps[market_mask]
-
-    if len(comps) >= 1:
-        median_price = comps['Current Sale Price'].median()
-        hard_upper = median_price * 2.0
-        hard_outlier_mask = comps['Current Sale Price'] > hard_upper
-        hard_removed = int(hard_outlier_mask.sum())
-        if hard_removed > 0 and len(comps) - hard_removed >= 1:
-            comps = comps[~hard_outlier_mask]
-            outliers_removed += hard_removed
-    if len(comps) >= 4:
-        Q1 = comps['ppa'].quantile(0.25)
-        Q3 = comps['ppa'].quantile(0.75)
-        IQR = Q3 - Q1
-        upper_fence = Q3 + 3 * IQR
-        clean = comps[comps['ppa'] <= upper_fence]
-        outliers_removed += int(len(comps) - len(clean))
-        if len(clean) >= 1:
-            comps = clean
+    market_mask = comps['Current Sale Price'] <= 2_000_000
+    removed_market_extremes = int((~market_mask).sum())
+    if removed_market_extremes > 0:
+        outliers_removed += removed_market_extremes
+        comps = comps[market_mask]
 
     if len(comps) == 0:
         result = empty.copy()
@@ -815,76 +794,63 @@ def calculate_offer_price(
         result['radius_label'] = radius_label or 'ALL_OUTLIERS'
         return result
 
+    # Sort by distance so index 0 = closest comp
+    has_distances = 'distance_miles' in comps.columns
+    if has_distances:
+        comps = comps.sort_values('distance_miles').reset_index(drop=True)
+
     prices = comps['Current Sale Price'].values.astype(np.float64)
     ppas = comps['ppa'].values.astype(np.float64)
+    comp_acres_arr = comps['Lot Acres'].values.astype(np.float64)
 
-    is_mls_data = (
-        '_file_format' in comps.columns
-        and (comps['_file_format'].astype(str).str.upper() == 'MLS').any()
-    )
-    spread_ratio_threshold, spread_amount_threshold, cv_threshold = get_quality_thresholds(is_mls_data)
-
-    spread_reject = is_comp_set_too_spread(
-        prices,
-        spread_ratio_threshold=spread_ratio_threshold,
-        spread_amount_threshold=spread_amount_threshold,
-    )
-    inconsistent_reject = is_comp_set_inconsistent(prices, cv_threshold=cv_threshold)
-
-    if spread_reject:
-        reason = 'WIDE_SPREAD'
-        # Keep Damien's requested order (spread check first), but when the set is
-        # also highly inconsistent and all values are unique, surface inconsistency.
-        if inconsistent_reject and len(prices) >= 3 and len(np.unique(prices)) == len(prices):
-            reason = 'INCONSISTENT_COMPS'
-        result = empty.copy()
-        result['comp_count'] = int(total_before_clean)
-        result['clean_comp_count'] = 0
-        result['outliers_removed'] = int(outliers_removed)
-        result['median_comp_sale_price'] = float(np.median(prices))
-        result['min_comp_price'] = float(np.min(prices))
-        result['max_comp_price'] = float(np.max(prices))
-        result['radius_label'] = radius_label or '1mi'
-        result['radius_used_miles'] = {'0.25mi': 0.25, '0.50mi': 0.50, '1mi': 1.0, 'same_street': 0.0}.get(radius_label)
-        result['no_match_reason'] = reason
-        result['confidence'] = 'NONE'
-        return result
-
-    if inconsistent_reject:
-        result = empty.copy()
-        result['comp_count'] = int(total_before_clean)
-        result['clean_comp_count'] = 0
-        result['outliers_removed'] = int(outliers_removed)
-        result['median_comp_sale_price'] = float(np.median(prices))
-        result['min_comp_price'] = float(np.min(prices))
-        result['max_comp_price'] = float(np.max(prices))
-        result['radius_label'] = radius_label or '1mi'
-        result['radius_used_miles'] = {'0.25mi': 0.25, '0.50mi': 0.50, '1mi': 1.0, 'same_street': 0.0}.get(radius_label)
-        result['no_match_reason'] = 'INCONSISTENT_COMPS'
-        result['confidence'] = 'NONE'
-        return result
-
-    # Core formula: median PPA × target acreage (distance-weighted when coords available)
-    has_distances = 'distance_miles' in comps.columns
     tier_counts = None
+    distances = np.array([], dtype=np.float64)
     if has_distances:
         distances = comps['distance_miles'].values.astype(np.float64)
         tier_counts = get_tier_counts(distances)
 
-    # comp_value = median_ppa × subject_acreage (adjusts for size differences)
-    if has_distances:
-        weights = np.array([get_comp_weight(d) for d in distances])
-        comp_median_ppa = float(weighted_median(ppas, weights))
+    # ── Tier-based pricing ────────────────────────────────────────────────
+    # same_street → average all same-street comps
+    # ≤0.25mi    → average all comps within 0.25mi
+    # ≤0.5mi     → average all comps within 0.5mi (if no 0.25mi comps)
+    # ≤1mi       → closest single comp only
+    pricing_tier = 'unknown'
+    pricing_comp_indices: List[int] = []
+    size_adjusted_pricing = False
+
+    if same_street_match:
+        # All comps are same-street (pre-filtered in _process_one)
+        pricing_comp_indices = list(range(len(prices)))
+        pricing_tier = 'same_street'
+    elif has_distances and len(distances) > 0:
+        mask_025 = distances <= 0.25
+        mask_050 = distances <= 0.50
+        if int(mask_025.sum()) > 0:
+            pricing_comp_indices = [int(i) for i in np.where(mask_025)[0]]
+            pricing_tier = '0.25mi'
+        elif int(mask_050.sum()) > 0:
+            pricing_comp_indices = [int(i) for i in np.where(mask_050)[0]]
+            pricing_tier = '0.5mi'
+        else:
+            # Within 1mi but nothing ≤0.5mi — use the single closest comp
+            pricing_comp_indices = [0]
+            pricing_tier = '1mi'
     else:
-        comp_median_ppa = float(np.median(ppas))
-    retail_estimate = comp_median_ppa * target_acres
+        pricing_comp_indices = list(range(len(prices)))
+        pricing_tier = 'all'
+
+    # Compute retail estimate: average of selected comps' sale prices
+    used_prices = prices[pricing_comp_indices]
+    retail_estimate = float(np.mean(used_prices))
+    comp_median_ppa = float(np.mean(ppas[pricing_comp_indices]))
 
     print(
-        f"[pricing] n={len(prices)} comps | prices=[{','.join(f'${p:,.0f}' for p in sorted(prices)[:5])}{'...' if len(prices)>5 else ''}]"
-        f" | ppas=[{','.join(f'${p:,.0f}' for p in sorted(ppas)[:5])}{'...' if len(ppas)>5 else ''}]"
-        f" | retail={retail_estimate:,.2f} | tlp={tlp_estimate}",
+        f"[pricing] tier={pricing_tier} | used={len(pricing_comp_indices)} comps "
+        f"prices=[{'+'.join(f'${p:,.0f}' for p in used_prices)}] "
+        f"avg=${retail_estimate:,.0f} | tlp={tlp_estimate}",
         flush=True,
     )
+
     if tlp_estimate and tlp_estimate > 0 and retail_estimate > tlp_estimate * 2.0:
         retail_estimate = tlp_estimate
     _mid = max(0.35, min(0.75, offer_pct / 100.0))
@@ -893,20 +859,48 @@ def calculate_offer_price(
     offer_low  = retail_estimate * _low
     offer_mid  = retail_estimate * _mid
     offer_high = retail_estimate * _high
-    print(f"[pricing] offer_pct={offer_pct}% → offer_low=${offer_low:,.2f} offer_mid=${offer_mid:,.2f} offer_high=${offer_high:,.2f}", flush=True)
 
-    # Confidence based on comp count
     n = len(comps)
     confidence = get_confidence(n, radius_label)
 
-    # Get closest comp distance
-    closest_comp_distance = None
-    if has_distances:
-        closest_comp_distance = float(np.min(distances))
+    closest_comp_distance = float(distances[0]) if has_distances and len(distances) > 0 else None
 
-    # Derive radius_used_miles from radius_label
     _radius_map = {'1mi': 1.0, 'same_street': 0.0}
     radius_used_miles = _radius_map.get(radius_label) if radius_label else None
+
+    # Build human-readable pricing description
+    _pc_count = len(pricing_comp_indices)
+    if size_adjusted_pricing:
+        pricing_description = f"Size-adjusted pricing (no similar-sized comp) · ${retail_estimate:,.0f}"
+    elif pricing_tier == 'same_street':
+        if _pc_count > 1:
+            _price_parts = ' + '.join(f'${p:,.0f}' for p in used_prices)
+            pricing_description = f"{_pc_count} same-street comps averaged: {_price_parts} = avg ${retail_estimate:,.0f}"
+        else:
+            _pc = comps.iloc[pricing_comp_indices[0]]
+            _addr = str(_pc.get('Parcel Full Address', '') or '').strip()
+            _dist = float(distances[pricing_comp_indices[0]]) if has_distances else 0
+            pricing_description = f"Same-street comp: ${used_prices[0]:,.0f} · {_addr} · {_dist:.2f}mi"
+    elif _pc_count > 1:
+        _price_parts = ' + '.join(f'${p:,.0f}' for p in used_prices)
+        pricing_description = f"{_pc_count} comps averaged within {pricing_tier}: {_price_parts} = avg ${retail_estimate:,.0f}"
+    else:
+        _pc = comps.iloc[pricing_comp_indices[0]]
+        _pc_acres = float(comp_acres_arr[pricing_comp_indices[0]])
+        _dist = float(distances[pricing_comp_indices[0]]) if has_distances else 0
+        pricing_description = f"Nearest comp: ${used_prices[0]:,.0f} · {_pc_acres:.2f}ac · {_dist:.2f}mi away"
+
+    # Determine pricing_source label
+    if same_street_match:
+        _psource = 'SAME_STREET_AVG' if _pc_count > 1 else 'SAME_STREET'
+    elif size_adjusted_pricing:
+        _psource = 'SIZE_ADJUSTED_PPA'
+    elif pricing_tier == '0.25mi':
+        _psource = 'AVG_0.25MI' if _pc_count > 1 else 'CLOSEST_0.25MI'
+    elif pricing_tier == '0.5mi':
+        _psource = 'AVG_0.5MI' if _pc_count > 1 else 'CLOSEST_0.5MI'
+    else:
+        _psource = 'CLOSEST_1MI'
 
     result: Dict[str, Any] = {
         'retail_estimate': float(retail_estimate),
@@ -916,7 +910,7 @@ def calculate_offer_price(
         'comp_count': int(total_before_clean),
         'clean_comp_count': int(n),
         'outliers_removed': int(outliers_removed),
-        'median_comp_sale_price': float(np.median(prices)),
+        'median_comp_sale_price': float(np.mean(used_prices)),
         'median_ppa': comp_median_ppa,
         'comp_median_ppa': comp_median_ppa,
         'comp_derived_value': float(retail_estimate),
@@ -929,8 +923,13 @@ def calculate_offer_price(
         'radius_label': radius_label,
         'proximity_weighted': has_distances,
         'tier_counts': tier_counts,
-        'pricing_source': 'COMP_PPA',
-        'pricing_method': 'COMP_PPA_X_ACRES',
+        'pricing_source': _psource,
+        'pricing_method': _psource,
+        'pricing_tier': pricing_tier,
+        'pricing_comp_indices': pricing_comp_indices,
+        'pricing_comp_prices': [float(p) for p in used_prices],
+        'pricing_description': pricing_description,
+        'size_adjusted_pricing': size_adjusted_pricing,
         'pricing_flag': 'MATCHED',
         'no_match_reason': None,
         'comp_avg_age_days': None,
@@ -941,15 +940,10 @@ def calculate_offer_price(
         'closest_comp_distance': closest_comp_distance,
     }
 
-    # Calculate comp age
     avg_age, oldest_age = calculate_comp_age(comps)
     result['comp_avg_age_days'] = avg_age
     result['comp_oldest_days'] = oldest_age
     result['comp_age_warning'] = avg_age > 730 if avg_age else False
-
-    # Simplified pricing flags per Damien's requirement (March 2026):
-    # Only MATCHED or NO_COMPS. No TLP-based flags.
-    # Stale comps just get a warning flag, not a separate bucket.
     result['pricing_flag'] = 'MATCHED'
 
     return result
@@ -1874,7 +1868,7 @@ def run_matching(
             if radius_label == 'ZIP_MATCH':
                 pricing_method = "ZIP_MATCHED"
             else:
-                pricing_method = "SINGLE" if num_comps_used == 1 else "MEDIAN"
+                pricing_method = pricing.get('pricing_method', 'CLOSEST_COMP_PRICE')
 
             _cutoff_18mo = pd.Timestamp.now() - pd.DateOffset(months=18)
             _target_ac = float(target_acres) if has_acres and target_acres > 0 else None
@@ -2046,6 +2040,20 @@ def run_matching(
             "comp_quality_flags": ",".join(comp_quality_flags) if comp_quality_flags else "",
             # Pricing sanity flag
             "pricing_sanity_flag": pricing_sanity_flag,
+            # Tier-based pricing metadata
+            "pricing_tier": pricing.get('pricing_tier'),
+            "pricing_comp_indices": pricing.get('pricing_comp_indices', []),
+            "pricing_comp_prices": pricing.get('pricing_comp_prices', []),
+            "pricing_description": pricing.get('pricing_description'),
+            "size_adjusted_pricing": pricing.get('size_adjusted_pricing', False),
+            "comp_used_for_pricing": [i + 1 for i in (pricing.get('pricing_comp_indices') or [])],
+            # Owner location
+            "owner_out_of_state": (
+                _s(row.get("Mail State") or row.get("Owner Mail State") or "").upper().strip() !=
+                _s(row.get("Parcel State") or row.get("Parcel Address State") or "").upper().strip()
+                and bool(_s(row.get("Mail State") or "").strip())
+                and bool(_s(row.get("Parcel State") or row.get("Parcel Address State") or "").strip())
+            ),
         })
 
         if cross_county_match:

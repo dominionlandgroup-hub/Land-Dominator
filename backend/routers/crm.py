@@ -1375,7 +1375,13 @@ async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)
                 # Comp-derived pricing
                 "comp_median_ppa": r.get("comp_median_ppa") or r.get("median_ppa"),
                 "comp_derived_value": r.get("comp_derived_value") or r.get("retail_estimate"),
+                "pricing_description": r.get("pricing_description"),
+                "pricing_tier": r.get("pricing_tier"),
                 "pricing_calculation": json.dumps({
+                    "pricing_description": r.get("pricing_description"),
+                    "pricing_tier": r.get("pricing_tier"),
+                    "pricing_comp_indices": r.get("pricing_comp_indices"),
+                    "pricing_comp_prices": r.get("pricing_comp_prices"),
                     "comp_median_ppa": r.get("comp_median_ppa") or r.get("median_ppa"),
                     "lot_acres": r.get("lot_acres"),
                     "comp_derived_value": r.get("comp_derived_value") or r.get("retail_estimate"),
@@ -1387,7 +1393,7 @@ async def add_match_results_to_campaign(campaign_id: str, body: dict = Body(...)
                     "comp_1_price": r.get("comp_1_price"),
                     "comp_1_ppa": r.get("comp_1_ppa"),
                     "comp_1_distance": r.get("comp_1_distance"),
-                }) if (r.get("comp_median_ppa") or r.get("median_ppa")) else None,
+                }) if r.get("retail_estimate") else None,
                 # Match engine metadata
                 "match_radius_used": r.get("match_radius_used"),
                 "num_comps_used": r.get("num_comps_used"),
@@ -2715,6 +2721,8 @@ ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS recommended_offer NUMERIC;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS comp_median_ppa NUMERIC;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS comp_derived_value NUMERIC;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS pricing_calculation JSONB;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS pricing_description TEXT;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS pricing_tier TEXT;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS confidence_level TEXT;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS dd_zoning TEXT;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS match_radius_used NUMERIC;

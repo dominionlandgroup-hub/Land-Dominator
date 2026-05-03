@@ -241,6 +241,15 @@ export interface MatchedParcel {
   comp_quality_flags: string | null
   pricing_sanity_flag: string | null
   no_match_reason: string | null
+  // Tier-based pricing
+  pricing_tier?: string | null
+  pricing_comp_indices?: number[]
+  pricing_comp_prices?: number[]
+  pricing_description?: string | null
+  size_adjusted_pricing?: boolean
+  comp_used_for_pricing?: number[]
+  // Owner location
+  owner_out_of_state?: boolean
 }
 
 export interface MatchResult {
