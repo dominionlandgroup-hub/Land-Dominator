@@ -185,7 +185,7 @@ def compute_summary(df: pd.DataFrame) -> Dict[str, Any]:
         top_states = [str(s) for s in counts.index if str(s) not in ("nan", "None", "")][:5]
     if county_col:
         counts = valid[county_col].dropna().value_counts()
-        top_counties = [str(c) for c in counts.index if str(c) not in ("nan", "None", "")][:10]
+        top_counties = [str(c) for c in counts.index if str(c) not in ("nan", "None", "")][:12]
 
     return {
         "total_comps": total_rows,

@@ -11,6 +11,44 @@ from storage.session_store import get_comps
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 
+def _top_counties_from_db(state: Optional[str], limit: int = 12) -> List[str]:
+    """
+    Query crm_sold_comps for county rankings using the full table — not just the
+    current session's DataFrame. Filters to sale_price > 0 AND acreage > 0.
+    Optionally scoped to a single state so FL comps don't include GA counties.
+    Returns county names in the DB-normalized form (lowercase, no 'county' suffix).
+    """
+    try:
+        from services.supabase_client import get_supabase
+        sb = get_supabase()
+        county_counts: dict[str, int] = {}
+        offset = 0
+        q = (
+            sb.table("crm_sold_comps")
+            .select("county")
+            .not_.is_("county", "null")
+            .gt("sale_price", 0)
+            .gt("acreage", 0)
+        )
+        if state:
+            q = q.eq("state", state)
+        while True:
+            res = q.range(offset, offset + 999).execute()
+            for row in (res.data or []):
+                c = (row.get("county") or "").strip()
+                if c and c.lower() not in ("nan", "none", ""):
+                    county_counts[c] = county_counts.get(c, 0) + 1
+            if len(res.data or []) < 1000:
+                break
+            offset += 1000
+        ranked = sorted(county_counts, key=lambda k: county_counts[k], reverse=True)[:limit]
+        print(f"[dashboard] Top {limit} counties from DB (state={state}): {ranked}", flush=True)
+        return ranked
+    except Exception as exc:
+        print(f"[dashboard] DB county ranking failed, falling back to session: {exc}", flush=True)
+        return []
+
+
 @router.get("/stats", response_model=DashboardResponse)
 async def get_dashboard_stats(
     session_id: str = Query(..., description="Comps session ID from /upload/comps"),
@@ -44,6 +82,12 @@ async def get_dashboard_stats(
     comp_locations = get_comp_locations(filtered_df, zip_filter=zip_filter)
     land_quality = compute_land_quality_stats(filtered_df)
 
+    # Override top_counties with full DB ranking — session DataFrame may be a
+    # single file and miss counties present in other uploaded files.
+    top_state = (summary.get("top_states") or [None])[0]
+    db_counties = _top_counties_from_db(state=top_state, limit=12)
+    top_counties = db_counties if db_counties else summary.get("top_counties", [])
+
     return DashboardResponse(
         zip_stats=zip_stats,
         total_comps=summary["total_comps"],
@@ -56,7 +100,7 @@ async def get_dashboard_stats(
         insight=insight,
         sweet_spot=sweet_spot,
         top_states=summary.get("top_states", []),
-        top_counties=summary.get("top_counties", []),
+        top_counties=top_counties,
         land_quality=land_quality,
     )
 

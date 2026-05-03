@@ -987,9 +987,9 @@ async def upload_comps(
         except Exception as _zce:
             print(f"[velocity] ZIP-county lookup failed: {_zce}", flush=True)
 
-        # Buy box counties = top 10 by sold comp count (mirrors frontend top_counties logic)
+        # Buy box counties = top 12 by sold comp count (mirrors frontend top_counties logic)
         _buy_box_counties: set[str] = set(
-            sorted(_county_sales_count, key=lambda k: _county_sales_count[k], reverse=True)[:10]
+            sorted(_county_sales_count, key=lambda k: _county_sales_count[k], reverse=True)[:12]
         )
         print(f"[velocity] Buy box counties ({len(_buy_box_counties)}): {sorted(_buy_box_counties)}", flush=True)
 
