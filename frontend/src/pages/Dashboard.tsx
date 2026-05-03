@@ -718,8 +718,11 @@ function BuyBoxRecipe({
   const topZipItems = [...zipStats]
     .filter(z => !bbOutlierCodes.has(z.zip_code) && z.sales_count >= 5)
     .filter(z => {
-      if (!z.county || recommendedCountySet.size === 0) return true
-      return recommendedCountySet.has(normCounty(z.county))
+      if (recommendedCountySet.size === 0) return true
+      // Check both zipStats.county and the velocity-sourced zipToCounty map
+      const county = z.county ?? zipToCounty[fmtZip(z.zip_code)]
+      if (!county) return false  // no county data — exclude when buy box is defined
+      return recommendedCountySet.has(normCounty(county))
     })
     .sort((a, b) => b.sales_count - a.sales_count)
     .slice(0, 20)
