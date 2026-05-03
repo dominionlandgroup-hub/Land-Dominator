@@ -685,7 +685,7 @@ export default function MatchTargets() {
                     <div>
                       <div className="flex items-baseline gap-2 mb-0.5">
                         <span className="text-3xl font-bold" style={{ color: '#10B981' }}>{fmt(distMatchedCt)}</span>
-                        <span className="text-sm font-semibold" style={{ color: '#10B981' }}>Distance-matched records (strong comps within 3 miles)</span>
+                        <span className="text-sm font-semibold" style={{ color: '#10B981' }}>Distance-matched records (strong comps within 1 mile)</span>
                       </div>
                       <p className="text-[11px]" style={{ color: '#6B7280' }}>{(matchResult.total_targets ?? 0).toLocaleString()} total targets</p>
                     </div>
@@ -706,7 +706,7 @@ export default function MatchTargets() {
                         )}
                         {mrw.level !== 'ok' && (
                           <p className="text-[11px] mt-1" style={{ color: '#9CA3AF' }}>
-                            Match rate counts only records with LP comps within 3 miles. ZIP-matched and LP Fallback are excluded from this rate.
+                            Match rate counts only records with LP comps within 1 mile. ZIP-matched and LP Fallback are excluded from this rate.
                           </p>
                         )}
                       </div>
@@ -718,7 +718,7 @@ export default function MatchTargets() {
                     <div className="rounded-lg px-3 py-2 flex items-center justify-between" style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)' }}>
                       <div>
                         <span className="text-sm font-semibold" style={{ color: '#059669' }}>Distance-matched: {fmt(distMatchedCt)} records</span>
-                        <span className="text-xs ml-2" style={{ color: '#9CA3AF' }}>strong comps within 3 miles — recommended for mailing</span>
+                        <span className="text-xs ml-2" style={{ color: '#9CA3AF' }}>strong comps within 1 mile — recommended for mailing</span>
                       </div>
                       <a href={getMatchedLeadsDownloadUrl(matchId, 'comp-matched')} download className="btn-primary text-xs no-underline" style={{ padding: '4px 10px', flexShrink: 0 }}>
                         Download
@@ -779,13 +779,7 @@ export default function MatchTargets() {
             {(matchResult as any).pricing_breakdown && (() => {
               const pb = (matchResult as any).pricing_breakdown as Record<string, number>
               const rows = [
-                { label: 'Within 0.25mi', key: '0.25mi', color: '#059669' },
-                { label: 'Within 0.50mi', key: '0.50mi', color: '#059669' },
                 { label: 'Within 1 mile', key: '1mi', color: '#059669' },
-                { label: 'Within 2 miles', key: '2mi', color: '#16A34A' },
-                { label: 'Within 3 miles', key: '3mi', color: '#D97706' },
-                { label: 'Same ZIP', key: 'ZIP', color: '#2563EB' },
-                { label: 'ZIP (no coords)', key: 'ZIP_MATCH', color: '#60A5FA' },
                 { label: 'LP fallback', key: 'LP_FALLBACK', color: '#C084FC' },
                 { label: 'No data', key: 'NO_DATA', color: '#6B7280' },
               ].filter(r => pb[r.key] > 0)
@@ -930,20 +924,13 @@ export default function MatchTargets() {
                     </p>
                     {uncoveredZips.length > 0 && uncoveredZips.length <= 20 && (
                       <p className="text-[10px]" style={{ color: '#60A5FA' }}>
-                        To increase match rate,{' '}
-                        <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#60A5FA', textDecoration: 'underline', fontSize: 'inherit', padding: 0 }} onClick={() => setCurrentPage('upload-comps')}>
-                          upload more comps
-                        </button>
-                        {' '}from: <span className="font-mono">{uncoveredZips.join(', ')}</span>
+                        No comps within 1 mile for: <span className="font-mono">{uncoveredZips.join(', ')}</span>
+                        {' '}— match rate reflects only 1-mile comps, this is by design for accuracy
                       </p>
                     )}
                     {uncoveredZips.length > 20 && (
                       <p className="text-[10px]" style={{ color: '#60A5FA' }}>
-                        {uncoveredZips.length} ZIPs have no matched records —{' '}
-                        <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#60A5FA', textDecoration: 'underline', fontSize: 'inherit', padding: 0 }} onClick={() => setCurrentPage('upload-comps')}>
-                          upload more comps
-                        </button>
-                        {' '}from these areas to increase match rate
+                        {uncoveredZips.length} ZIPs have no comps within 1 mile — match rate reflects only 1-mile comps, this is by design for accuracy
                       </p>
                     )}
                   </div>

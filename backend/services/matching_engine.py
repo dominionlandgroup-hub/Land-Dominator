@@ -233,8 +233,6 @@ def _extract_street_name(address: str) -> str:
 
 COMP_SEARCH_STEPS = [
     (1.00, '1mi'),
-    (2.00, '2mi'),
-    (3.00, '3mi'),
 ]
 
 # Minimum comps before stopping radius expansion; accept 1 at final step
@@ -390,7 +388,7 @@ def get_confidence(n_comps: int, radius_label: Optional[str] = None) -> str:
 
 def calculate_score(radius_label: Optional[str], same_street_used: bool, comp_count: int) -> int:
     """
-    Score model: same_street=5, 1mi=3, 2mi=2, 3mi or ZIP=1.
+    Score model: same_street=5, 1mi=3 (≥3 comps) or 2 (1-2 comps), else 0.
     """
     if comp_count == 0:
         return 0
@@ -398,8 +396,6 @@ def calculate_score(radius_label: Optional[str], same_street_used: bool, comp_co
         return 5
     if radius_label == '1mi':
         return 3 if comp_count >= 3 else 2
-    if radius_label == '2mi':
-        return 2 if comp_count >= 2 else 1
     return 1
 
 
@@ -891,7 +887,7 @@ def calculate_offer_price(
         closest_comp_distance = float(np.min(distances))
 
     # Derive radius_used_miles from radius_label
-    _radius_map = {'1mi': 1.0, '2mi': 2.0, '3mi': 3.0, 'same_street': 0.0}
+    _radius_map = {'1mi': 1.0, 'same_street': 0.0}
     radius_used_miles = _radius_map.get(radius_label) if radius_label else None
 
     result: Dict[str, Any] = {
@@ -1458,10 +1454,9 @@ def run_matching(
 
             # ═══ SEARCH PRIORITY ORDER ═══
             # Priority 1: SAME STREET within 1mi (always wins)
-            # Priority 2: Expand radius 0.25 → 0.5 → 1 → 2 → 3mi, stop at ≥2 comps
-            #             At each step, augment with adjacent acreage bands if exact band is thin
-            # Priority 3: Accept single comp at largest radius reached
-            # Priority 4: No comps → NO_COMPS
+            # Priority 2: 1mi radius with adjacent-band augmentation, stop at ≥2 comps
+            # Priority 3: Accept single comp within 1mi
+            # Priority 4: No comps within 1mi → NO_COMPS → LP_FALLBACK
 
             matched_mask = np.zeros(len(vc), dtype=bool)
             radius_label = 'NO_COMPS'
@@ -1497,8 +1492,8 @@ def run_matching(
                             flush=True,
                         )
 
-            # STEPS 1-N: Radius expansion up to 3mi with adjacent-band augmentation
-            # Stop early once we have ≥2 comps; accept 1 comp as fallback at any step
+            # STEP 1: 1mi radius with adjacent-band augmentation
+            # ≥2 comps = stop; accept 1 comp; nothing within 1mi = NO_COMPS → LP_FALLBACK
             if not same_street_used:
                 _zip_mask_arr = np.array([str(z).split('.')[0].strip() == t_zip_str for z in comp_zips]) if is_premium else None
                 adj_bands = _ADJACENT_BANDS.get(band_label, []) if has_acres else []
@@ -1549,26 +1544,10 @@ def run_matching(
                     radius_label = 'NO_COMPS'
                     cross_county_match = True
 
-            # ZIP fallback: if radius search found nothing, try same-ZIP comps
-            if matched_mask.sum() == 0 and _t_zip_str and _t_zip_str not in ('nan', 'None', ''):
-                _zip_fallback_mask = np.array([str(z).split('.')[0].strip() == _t_zip_str for z in comp_zips])
-                if has_acres:
-                    _zip_band_fallback = _zip_fallback_mask & band_mask
-                    if int(_zip_band_fallback.sum()) >= 1:
-                        matched_mask = _zip_band_fallback
-                        radius_label = 'ZIP'
-                    elif int(_zip_fallback_mask.sum()) >= 2:
-                        matched_mask = _zip_fallback_mask
-                        radius_label = 'ZIP'
-                elif int(_zip_fallback_mask.sum()) >= 1:
-                    matched_mask = _zip_fallback_mask
-                    radius_label = 'ZIP'
-
             if debug and matched_mask.sum() == 0:
-                print(f"[DEBUG {target_apn}] NO_COMPS - no comps within 3mi or same ZIP", flush=True)
+                print(f"[DEBUG {target_apn}] NO_COMPS - no comps within 1mi", flush=True)
 
             # ── Acreage similarity filter (band-specific thresholds) ──
-            # Relaxed to recover match rate — 3mi radius cap is unchanged.
             ACREAGE_SIMILARITY_THRESHOLDS = {
                 'nano': 0.30,
                 'micro': 0.40,
@@ -2173,7 +2152,7 @@ def run_matching(
         print(f"[match] Uncovered counties: {uncovered_counties}", flush=True)
 
     # ── Pricing method breakdown ──────────────────────────────────────────
-    _breakdown_keys = ['1mi', '2mi', '3mi', 'ZIP', 'ZIP_MATCH', 'LP_FALLBACK', 'NO_DATA']
+    _breakdown_keys = ['1mi', 'LP_FALLBACK', 'NO_DATA']
     pricing_breakdown: dict = {k: 0 for k in _breakdown_keys}
     county_median_count = 0
     for _r in results:
@@ -2224,21 +2203,21 @@ def run_matching(
         match_rate_warning = {
             "level": "ok",
             "match_rate_pct": match_rate_pct,
-            "message": f"✓ {match_rate_pct}% distance-matched (strong comps within 3 miles)",
+            "message": f"✓ {match_rate_pct}% matched within 1 mile",
             "top_unmatched_zips": [],
         }
     elif match_rate_pct >= 60:
         match_rate_warning = {
             "level": "warning",
             "match_rate_pct": match_rate_pct,
-            "message": f"⚠️ {match_rate_pct}% distance-matched — below 80%, upload more LP comps",
+            "message": f"⚠ {match_rate_pct}% matched within 1 mile — match rate reflects only comps within 1 mile, this is by design for accuracy",
             "top_unmatched_zips": top_zips,
         }
     else:
         match_rate_warning = {
             "level": "critical",
             "match_rate_pct": match_rate_pct,
-            "message": f"✗ {match_rate_pct}% distance-matched — upload more LP comps to improve",
+            "message": f"✗ {match_rate_pct}% matched within 1 mile — match rate reflects only comps within 1 mile, this is by design for accuracy",
             "top_unmatched_zips": top_zips,
         }
 
