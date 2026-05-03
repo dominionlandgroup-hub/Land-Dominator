@@ -911,7 +911,11 @@ async def upload_comps(
         for i in range(0, len(rows), 100):
             chunk = rows[i:i + 100]
             try:
-                result = supabase.table('crm_sold_comps').insert(chunk).execute()
+                result = supabase.table('crm_sold_comps').upsert(
+                    chunk,
+                    on_conflict='apn,state',
+                    ignore_duplicates=True,
+                ).execute()
                 # supabase-py v1: errors in result.error; v2: raises APIError
                 if hasattr(result, 'error') and result.error:
                     raise Exception(str(result.error))
@@ -1202,8 +1206,8 @@ async def get_latest_comps_session() -> UploadResponse:
 
 # ── Comp inventory ─────────────────────────────────────────────────────────────
 
-@router.get("/comps/inventory", response_model=CompInventoryResponse)
-async def get_comps_inventory() -> CompInventoryResponse:
+@router.get("/comps/inventory")
+async def get_comps_inventory():
     """
     Return a list of all uploaded comp files with record counts.
     Groups by (filename, source_format).
@@ -1213,7 +1217,7 @@ async def get_comps_inventory() -> CompInventoryResponse:
     try:
         res = sb.table("crm_sold_comps").select("filename,source_format,state,created_at").execute()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return {"inventory": [], "items": [], "total_comps": 0, "error": str(e)}
 
     rows = res.data or []
     total = len(rows)
