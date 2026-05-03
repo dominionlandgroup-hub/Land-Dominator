@@ -496,6 +496,9 @@ export default function UploadComps() {
             <p style={{ fontSize: 12, color: '#6B7280', margin: 0 }}>
               Accepts Land Portal exports, MLS exports, or generic CSV · Multiple files supported · Appends to existing comps · Duplicate APNs automatically skipped
             </p>
+            <p style={{ fontSize: 11, color: '#4F46E5', margin: '6px 0 0', fontWeight: 500 }}>
+              💡 For best results upload comps covering all acreage ranges 0.1 to 10 acres (43,560 to 435,600 sq ft)
+            </p>
           </div>
         )}
 

@@ -101,10 +101,10 @@ export default function MatchTargets() {
   const [zipFilter, setZipFilter] = useState<string[]>((init?.zip_filter as string[]) ?? [])
   const [zipInputText, setZipInputText] = useState<string>(((init?.zip_filter as string[]) ?? []).join(', '))
   const [minAcreage, setMinAcreage] = useState<string>(
-    () => localStorage.getItem('matchTargets_acreage_min') ?? '0.05'
+    () => localStorage.getItem('matchTargets_acreage_min') ?? '0.1'
   )
   const [maxAcreage, setMaxAcreage] = useState<string>(
-    () => localStorage.getItem('matchTargets_acreage_max') ?? '5'
+    () => localStorage.getItem('matchTargets_acreage_max') ?? '10.0'
   )
   // Only pre-fill from sweet spot if localStorage has no saved value
   const acreagePrefilled = React.useRef(
@@ -152,7 +152,7 @@ export default function MatchTargets() {
     else if (b === '2-5')   { setMinAcreage('2.0'); setMaxAcreage('5.0') }
     else if (b === '5-10')  { setMinAcreage('5.0'); setMaxAcreage('10.0') }
     else if (b === '10+')   { setMinAcreage('10.0'); setMaxAcreage('40.0') }
-    else                    { setMinAcreage('0.05'); setMaxAcreage('5') }
+    else                    { setMinAcreage('0.1'); setMaxAcreage('10.0') }
   }, [dashboardData])
 
   // Top 20 ZIPs from dashboard for "Use Buy Box ZIPs" — exclude outliers (ppa > 3x market median) and <5 sales
@@ -842,6 +842,33 @@ export default function MatchTargets() {
                       Full List
                     </a>
                   </div>
+                </div>
+              )
+            })()}
+
+            {/* Acreage band breakdown */}
+            {(() => {
+              const bandDefs = [
+                { key: 'micro',  label: 'Micro',  range: '0–0.5 ac' },
+                { key: 'small',  label: 'Small',  range: '0.5–2 ac' },
+                { key: 'medium', label: 'Medium', range: '2–5 ac' },
+                { key: 'large',  label: 'Large',  range: '5–10 ac' },
+              ]
+              const counts = bandDefs.map(b => ({
+                ...b,
+                count: matchResult.results.filter(r => (r.acreage_band as string) === b.key).length,
+              })).filter(b => b.count > 0)
+              if (counts.length === 0) return null
+              return (
+                <div className="mb-4 px-4 py-3 rounded-xl flex flex-wrap gap-4 items-center" style={{ background: 'rgba(79,70,229,0.04)', border: '1px solid rgba(79,70,229,0.12)' }}>
+                  <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#9CA3AF' }}>By Acreage</span>
+                  {counts.map(b => (
+                    <span key={b.key} className="flex items-center gap-1.5">
+                      <span className="text-xs font-semibold" style={{ color: '#4F46E5' }}>{b.label}</span>
+                      <span className="text-xs" style={{ color: '#9CA3AF' }}>{b.range}</span>
+                      <span className="text-xs font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(79,70,229,0.1)', color: '#4F46E5' }}>{b.count.toLocaleString()}</span>
+                    </span>
+                  ))}
                 </div>
               )
             })()}

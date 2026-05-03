@@ -133,10 +133,11 @@ def _haversine_matrix(
 
 ACREAGE_BANDS = [
     (0.001, 0.05, 'nano'),        # very small lots < 0.05 acres
-    (0.05,  0.5,  'micro'),       # small residential lots
-    (0.5,   2.0,  'small'),       # half-acre to 2 acres
-    (2.0,   10.0, 'medium'),      # 2 to 10 acres
-    (10.0,  50.0, 'large'),       # 10 to 50 acres
+    (0.05,  0.5,  'micro'),       # infill lots
+    (0.5,   2.0,  'small'),       # small lots
+    (2.0,   5.0,  'medium'),      # mid-size parcels
+    (5.0,   10.0, 'large'),       # larger parcels 5–10 acres
+    (10.0,  50.0, 'xlarge'),      # 10 to 50 acres
     (50.0,  float('inf'), 'tract')  # 50+ acres
 ]
 
@@ -244,8 +245,9 @@ _ADJACENT_BANDS: dict[str, list[str]] = {
     'micro':  ['nano', 'small'],
     'small':  ['micro', 'medium'],
     'medium': ['small', 'large'],
-    'large':  ['medium', 'tract'],
-    'tract':  ['large'],
+    'large':  ['medium', 'xlarge'],
+    'xlarge': ['large', 'tract'],
+    'tract':  ['xlarge'],
 }
 
 
@@ -1549,12 +1551,13 @@ def run_matching(
 
             # ── Acreage similarity filter (band-specific thresholds) ──
             ACREAGE_SIMILARITY_THRESHOLDS = {
-                'nano': 0.30,
-                'micro': 0.40,
-                'small': 0.60,
-                'medium': 0.50,
-                'large': 0.40,
-                'tract': 0.35,
+                'nano':   0.30,
+                'micro':  0.40,   # 0–0.5 ac infill lots
+                'small':  0.50,   # 0.5–2 ac small lots
+                'medium': 0.60,   # 2–5 ac mid-size parcels
+                'large':  0.65,   # 5–10 ac larger parcels
+                'xlarge': 0.50,
+                'tract':  0.35,
             }
             if has_acres and matched_mask.sum() > 0 and target_acres > 0:
                 matched_idx = np.where(matched_mask)[0]
