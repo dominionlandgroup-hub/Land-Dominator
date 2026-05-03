@@ -778,6 +778,36 @@ export default function MatchTargets() {
               </div>
             )}
 
+            {/* Match rate banner — always visible */}
+            {(() => {
+              const distMatchedCt = matchResult.distance_matched_count ?? matchResult.matched_count ?? 0
+              const totalTargets = matchResult.total_targets ?? 0
+              const mrw = (matchResult as any).match_rate_warning as { level: string; match_rate_pct: number; message: string; top_unmatched_zips: string[] } | undefined
+              const ratePct = mrw?.match_rate_pct != null
+                ? mrw.match_rate_pct
+                : totalTargets > 0 ? Math.round(distMatchedCt / totalTargets * 100) : 0
+              const level = ratePct >= 80 ? 'ok' : ratePct >= 60 ? 'warning' : 'error'
+              const icon = level === 'ok' ? '✓' : level === 'warning' ? '⚠️' : '✗'
+              const color = level === 'ok' ? '#059669' : level === 'warning' ? '#D97706' : '#DC2626'
+              const bg = level === 'ok' ? 'rgba(5,150,105,0.08)' : level === 'warning' ? 'rgba(245,158,11,0.1)' : 'rgba(220,38,38,0.08)'
+              const border = level === 'ok' ? 'rgba(5,150,105,0.25)' : level === 'warning' ? 'rgba(245,158,11,0.3)' : 'rgba(220,38,38,0.25)'
+              return (
+                <div className="mb-4 px-4 py-3 rounded-xl flex items-center gap-3" style={{ background: bg, border: `1px solid ${border}` }}>
+                  <span style={{ fontSize: 20, lineHeight: 1 }}>{icon}</span>
+                  <div>
+                    <p className="text-base font-bold" style={{ color }}>
+                      {ratePct}% matched within 1 mile
+                      {level !== 'ok' && <span className="text-sm font-normal ml-2" style={{ color }}>— {level === 'warning' ? 'below 80% target' : 'below 60% — low comp coverage'}</span>}
+                    </p>
+                    <p className="text-xs mt-0.5" style={{ color: '#6B7280' }}>
+                      {distMatchedCt.toLocaleString()} of {totalTargets.toLocaleString()} targets have strong comps within 1 mile
+                      {level !== 'ok' && mrw?.top_unmatched_zips?.length ? ` · Unmatched ZIPs: ${mrw.top_unmatched_zips.join(', ')}` : ''}
+                    </p>
+                  </div>
+                </div>
+              )
+            })()}
+
             {/* Download exports + match summary */}
             {(() => {
               const matchId = matchResult.match_id
