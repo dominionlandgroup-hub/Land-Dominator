@@ -1737,6 +1737,9 @@ _CLAUDE_SMS_MODEL = os.getenv("CLAUDE_SMS_MODEL", "claude-sonnet-4-6")
 _DAMIEN_PHONE = "+12023215846"
 _SMS_MAX_EXCHANGES = 5  # max back-and-forth before handoff
 
+# Dedup guard: phone -> epoch float of last reply attempt; skip if < 30s ago
+_sms_reply_inflight: dict = {}
+
 
 def _to_e164(phone: str) -> str:
     d = re.sub(r"\D", "", phone)
@@ -2055,6 +2058,19 @@ async def _detect_sms_ai_outcomes(
 
 
 async def _process_inbound_sms(from_phone: str, message_text: str, received_on: str = "") -> None:
+    import time as _time
+    # Dedup: if we already handled a message from this number in the last 30s, skip
+    _now_f = _time.time()
+    _last = _sms_reply_inflight.get(from_phone, 0)
+    if _now_f - _last < 30:
+        print(f"[sms-bot] SKIP duplicate from {from_phone} — already handled {_now_f - _last:.1f}s ago", flush=True)
+        return
+    _sms_reply_inflight[from_phone] = _now_f
+    # Prune stale entries to avoid unbounded growth
+    stale = [k for k, v in _sms_reply_inflight.items() if _now_f - v > 120]
+    for k in stale:
+        _sms_reply_inflight.pop(k, None)
+
     print(f"[sms-bot] Inbound from {from_phone}: {message_text!r}", flush=True)
     print(f"[sms-bot] Looking up property...", flush=True)
     prop = await _lookup_phone(from_phone)

@@ -3529,7 +3529,8 @@ def _run_sms_campaign_job(job_id: str, campaign_id: str, props: list[dict], day:
             continue
         from_e164 = from_numbers[record_idx % num_count]
         first = prop.get("owner_first_name") or "there"
-        addr = prop.get("property_address") or prop.get("property_city") or "your property"
+        addr = (prop.get("property_address") or prop.get("property_city")
+                or prop.get("county") or "your property")
         offer = float(prop.get("offer_price") or 0)
         offer_low = int(offer * 0.95) if offer > 0 else 0
         offer_high = int(offer * 1.10) if offer > 0 else 0
@@ -3543,8 +3544,24 @@ def _run_sms_campaign_job(job_id: str, campaign_id: str, props: list[dict], day:
             skipped += 1
             _sms_campaign_jobs[job_id].update({"done": sent + skipped, "sent": sent, "skipped": skipped})
             continue
+        text = text.replace("[Property Address]", addr)
         text = text.replace("[Your Phone Number]", from_e164)
         text = text.replace("[TELNYX_PHONE_NUMBER]", from_e164)
+        # Dedup guard: re-check DB right before sending to prevent double-send from parallel jobs
+        if day == 1:
+            _chk = sb.table("crm_properties").select("sms_day1_sent_at").eq("id", prop["id"]).single().execute()
+            _sent_at = (_chk.data or {}).get("sms_day1_sent_at")
+            if _sent_at:
+                import datetime as _dt2
+                try:
+                    _age = (_dt2.datetime.now(_dt2.timezone.utc) - _dt2.datetime.fromisoformat(_sent_at.replace("Z", "+00:00"))).total_seconds()
+                    if _age < 60:
+                        print(f"[sms-campaign] SKIP {prop['id']} — already sent {_age:.0f}s ago", flush=True)
+                        skipped += 1
+                        _sms_campaign_jobs[job_id].update({"done": sent + skipped, "sent": sent, "skipped": skipped})
+                        continue
+                except Exception:
+                    pass
         try:
             r = _httpx.post(
                 "https://api.telnyx.com/v2/messages",
