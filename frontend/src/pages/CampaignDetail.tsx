@@ -7,9 +7,9 @@ import {
   sendCampaignMailDrop, updateCrmCampaign, getPropertyTags, recalculateAmountSpent,
   startSmsCampaign, getSmsStatus,
   getCampaignFunnelStats, exportMailQueue,
-  getSmsPreview, importLeadSherpa,
+  getSmsPreview, importLeadSherpa, getCampaignSmsStats, createCampaignFromLeadSherpa,
 } from '../api/crm'
-import type { CampaignFunnelStats, SmsCampaignPreview } from '../api/crm'
+import type { CampaignFunnelStats, SmsCampaignPreview, CampaignSmsStats } from '../api/crm'
 import PropertyDetail from './PropertyDetail'
 
 const PAGE_SIZE = 20
@@ -129,9 +129,15 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
   const [leadSherpaImporting, setLeadSherpaImporting] = useState(false)
   const [leadSherpaResult, setLeadSherpaResult] = useState<string | null>(null)
   const [leadSherpaError, setLeadSherpaError] = useState<string | null>(null)
+  const [showCreateCampaignPrompt, setShowCreateCampaignPrompt] = useState(false)
+  const [creatingCampaign, setCreatingCampaign] = useState(false)
+  const [createCampaignResult, setCreateCampaignResult] = useState<string | null>(null)
 
   // Funnel stats
   const [funnel, setFunnel] = useState<CampaignFunnelStats | null>(null)
+
+  // SMS stats for status bar
+  const [smsStats, setSmsStats] = useState<CampaignSmsStats | null>(null)
 
   // Sort
   const [sortBy, setSortBy] = useState<SortBy>('offer_price')
@@ -153,6 +159,7 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
     loadProperties(1, 'all', '', '', '', 'offer_price', 'desc')
     refreshStats()
     loadFunnel()
+    loadSmsStats()
   }, [])
 
   useEffect(() => {
@@ -430,6 +437,8 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
     setLeadSherpaImporting(true)
     setLeadSherpaResult(null)
     setLeadSherpaError(null)
+    setShowCreateCampaignPrompt(false)
+    setCreateCampaignResult(null)
     try {
       const res = await importLeadSherpa(campaign.id, leadSherpaParsed.rows)
       const parts = [`Updated ${res.updated.toLocaleString()} records`]
@@ -437,12 +446,31 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
       if (res.deceased_skipped > 0) parts.push(`${res.deceased_skipped.toLocaleString()} deceased skipped`)
       if (res.not_matched > 0) parts.push(`${res.not_matched.toLocaleString()} not matched`)
       setLeadSherpaResult(parts.join(' · '))
+      if (res.updated === 0 && res.not_matched > 0) {
+        setShowCreateCampaignPrompt(true)
+      }
       loadFunnel()
+      loadSmsStats()
       loadProperties(page, statusFilter, search)
     } catch (e: unknown) {
       const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       setLeadSherpaError(detail ?? 'Import failed')
     } finally { setLeadSherpaImporting(false) }
+  }
+
+  async function handleCreateCampaignFromLeadSherpa() {
+    if (!leadSherpaParsed) return
+    setCreatingCampaign(true)
+    try {
+      const res = await createCampaignFromLeadSherpa(leadSherpaParsed.rows)
+      setCreateCampaignResult(
+        `✓ Created "${res.campaign_name}" with ${res.imported.toLocaleString()} records — ${res.mobile_count.toLocaleString()} mobile numbers ready to text`
+      )
+      setShowCreateCampaignPrompt(false)
+    } catch (e: unknown) {
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setLeadSherpaError(detail ?? 'Failed to create campaign')
+    } finally { setCreatingCampaign(false) }
   }
 
   // ── SMS Confirm Modal ─────────────────────────────────────────────────
@@ -488,6 +516,7 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
             if (s.status === 'error') setSmsError('SMS send failed')
             if (smsPollRef.current) { clearInterval(smsPollRef.current); smsPollRef.current = null }
             loadFunnel()
+            loadSmsStats()
           }
         } catch {}
       }, 2000)
@@ -508,6 +537,7 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
       setSingleTextResult(`Text sent to ${prop.owner_first_name || prop.owner_full_name || 'owner'} at ${prop.phone_1}`)
       setTimeout(() => { setSingleTextProp(null); setSingleTextResult(null) }, 2500)
       loadFunnel()
+      loadSmsStats()
     } catch (e: unknown) {
       const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       setSingleTextResult(detail ?? 'Failed to send text')
@@ -517,6 +547,10 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
   // ── Funnel Stats ──────────────────────────────────────────────────────
   async function loadFunnel() {
     try { setFunnel(await getCampaignFunnelStats(campaign.id)) } catch {}
+  }
+
+  async function loadSmsStats() {
+    try { setSmsStats(await getCampaignSmsStats(campaign.id)) } catch {}
   }
 
   // ── Import ──────────────────────────────────────────────────────────
@@ -600,6 +634,24 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
   const someSelected = selectedIds.size > 0 && !allSelected
 
   const bs = stats.by_status ?? {}
+
+  // SMS status bar computed values
+  const smsRunning = smsStatus === 'running'
+  const sentTotal = smsStats?.sent_total ?? 0
+  const readyToText = smsStats?.ready_to_text ?? 0
+  const smsPhase = smsRunning ? 'running'
+    : sentTotal === 0 ? 'not_started'
+    : readyToText > 0 ? 'in_progress'
+    : 'complete'
+  const daysLeft = Math.max(0, Math.ceil(readyToText / 1000))
+  const estCompletionDate = daysLeft > 0 ? (() => {
+    const d = new Date(); d.setDate(d.getDate() + daysLeft)
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  })() : null
+  const fmtTs = (ts?: string | null) => {
+    if (!ts) return ''
+    return new Date(ts).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  }
 
   return (
     <div style={{ background: '#F9FAFB', minHeight: '100vh' }}>
@@ -802,36 +854,137 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
         </div>
       </div>
 
-      {/* SMS Funnel Dashboard */}
-      {funnel && funnel.skip_traced > 0 && (
-        <div className="px-6 py-4" style={{ borderBottom: '1px solid #E5E7EB', background: '#F0FDF4' }}>
-          <div className="flex items-center gap-2 mb-3">
-            <span className="text-xs font-bold uppercase tracking-wider" style={{ color: '#065F46' }}>SMS Funnel</span>
-            <button
-              className="text-[10px] px-2 py-0.5 rounded font-medium border"
-              style={{ color: '#065F46', borderColor: '#A7F3D0', background: '#D1FAE5' }}
-              onClick={async () => { await exportMailQueue(campaign.id) }}
-            >
-              Export Mail List ({funnel.mail_queue.toLocaleString()})
-            </button>
-          </div>
-          <div className="flex items-stretch gap-0 rounded-xl overflow-hidden border" style={{ borderColor: '#A7F3D0', maxWidth: 780 }}>
-            {[
-              { label: 'Total', value: funnel.total, color: '#6B7280', bg: '#F9FAFB' },
-              { label: 'Skip Traced', value: funnel.skip_traced, color: '#4F46E5', bg: '#EEF2FF' },
-              { label: 'Mobile', value: funnel.mobile, color: '#059669', bg: '#F0FDF4' },
-              { label: '🚫 DNC', value: funnel.dnc ?? 0, color: '#DC2626', bg: '#FEF2F2' },
-              { label: 'Texts Sent', value: funnel.texts_sent, color: '#0891B2', bg: '#ECFEFF' },
-              { label: '🔥 HOT', value: funnel.hot, color: '#DC2626', bg: '#FEF2F2' },
-              { label: 'Opted Out', value: funnel.opted_out, color: '#9CA3AF', bg: '#F9FAFB' },
-              { label: 'Mail Queue', value: funnel.mail_queue, color: '#D97706', bg: '#FFFBEB' },
-            ].map((s, i) => (
-              <div key={s.label} className="flex-1 flex flex-col items-center justify-center py-3 px-2 text-center"
-                style={{ background: s.bg, borderLeft: i > 0 ? '1px solid #E5E7EB' : 'none' }}>
-                <div className="text-lg font-bold" style={{ color: s.color }}>{s.value.toLocaleString()}</div>
-                <div className="text-[9px] font-semibold uppercase tracking-wide mt-0.5" style={{ color: '#9CA3AF' }}>{s.label}</div>
+      {/* SMS Campaign Status Bar */}
+      {(totalCount > 0 || smsStats) && (
+        <div style={{ borderBottom: '1px solid #E5E7EB', background: '#FAFBFF' }}>
+          <div className="px-6 py-4">
+            {/* Header row */}
+            <div className="flex items-center justify-between mb-3">
+              <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#374151' }}>
+                SMS Campaign Status
+              </span>
+              <div className="flex items-center gap-2">
+                {smsPhase === 'not_started' && (
+                  <span style={{ fontSize: 11, fontWeight: 600, color: '#6B7280', background: '#F3F4F6', border: '1px solid #D1D5DB', borderRadius: 20, padding: '2px 10px' }}>
+                    NOT STARTED
+                  </span>
+                )}
+                {smsPhase === 'running' && (
+                  <span style={{ fontSize: 11, fontWeight: 600, color: '#1D4ED8', background: '#EFF6FF', border: '1px solid #93C5FD', borderRadius: 20, padding: '2px 10px' }}>
+                    ◉ RUNNING
+                  </span>
+                )}
+                {smsPhase === 'in_progress' && (
+                  <span style={{ fontSize: 11, fontWeight: 600, color: '#065F46', background: '#D1FAE5', border: '1px solid #6EE7B7', borderRadius: 20, padding: '2px 10px' }}>
+                    ● IN PROGRESS
+                  </span>
+                )}
+                {smsPhase === 'complete' && (
+                  <span style={{ fontSize: 11, fontWeight: 600, color: '#065F46', background: '#D1FAE5', border: '1px solid #6EE7B7', borderRadius: 20, padding: '2px 10px' }}>
+                    ✓ COMPLETE
+                  </span>
+                )}
               </div>
-            ))}
+            </div>
+
+            {/* Stats grid */}
+            <div className="flex flex-wrap gap-3 mb-3">
+              {[
+                { icon: '📱', value: smsRunning ? (smsStats?.ready_to_text ?? 0) : readyToText, label: smsRunning ? 'Queued' : 'Ready to text', color: '#059669', bg: '#F0FDF4', border: '#A7F3D0' },
+                { icon: '✅', value: smsStats?.sent_today ?? 0, label: 'Sent today', color: '#1D4ED8', bg: '#EFF6FF', border: '#93C5FD' },
+                { icon: '🔥', value: smsStats?.hot ?? 0, label: 'HOT', color: '#DC2626', bg: '#FEF2F2', border: '#FCA5A5' },
+                { icon: '↩️', value: smsStats?.replied ?? 0, label: 'Replied', color: '#7C3AED', bg: '#F5F3FF', border: '#C4B5FD' },
+                { icon: '🚫', value: smsStats?.dnc_blocked ?? 0, label: 'DNC blocked', color: '#DC2626', bg: '#FEF2F2', border: '#FCA5A5' },
+                { icon: '📬', value: smsStats?.mail_only ?? 0, label: 'Mail only', color: '#D97706', bg: '#FFFBEB', border: '#FCD34D' },
+              ].map(s => (
+                <div key={s.label} style={{ background: s.bg, border: `1px solid ${s.border}`, borderRadius: 8, padding: '8px 14px', minWidth: 90, textAlign: 'center' }}>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: s.color, lineHeight: 1.2 }}>{s.value.toLocaleString()}</div>
+                  <div style={{ fontSize: 10, color: '#6B7280', marginTop: 2 }}>{s.icon} {s.label}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Action row */}
+            <div className="flex items-center gap-3 flex-wrap">
+              {smsPhase === 'not_started' && (
+                <button
+                  className="btn-primary text-sm"
+                  onClick={() => openSmsConfirm(1)}
+                  disabled={smsRunning}
+                >
+                  💬 Start Texting
+                </button>
+              )}
+              {(smsPhase === 'in_progress' || smsPhase === 'running') && (
+                <>
+                  <button
+                    className="btn-primary text-sm"
+                    onClick={() => openSmsConfirm(1)}
+                    disabled={smsRunning}
+                  >
+                    {smsRunning ? `Sending… ${smsDone.toLocaleString()}/${smsTotal.toLocaleString()}` : '💬 Send Next Batch'}
+                  </button>
+                  {(smsStats?.sent_total ?? 0) > 0 && (
+                    <button
+                      className="btn-secondary text-sm"
+                      onClick={() => openSmsConfirm(3)}
+                      disabled={smsRunning}
+                    >
+                      💬 Day 3 Follow-up ({(smsStats?.day3_sent ?? 0).toLocaleString()} sent)
+                    </button>
+                  )}
+                </>
+              )}
+              {smsPhase === 'complete' && (
+                <button
+                  className="btn-secondary text-sm"
+                  onClick={() => openSmsConfirm(3)}
+                  disabled={smsRunning}
+                >
+                  💬 Day 3 Follow-up ({(smsStats?.day3_sent ?? 0).toLocaleString()} sent)
+                </button>
+              )}
+              <button
+                className="btn-secondary text-sm"
+                onClick={() => exportMailQueue(campaign.id)}
+              >
+                📬 Export Mail List ({(smsStats?.mail_queue ?? funnel?.mail_queue ?? 0).toLocaleString()})
+              </button>
+              {estCompletionDate && smsPhase !== 'complete' && (
+                <span style={{ fontSize: 11, color: '#6B7280' }}>
+                  Daily limit: 1,000 · Est. completion: {estCompletionDate}
+                </span>
+              )}
+              {smsStats?.first_sent_date && (
+                <span style={{ fontSize: 11, color: '#9CA3AF' }}>
+                  Started {new Date(smsStats.first_sent_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                </span>
+              )}
+            </div>
+
+            {/* Timeline */}
+            {(smsStats?.sent_total ?? 0) > 0 && (
+              <div className="flex items-center gap-4 mt-3 pt-3" style={{ borderTop: '1px solid #E5E7EB' }}>
+                <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#9CA3AF' }}>Timeline</span>
+                {[
+                  { label: 'Day 1', desc: 'Intro texts', count: smsStats?.sent_total ?? 0, color: '#059669' },
+                  { label: 'Day 3', desc: 'Follow-up', count: smsStats?.day3_sent ?? 0, color: '#0891B2' },
+                  { label: 'Day 5+', desc: 'Mail queue', count: smsStats?.mail_queue ?? 0, color: '#D97706' },
+                ].map((t, i) => (
+                  <React.Fragment key={t.label}>
+                    {i > 0 && <span style={{ color: '#D1D5DB', fontSize: 16 }}>→</span>}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: t.count > 0 ? t.color : '#D1D5DB' }}>
+                        {t.label}
+                      </span>
+                      <span style={{ fontSize: 11, color: t.count > 0 ? '#374151' : '#9CA3AF' }}>
+                        {t.count > 0 ? `${t.count.toLocaleString()} ${t.desc}` : `0 ${t.desc} yet`}
+                      </span>
+                    </div>
+                  </React.Fragment>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1010,7 +1163,7 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
                     { label: 'CODE', col: 'campaign_code' as SortBy },
                     { label: 'OFFER PRICE', col: 'offer_price' as SortBy },
                     { label: 'STATUS', col: 'status' as SortBy },
-                    { label: '', col: null },
+                    { label: 'SMS', col: null },
                   ] as { label: string; col: SortBy | null }[]).map(({ label, col }) => (
                     <th
                       key={label}
@@ -1095,27 +1248,31 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
                       </td>
                       <td style={{ padding: '10px 8px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
                         {(() => {
-                          if (p.opted_out) return <span title="Opted out" style={{ fontSize: 10, color: '#9CA3AF', whiteSpace: 'nowrap' }}>🚫 Out</span>
-                          if (p.phone_1_dnc) return <span title="DNC flagged" style={{ fontSize: 10, color: '#DC2626', fontWeight: 600, whiteSpace: 'nowrap' }}>🚫 DNC</span>
-                          if (p.sms_status === 'hot') return <span title="HOT lead — replied" style={{ fontSize: 10, color: '#DC2626', fontWeight: 700, whiteSpace: 'nowrap' }}>🔥 HOT</span>
-                          if (p.sms_status === 'day3_sent') return <span title="Day 3 follow-up sent" style={{ fontSize: 10, color: '#0891B2', fontWeight: 600, whiteSpace: 'nowrap' }}>✅ D3</span>
-                          if (p.sms_status === 'day1_sent') return <span title="Day 1 intro sent" style={{ fontSize: 10, color: '#059669', fontWeight: 600, whiteSpace: 'nowrap' }}>✅ D1</span>
-                          if (p.sms_status === 'mail_queue') return <span title="In mail queue" style={{ fontSize: 10, color: '#D97706', whiteSpace: 'nowrap' }}>✉️ Mail</span>
+                          const s10: React.CSSProperties = { fontSize: 10, whiteSpace: 'nowrap' }
+                          if (p.opted_out) return <span title="Replied STOP" style={{ ...s10, color: '#6B7280' }}>⛔ Opted Out</span>
+                          if (p.phone_1_dnc) return <span title="Do Not Contact" style={{ ...s10, color: '#DC2626', fontWeight: 600 }}>🚫 DNC</span>
+                          if (p.sms_status === 'hot') return <span title="HOT — replied with interest" style={{ ...s10, color: '#DC2626', fontWeight: 700 }}>🔥 HOT</span>
+                          if (p.sms_status === 'replied') return <span title="Replied — not yet HOT" style={{ ...s10, color: '#7C3AED', fontWeight: 600 }}>↩️ Replied</span>
+                          if (p.sms_status === 'day3_sent') {
+                            const d = fmtTs(p.sms_day3_sent_at)
+                            return <span title={`Day 3 sent${d ? ` ${d}` : ''}`} style={{ ...s10, color: '#0891B2', fontWeight: 600 }}>💬 Day 3{d ? ` · ${d}` : ''}</span>
+                          }
+                          if (p.sms_status === 'day1_sent') {
+                            const d = fmtTs(p.sms_day1_sent_at)
+                            return <span title={`Day 1 sent${d ? ` ${d}` : ''}`} style={{ ...s10, color: '#059669', fontWeight: 600 }}>✅ Sent{d ? ` ${d}` : ''}</span>
+                          }
+                          if (p.sms_status === 'mail_queue') return <span title="In mail queue" style={{ ...s10, color: '#D97706' }}>✉️ Mail Queue</span>
                           if (p.phone_1 && p.phone_1_type === 'mobile') return (
                             <button
                               onClick={() => { setSingleTextProp(p); setSingleTextResult(null) }}
                               title={`Text ${p.owner_first_name || 'owner'} at ${p.phone_1}`}
-                              style={{
-                                padding: '3px 8px', borderRadius: 6, border: '1px solid #A5D6A7',
-                                background: '#E8F5E9', color: '#1B5E20', fontSize: 11, fontWeight: 600,
-                                cursor: 'pointer', whiteSpace: 'nowrap',
-                              }}
+                              style={{ padding: '3px 8px', borderRadius: 6, border: '1px solid #A5D6A7', background: '#E8F5E9', color: '#1B5E20', fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
                             >
-                              📱
+                              📱 Queued
                             </button>
                           )
-                          if (p.phone_1 && p.phone_1_type === 'landline') return <span title="Landline — mail queue" style={{ fontSize: 10, color: '#D97706', whiteSpace: 'nowrap' }}>✉️ Land</span>
-                          if ((p as any).skip_traced_at) return <span style={{ fontSize: 10, color: '#9CA3AF' }}>No #</span>
+                          if (p.phone_1 && p.phone_1_type === 'landline') return <span title="Landline — mail only" style={{ ...s10, color: '#D97706' }}>📞 Landline</span>
+                          if (!p.phone_1) return <span title="No phone found — mail only" style={{ ...s10, color: '#9CA3AF' }}>📬 No Phone</span>
                           return null
                         })()}
                       </td>
@@ -1300,8 +1457,29 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
             )}
 
             {leadSherpaResult && (
-              <div style={{ background: '#F0FDF4', borderRadius: 8, padding: '12px 14px', marginBottom: 16 }}>
+              <div style={{ background: '#F0FDF4', borderRadius: 8, padding: '12px 14px', marginBottom: 12 }}>
                 <p style={{ fontSize: 13, color: '#065F46', fontWeight: 600, margin: 0 }}>✓ {leadSherpaResult}</p>
+              </div>
+            )}
+
+            {showCreateCampaignPrompt && !createCampaignResult && (
+              <div style={{ background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 8, padding: '12px 14px', marginBottom: 12 }}>
+                <p style={{ fontSize: 13, color: '#92400E', fontWeight: 600, margin: '0 0 8px' }}>
+                  No matches found. Would you like to create a new campaign from this file instead?
+                </p>
+                <button
+                  className="btn-primary text-sm"
+                  onClick={handleCreateCampaignFromLeadSherpa}
+                  disabled={creatingCampaign}
+                >
+                  {creatingCampaign ? 'Creating…' : `✨ Create New Campaign (${leadSherpaParsed?.rows.length.toLocaleString() ?? 0} records)`}
+                </button>
+              </div>
+            )}
+
+            {createCampaignResult && (
+              <div style={{ background: '#F0FDF4', border: '1px solid #A7F3D0', borderRadius: 8, padding: '12px 14px', marginBottom: 12 }}>
+                <p style={{ fontSize: 13, color: '#065F46', fontWeight: 600, margin: 0 }}>{createCampaignResult}</p>
               </div>
             )}
 

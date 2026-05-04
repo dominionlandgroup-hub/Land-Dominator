@@ -1121,6 +1121,39 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
             </AccordionSection>
           )}
 
+          {/* SMS History (chat log) */}
+          {!isNew && comms.some(c => c.type.startsWith('sms')) && (
+            <AccordionSection title="SMS History" sectionKey="sms-history" {...accordionProps}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {comms
+                  .filter(c => c.type.startsWith('sms'))
+                  .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+                  .map(c => {
+                    const isOut = c.direction === 'outbound' || c.type === 'sms_outbound'
+                    const ts = new Date(c.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+                    return (
+                      <div key={c.id} style={{ display: 'flex', justifyContent: isOut ? 'flex-end' : 'flex-start' }}>
+                        <div style={{
+                          maxWidth: '78%',
+                          padding: '8px 12px',
+                          borderRadius: isOut ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
+                          background: isOut ? '#EEF2FF' : '#F3F4F6',
+                          border: isOut ? '1px solid #C7D2FE' : '1px solid #E5E7EB',
+                        }}>
+                          <div style={{ fontSize: 10, color: '#9CA3AF', marginBottom: 3 }}>
+                            {isOut ? '→ SENT' : '← RECEIVED'} · {ts}
+                          </div>
+                          <div style={{ fontSize: 12, color: '#374151', lineHeight: 1.5 }}>
+                            {c.message_body ?? <em style={{ color: '#9CA3AF' }}>(no message body)</em>}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+              </div>
+            </AccordionSection>
+          )}
+
           {/* Communications History */}
           {!isNew && (
             <AccordionSection title="Communications History" sectionKey="comms" {...accordionProps}>

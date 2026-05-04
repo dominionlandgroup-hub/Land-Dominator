@@ -720,6 +720,13 @@ export async function importLeadSherpa(campaignId: string, rows: Record<string, 
   return data
 }
 
+export async function createCampaignFromLeadSherpa(rows: Record<string, string>[]): Promise<{
+  campaign_id: string; campaign_name: string; imported: number; mobile_count: number
+}> {
+  const { data } = await api.post('/crm/campaigns/create-from-lead-sherpa', { rows })
+  return data
+}
+
 // ── Funnel Stats ──────────────────────────────────────────────────────
 
 export interface CampaignFunnelStats {
@@ -729,6 +736,20 @@ export interface CampaignFunnelStats {
 
 export async function getCampaignFunnelStats(campaignId: string): Promise<CampaignFunnelStats> {
   const { data } = await api.get(`/crm/campaigns/${campaignId}/funnel-stats`)
+  return data
+}
+
+// ── SMS Stats (status bar) ─────────────────────────────────────────────
+
+export interface CampaignSmsStats {
+  ready_to_text: number; sent_today: number; sent_total: number; day3_sent: number
+  hot: number; replied: number; dnc_blocked: number; mail_only: number
+  opted_out: number; mail_queue: number; skip_traced: number
+  first_sent_date: string | null
+}
+
+export async function getCampaignSmsStats(campaignId: string): Promise<CampaignSmsStats> {
+  const { data } = await api.get<CampaignSmsStats>(`/crm/campaigns/${campaignId}/sms-stats`)
   return data
 }
 

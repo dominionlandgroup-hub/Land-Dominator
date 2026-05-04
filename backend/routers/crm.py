@@ -3608,6 +3608,50 @@ async def get_campaign_funnel_stats(campaign_id: str) -> dict:
     }
 
 
+@router.get("/campaigns/{campaign_id}/sms-stats")
+async def get_campaign_sms_stats(campaign_id: str) -> dict:
+    """Comprehensive SMS stats for the campaign status bar."""
+    import datetime as _dt
+    sb = get_supabase()
+    try:
+        r = sb.table("crm_properties").select(
+            "id,phone_1,phone_1_type,phone_1_dnc,opted_out,sms_status,"
+            "sms_day1_sent_at,sms_day3_sent_at,skip_traced_at"
+        ).eq("campaign_id", campaign_id).execute()
+        rows = r.data or []
+    except Exception:
+        rows = []
+
+    today = _dt.datetime.utcnow().date().isoformat()
+
+    ready_to_text = sum(1 for p in rows if
+        p.get("phone_1") and p.get("phone_1_type") == "mobile"
+        and not p.get("phone_1_dnc") and not p.get("opted_out")
+        and not p.get("sms_day1_sent_at"))
+    sent_today = sum(1 for p in rows if
+        p.get("sms_day1_sent_at") and p["sms_day1_sent_at"][:10] == today)
+    sent_total = sum(1 for p in rows if p.get("sms_day1_sent_at"))
+    day3_sent = sum(1 for p in rows if p.get("sms_day3_sent_at"))
+    hot = sum(1 for p in rows if p.get("sms_status") == "hot")
+    replied = sum(1 for p in rows if p.get("sms_status") == "replied")
+    dnc_blocked = sum(1 for p in rows if p.get("phone_1_dnc"))
+    mail_only = sum(1 for p in rows if not p.get("phone_1") or p.get("phone_1_type") in ("landline", "voip"))
+    opted_out = sum(1 for p in rows if p.get("opted_out"))
+    mail_queue = sum(1 for p in rows if p.get("sms_status") == "mail_queue")
+    skip_traced = sum(1 for p in rows if p.get("skip_traced_at"))
+
+    sent_dates = sorted(p["sms_day1_sent_at"][:10] for p in rows if p.get("sms_day1_sent_at"))
+    first_sent_date = sent_dates[0] if sent_dates else None
+
+    return {
+        "ready_to_text": ready_to_text, "sent_today": sent_today,
+        "sent_total": sent_total, "day3_sent": day3_sent,
+        "hot": hot, "replied": replied, "dnc_blocked": dnc_blocked,
+        "mail_only": mail_only, "opted_out": opted_out, "mail_queue": mail_queue,
+        "skip_traced": skip_traced, "first_sent_date": first_sent_date,
+    }
+
+
 # ── Mail Queue Export ─────────────────────────────────────────────────
 
 @router.get("/campaigns/{campaign_id}/mail-queue/export")
@@ -3796,4 +3840,169 @@ async def import_lead_sherpa(campaign_id: str, body: dict = Body(...)) -> dict:
         "dnc_flagged": dnc_flagged,
         "deceased_skipped": deceased_skipped,
         "not_matched": not_matched,
+    }
+
+
+@router.post("/campaigns/create-from-lead-sherpa")
+async def create_campaign_from_lead_sherpa(body: dict = Body(...)) -> dict:
+    """Create a new campaign and import all rows from a Lead Sherpa CSV."""
+    import datetime as _dt
+    rows = body.get("rows", [])
+    if not rows:
+        raise HTTPException(status_code=400, detail="No rows provided")
+
+    def _nh(h: str) -> str:
+        return h.strip().lower().replace(" ", "_").replace("-", "_").replace("/", "_")
+
+    def _parse_bool(v) -> bool:
+        if v is None:
+            return False
+        return str(v).strip().lower() in ("true", "1", "yes", "y", "dnc", "x", "flagged")
+
+    def _norm_phone_type(t: str) -> str:
+        t = t.strip().lower()
+        if "mobile" in t or "cell" in t:
+            return "mobile"
+        if "land" in t or "home" in t or "work" in t or "fixed" in t:
+            return "landline"
+        if "voip" in t:
+            return "voip"
+        return "mobile" if t else "mobile"
+
+    # Detect dominant state from first 100 rows
+    from collections import Counter
+    state_counter: Counter = Counter()
+    for row in rows[:100]:
+        nr = {_nh(k): v for k, v in row.items()}
+        st = (nr.get("property_state") or nr.get("state") or nr.get("situs_state") or
+              nr.get("mailing_state") or "").strip().upper()
+        if st:
+            state_counter[st] += 1
+    dominant_state = state_counter.most_common(1)[0][0] if state_counter else ""
+
+    today = _dt.datetime.utcnow().date().strftime("%b %d %Y")
+    campaign_name = f"{dominant_state + ' ' if dominant_state else ''}Lead Sherpa {today}".strip()
+
+    sb = get_supabase()
+    camp_r = sb.table("crm_campaigns").insert({
+        "name": campaign_name,
+        "created_at": _now(),
+        "updated_at": _now(),
+    }).execute()
+    if not camp_r.data:
+        raise HTTPException(status_code=500, detail="Failed to create campaign")
+    campaign_id = camp_r.data[0]["id"]
+
+    imported = 0
+    mobile_count = 0
+    props_batch: list[dict] = []
+
+    for row in rows:
+        nr = {_nh(k): v for k, v in row.items()}
+
+        if _parse_bool(nr.get("deceased") or nr.get("is_deceased")):
+            continue
+
+        apn = (nr.get("parcel_number") or nr.get("apn") or nr.get("parcel_id") or
+               nr.get("property_parcel_number") or nr.get("assessors_parcel_number") or
+               nr.get("assessor_parcel_number") or "").strip()
+
+        # Owner name
+        first = (nr.get("first_name") or nr.get("owner_first_name") or "").strip()
+        last = (nr.get("last_name") or nr.get("owner_last_name") or "").strip()
+        full = (nr.get("owner_name") or nr.get("full_name") or nr.get("owner_full_name") or
+                nr.get("name") or "").strip()
+        if not full and (first or last):
+            full = f"{first} {last}".strip()
+
+        # Mailing address
+        mail_addr = (nr.get("mailing_address") or nr.get("owner_mailing_address") or
+                     nr.get("mail_address") or "").strip()
+        mail_city = (nr.get("mailing_city") or nr.get("owner_mailing_city") or "").strip()
+        mail_state = (nr.get("mailing_state") or nr.get("owner_mailing_state") or "").strip()
+        mail_zip = (nr.get("mailing_zip") or nr.get("owner_mailing_zip") or
+                    nr.get("mailing_zipcode") or "").strip()
+
+        # Property info
+        prop_addr = (nr.get("property_address") or nr.get("situs_address") or "").strip()
+        prop_city = (nr.get("property_city") or nr.get("situs_city") or "").strip()
+        prop_state = (nr.get("property_state") or nr.get("state") or nr.get("situs_state") or "").strip()
+        prop_zip = (nr.get("property_zip") or nr.get("situs_zip") or "").strip()
+        county = (nr.get("county") or "").strip()
+        acreage_raw = (nr.get("acreage") or nr.get("acres") or nr.get("lot_size") or "").strip()
+        try:
+            acreage = float(acreage_raw) if acreage_raw else None
+        except Exception:
+            acreage = None
+
+        # Phones
+        phone1 = (nr.get("phone_1") or nr.get("phone1") or nr.get("primary_phone") or
+                  nr.get("phone_1_number") or nr.get("phone") or "").strip()
+        phone1_type_raw = (nr.get("phone_1_type") or nr.get("phone1_type") or
+                           nr.get("primary_phone_type") or "")
+        phone1_dnc = _parse_bool(nr.get("phone_1_dnc") or nr.get("phone1_dnc") or
+                                  nr.get("dnc_1") or nr.get("dnc"))
+        phone2 = (nr.get("phone_2") or nr.get("phone2") or nr.get("phone_2_number") or "").strip()
+        phone2_type_raw = (nr.get("phone_2_type") or nr.get("phone2_type") or "")
+        phone2_dnc = _parse_bool(nr.get("phone_2_dnc") or nr.get("phone2_dnc") or nr.get("dnc_2"))
+        email = (nr.get("email") or nr.get("email_1") or nr.get("email_address") or "").strip()
+
+        p1_type = _norm_phone_type(phone1_type_raw) if phone1 else None
+
+        rec: dict = {
+            "campaign_id": campaign_id,
+            "created_at": _now(),
+            "updated_at": _now(),
+            "status": "lead",
+        }
+        if apn:        rec["apn"] = apn
+        if full:       rec["owner_full_name"] = full
+        if first:      rec["owner_first_name"] = first
+        if last:       rec["owner_last_name"] = last
+        if mail_addr:  rec["owner_mailing_address"] = mail_addr
+        if mail_city:  rec["owner_mailing_city"] = mail_city
+        if mail_state: rec["owner_mailing_state"] = mail_state
+        if mail_zip:   rec["owner_mailing_zip"] = mail_zip
+        if prop_addr:  rec["property_address"] = prop_addr
+        if prop_city:  rec["property_city"] = prop_city
+        if prop_state: rec["state"] = prop_state
+        if prop_zip:   rec["property_zip"] = prop_zip
+        if county:     rec["county"] = county
+        if acreage:    rec["acreage"] = acreage
+        if phone1:
+            rec["phone_1"] = phone1
+            rec["phone_1_type"] = p1_type
+            rec["phone_1_dnc"] = phone1_dnc
+            rec["skip_traced_at"] = _now()
+            if p1_type == "mobile" and not phone1_dnc:
+                mobile_count += 1
+        if phone2:
+            rec["phone_2"] = phone2
+            rec["phone_2_type"] = _norm_phone_type(phone2_type_raw)
+            rec["phone_2_dnc"] = phone2_dnc
+        if email:
+            rec["email_1"] = email
+
+        props_batch.append(rec)
+
+        if len(props_batch) >= 50:
+            try:
+                sb.table("crm_properties").insert(props_batch).execute()
+                imported += len(props_batch)
+            except Exception:
+                pass
+            props_batch = []
+
+    if props_batch:
+        try:
+            sb.table("crm_properties").insert(props_batch).execute()
+            imported += len(props_batch)
+        except Exception:
+            pass
+
+    return {
+        "campaign_id": campaign_id,
+        "campaign_name": campaign_name,
+        "imported": imported,
+        "mobile_count": mobile_count,
     }

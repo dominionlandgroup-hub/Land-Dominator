@@ -1826,6 +1826,8 @@ async def _detect_sms_ai_outcomes(
         updates["status"] = "prospect"
         updates["sms_status"] = "hot"
         print(f"[ai-sms] HOT detected for {from_phone} — interest={has_interest} callback={has_callback}", flush=True)
+    elif prop.get("sms_status") in ("day1_sent", "day3_sent"):
+        updates["sms_status"] = "replied"
         try:
             prop_r = sb.table("crm_properties").select("tags").eq("id", property_id).single().execute()
             existing_tags = (prop_r.data or {}).get("tags") or []
