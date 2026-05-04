@@ -442,9 +442,14 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
     setSaving(true)
     setSavedOk(false)
     setError(null)
-    console.log('[PropertyDetail] Saving:', { phone_1: form.phone_1, phone_1_type: form.phone_1_type, phone_1_dnc: form.phone_1_dnc, phone_2: form.phone_2 })
+    const saveForm = {
+      ...form,
+      phone_1_type: form.phone_1 ? (form.phone_1_type || 'mobile') : form.phone_1_type,
+      phone_2_type: form.phone_2 ? (form.phone_2_type || 'mobile') : form.phone_2_type,
+    }
+    console.log('[PropertyDetail] Saving:', { phone_1: saveForm.phone_1, phone_1_type: saveForm.phone_1_type, phone_1_dnc: saveForm.phone_1_dnc })
     try {
-      await onSave(form)
+      await onSave(saveForm)
       if (isNew) {
         onBack()
       } else {

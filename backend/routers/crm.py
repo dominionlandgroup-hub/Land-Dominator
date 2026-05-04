@@ -3431,7 +3431,7 @@ async def start_sms_campaign(
         all_rows = eligible_r.data or []
         props = [p for p in all_rows
                  if p.get("phone_1")
-                 and str(p.get("phone_1_type") or "").lower().strip() == "mobile"
+                 and str(p.get("phone_1_type") or "mobile").lower().strip() == "mobile"
                  and not (p.get("phone_1_dnc") or False)
                  and not (p.get("opted_out") or False)]
     elif day == 1:
@@ -3441,7 +3441,7 @@ async def start_sms_campaign(
         )
         props = [p for p in all_rows
                  if p.get("phone_1")
-                 and str(p.get("phone_1_type") or "").lower().strip() == "mobile"
+                 and str(p.get("phone_1_type") or "mobile").lower().strip() == "mobile"
                  and not (p.get("phone_1_dnc") or False)
                  and not (p.get("opted_out") or False)
                  and not p.get("sms_day1_sent_at")]
@@ -3452,7 +3452,7 @@ async def start_sms_campaign(
             "id,owner_first_name,property_address,property_city,state,phone_1,phone_1_type,phone_1_dnc,offer_price,opted_out,sms_status,sms_day1_sent_at"
         )
         props = [p for p in all_rows
-                 if str(p.get("phone_1_type") or "").lower().strip() == "mobile"
+                 if str(p.get("phone_1_type") or "mobile").lower().strip() == "mobile"
                  and p.get("sms_status") == "day1_sent"
                  and p.get("sms_day1_sent_at", "") < cutoff
                  and not (p.get("opted_out") or False)
@@ -3647,7 +3647,7 @@ async def get_campaign_funnel_stats(campaign_id: str) -> dict:
 
     for r in records:
         phone = r.get("phone_1")
-        ptype = str(r.get("phone_1_type") or "").lower().strip()
+        ptype = str(r.get("phone_1_type") or "mobile").lower().strip()
         is_dnc = r.get("phone_1_dnc") or False
         is_opted_out = r.get("opted_out") or False
         status = r.get("sms_status") or ""
@@ -3669,7 +3669,7 @@ async def get_campaign_funnel_stats(campaign_id: str) -> dict:
             texts_sent += 1
         if status == "hot":
             hot += 1
-        if status == "mail_queue" or (ptype in ("landline", "voip", "") and not is_opted_out and traced):
+        if status == "mail_queue" or (ptype in ("landline", "voip") and not is_opted_out and traced):
             mail_queue += 1
 
     print(f"[funnel-stats] campaign={campaign_id} total={total} mobile={mobile} dnc={dnc} mail_queue={mail_queue}", flush=True)
@@ -3710,7 +3710,7 @@ async def get_campaign_sms_stats(campaign_id: str) -> dict:
 
     for r in records:
         phone = r.get("phone_1")
-        ptype = str(r.get("phone_1_type") or "").lower().strip()
+        ptype = str(r.get("phone_1_type") or "mobile").lower().strip()
         is_dnc = r.get("phone_1_dnc") or False
         is_opted_out = r.get("opted_out") or False
         status = r.get("sms_status") or ""
@@ -3795,7 +3795,7 @@ async def get_sms_preview(campaign_id: str, day: int = Query(1)) -> dict:
 
     for p in rows:
         phone = p.get("phone_1")
-        ptype = str(p.get("phone_1_type") or "").lower().strip()
+        ptype = str(p.get("phone_1_type") or "mobile").lower().strip()
         is_dnc = p.get("phone_1_dnc") or False
         is_opted_out = p.get("opted_out") or False
         day1_sent = p.get("sms_day1_sent_at")
