@@ -17,6 +17,7 @@ import httpx
 
 from fastapi import APIRouter, BackgroundTasks, Body, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
 from models.crm_schemas import (
     Contact, ContactCreate, ContactUpdate,
@@ -2980,10 +2981,15 @@ def _parse_batch_leads_emails(data: dict) -> list[str]:
     return [str(e).strip() for e in emails if e]
 
 
+class SkipTraceBody(BaseModel):
+    property_ids: Optional[List[str]] = None
+
+
 @router.post("/campaigns/{campaign_id}/skip-trace", status_code=202)
 async def start_skip_trace(
     campaign_id: str,
     background_tasks: BackgroundTasks,
+    body: SkipTraceBody = Body(default=SkipTraceBody()),
 ) -> dict:
     """Start a background skip-trace job via Batch Leads API."""
     api_key = os.environ.get("BATCH_LEADS_API_KEY", "")
@@ -2993,7 +2999,12 @@ async def start_skip_trace(
     c_r = sb.table("crm_campaigns").select("id").eq("id", campaign_id).execute()
     if not c_r.data:
         raise HTTPException(status_code=404, detail="Campaign not found")
-    props = sb.table("crm_properties").select("id,property_address,property_city,state,property_zip").eq("campaign_id", campaign_id).execute()
+    q = sb.table("crm_properties").select("id,property_address,property_city,state,property_zip")
+    if body.property_ids:
+        q = q.in_("id", body.property_ids)
+    else:
+        q = q.eq("campaign_id", campaign_id)
+    props = q.execute()
     total = len(props.data or [])
     job_id = str(uuid.uuid4())
     _skip_trace_jobs[job_id] = {"status": "running", "done": 0, "total": total, "mobile": 0, "landline": 0, "no_number": 0, "errors": []}
@@ -3116,11 +3127,19 @@ def _parse_lp_skip_trace_emails(data: dict) -> list[str]:
     return [str(e).strip() for e in emails if e]
 
 
-@router.get("/campaigns/{campaign_id}/lp-skip-trace-count")
-async def get_lp_skip_trace_count(campaign_id: str) -> dict:
+@router.post("/campaigns/{campaign_id}/lp-skip-trace-count")
+async def get_lp_skip_trace_count(
+    campaign_id: str,
+    body: SkipTraceBody = Body(default=SkipTraceBody()),
+) -> dict:
     """Return count of properties with LP IDs vs total for pre-flight warning."""
     sb = get_supabase()
-    all_props = sb.table("crm_properties").select("id,property_id").eq("campaign_id", campaign_id).execute()
+    q = sb.table("crm_properties").select("id,property_id")
+    if body.property_ids:
+        q = q.in_("id", body.property_ids)
+    else:
+        q = q.eq("campaign_id", campaign_id)
+    all_props = q.execute()
     total = len(all_props.data or [])
     with_lp_id = sum(1 for p in (all_props.data or []) if p.get("property_id"))
     return {"total": total, "with_lp_id": with_lp_id}
@@ -3130,6 +3149,7 @@ async def get_lp_skip_trace_count(campaign_id: str) -> dict:
 async def start_lp_skip_trace(
     campaign_id: str,
     background_tasks: BackgroundTasks,
+    body: SkipTraceBody = Body(default=SkipTraceBody()),
 ) -> dict:
     """Start a background LP skip-trace job (one at a time, 0.5s delay)."""
     token = os.environ.get("LAND_PORTAL_TOKEN", "")
@@ -3139,14 +3159,12 @@ async def start_lp_skip_trace(
     c_r = sb.table("crm_campaigns").select("id").eq("id", campaign_id).execute()
     if not c_r.data:
         raise HTTPException(status_code=404, detail="Campaign not found")
-    # Only process records that have an LP property_id
-    props = (
-        sb.table("crm_properties")
-        .select("id,property_id,fips")
-        .eq("campaign_id", campaign_id)
-        .not_.is_("property_id", "null")
-        .execute()
-    )
+    q = sb.table("crm_properties").select("id,property_id,fips").not_.is_("property_id", "null")
+    if body.property_ids:
+        q = q.in_("id", body.property_ids)
+    else:
+        q = q.eq("campaign_id", campaign_id)
+    props = q.execute()
     eligible = [p for p in (props.data or []) if p.get("property_id")]
     total = len(eligible)
     job_id = str(uuid.uuid4())

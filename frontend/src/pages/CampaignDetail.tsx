@@ -400,14 +400,17 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
   // ── Skip Trace ──────────────────────────────────────────────────────
   async function handleStartSkipTrace() {
     if (stStatus === 'running') return
-    if (!confirm(`This will skip-trace ${(stats.property_count ?? 0).toLocaleString()} records using Batch Leads credits. Continue?`)) return
+    const ids = allPagesSelected ? [] : Array.from(selectedIds)
+    const count = ids.length > 0 ? ids.length : (stats.property_count ?? 0)
+    const scope = ids.length > 0 ? `${count.toLocaleString()} selected records` : `all ${count.toLocaleString()} campaign records`
+    if (!confirm(`This will skip-trace ${scope} using Batch Leads credits. Continue?`)) return
     setStStatus('running')
     setStDone(0)
     setStTotal(0)
     setStResult(null)
     setStError(null)
     try {
-      const { job_id, total } = await startSkipTrace(campaign.id)
+      const { job_id, total } = await startSkipTrace(campaign.id, ids.length > 0 ? ids : undefined)
       setStJobId(job_id)
       setStTotal(total)
       if (stPollRef.current) clearInterval(stPollRef.current)
@@ -435,14 +438,19 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
   // ── LP Skip Trace ────────────────────────────────────────────────────
   async function handleStartLpSkipTrace() {
     if (lpStStatus === 'running') return
+    const ids = allPagesSelected ? [] : Array.from(selectedIds)
+    const hasSelection = ids.length > 0
     try {
-      const { total, with_lp_id } = await getLpSkipTraceCount(campaign.id)
+      const { total, with_lp_id } = await getLpSkipTraceCount(campaign.id, hasSelection ? ids : undefined)
       const noLpId = total - with_lp_id
+      const scopeLabel = hasSelection ? `${total.toLocaleString()} selected` : `all ${total.toLocaleString()}`
       const msg = [
-        `Land Portal skip trace will use approximately ${with_lp_id.toLocaleString()} tokens.`,
+        `Skip tracing ${scopeLabel} records.`,
         ``,
-        `${with_lp_id.toLocaleString()} of ${total.toLocaleString()} records have Land Portal IDs — only those will be skip traced.`,
-        noLpId > 0 ? `${noLpId.toLocaleString()} records without LP IDs will be skipped (use Batch Leads for those).` : '',
+        `✓ ${with_lp_id.toLocaleString()} have Land Portal IDs → ${with_lp_id.toLocaleString()} tokens used`,
+        noLpId > 0 ? `✓ ${noLpId.toLocaleString()} without LP IDs → will be skipped (use Batch Leads for those)` : '',
+        ``,
+        `Total cost: ${with_lp_id.toLocaleString()} LP tokens`,
         ``,
         `Continue?`,
       ].filter(Boolean).join('\n')
@@ -456,7 +464,7 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
     setLpStResult(null)
     setLpStError(null)
     try {
-      const { job_id, total } = await startLpSkipTrace(campaign.id)
+      const { job_id, total } = await startLpSkipTrace(campaign.id, hasSelection ? ids : undefined)
       setLpStJobId(job_id)
       setLpStTotal(total)
       if (lpStPollRef.current) clearInterval(lpStPollRef.current)

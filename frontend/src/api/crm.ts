@@ -643,8 +643,10 @@ export async function saveMatchFilters(filters: MatchFilterSettings): Promise<vo
 
 // ── Skip Trace ────────────────────────────────────────────────────────
 
-export async function startSkipTrace(campaignId: string): Promise<{ job_id: string; total: number }> {
-  const { data } = await api.post(`/crm/campaigns/${campaignId}/skip-trace`)
+export async function startSkipTrace(campaignId: string, propertyIds?: string[]): Promise<{ job_id: string; total: number }> {
+  const { data } = await api.post(`/crm/campaigns/${campaignId}/skip-trace`, {
+    property_ids: propertyIds && propertyIds.length > 0 ? propertyIds : null,
+  })
   return data
 }
 
@@ -657,13 +659,17 @@ export async function getSkipTraceStatus(campaignId: string, jobId: string): Pro
 
 // ── Land Portal Skip Trace ────────────────────────────────────────────
 
-export async function getLpSkipTraceCount(campaignId: string): Promise<{ total: number; with_lp_id: number }> {
-  const { data } = await api.get(`/crm/campaigns/${campaignId}/lp-skip-trace-count`)
+export async function getLpSkipTraceCount(campaignId: string, propertyIds?: string[]): Promise<{ total: number; with_lp_id: number }> {
+  const { data } = await api.post(`/crm/campaigns/${campaignId}/lp-skip-trace-count`, {
+    property_ids: propertyIds && propertyIds.length > 0 ? propertyIds : null,
+  })
   return data
 }
 
-export async function startLpSkipTrace(campaignId: string): Promise<{ job_id: string; total: number }> {
-  const { data } = await api.post(`/crm/campaigns/${campaignId}/lp-skip-trace`)
+export async function startLpSkipTrace(campaignId: string, propertyIds?: string[]): Promise<{ job_id: string; total: number }> {
+  const { data } = await api.post(`/crm/campaigns/${campaignId}/lp-skip-trace`, {
+    property_ids: propertyIds && propertyIds.length > 0 ? propertyIds : null,
+  })
   return data
 }
 
