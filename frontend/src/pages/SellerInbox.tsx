@@ -35,6 +35,14 @@ function fmtPhone(phone?: string) {
   return phone
 }
 
+// Normalize any phone to +1XXXXXXXXXX so inbound/outbound threads merge correctly
+function normalizePhone(phone: string): string {
+  const d = phone.replace(/\D/g, '')
+  if (d.length === 10) return `+1${d}`
+  if (d.length === 11 && d.startsWith('1')) return `+${d}`
+  return phone
+}
+
 function contactName(comms: Communication[]): string {
   for (const c of comms) {
     const p = c.property
@@ -78,7 +86,8 @@ interface Thread {
 function buildThreads(comms: Communication[]): Thread[] {
   const map = new Map<string, Communication[]>()
   for (const c of comms) {
-    const key = c.phone_number || 'unknown'
+    const raw = c.phone_number || ''
+    const key = raw ? normalizePhone(raw) : 'unknown'
     if (!map.has(key)) map.set(key, [])
     map.get(key)!.push(c)
   }
@@ -557,7 +566,7 @@ function CreateDealModal({
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-type InboxFilter = 'all' | 'calls' | 'texts' | 'hot' | 'callback' | 'unread'
+type InboxFilter = 'all' | 'calls' | 'texts' | 'hot' | 'callback' | 'unread' | 'all-messages'
 
 export default function SellerInbox() {
   const { setCurrentPage, setSelectedPropertyId, unreadCount, setUnreadCount } = useApp()
@@ -618,6 +627,7 @@ export default function SellerInbox() {
   const filteredThreads = allThreads.filter(t => {
     const q = search.toLowerCase()
     if (q && !t.name.toLowerCase().includes(q) && !t.phone.includes(q)) return false
+    if (filter === 'all-messages') return true
     if (filter === 'calls') return t.comms.some(c => c.type.startsWith('call'))
     if (filter === 'texts') return t.comms.some(c => c.type.startsWith('sms'))
     if (filter === 'hot') return t.leadScore === 'hot'
@@ -625,6 +635,11 @@ export default function SellerInbox() {
     if (filter === 'unread') return t.hasUnread
     return true
   })
+
+  // Flat raw list for All Messages debug view
+  const rawComms = filter === 'all-messages'
+    ? [...comms].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    : []
 
   const selected = selectedPhone ? allThreads.find(t => t.phone === selectedPhone) ?? null : null
   const threadComms = selected ? [...selected.comms].reverse() : []
@@ -678,6 +693,7 @@ export default function SellerInbox() {
     { id: 'hot', label: '🔥 HOT' },
     { id: 'callback', label: '📅 Callback' },
     { id: 'unread', label: 'Unread', count: totalUnread },
+    { id: 'all-messages', label: '🔍 Raw', count: comms.length },
   ]
 
   async function handleSend() {
@@ -789,6 +805,24 @@ export default function SellerInbox() {
             <div style={{ padding: 24, textAlign: 'center', color: '#9B8AAE', fontSize: 13 }}>Loading…</div>
           ) : error ? (
             <div style={{ padding: 16, fontSize: 12, color: '#DC2626' }}>{error}</div>
+          ) : filter === 'all-messages' ? (
+            rawComms.length === 0
+              ? <div style={{ padding: 24, textAlign: 'center', color: '#9B8AAE', fontSize: 13 }}>No messages in database</div>
+              : rawComms.map(c => (
+                <div key={c.id} style={{ padding: '10px 14px', borderBottom: '1px solid #E8E0F0', fontSize: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                    <span style={{ fontWeight: 700, color: c.direction === 'inbound' ? '#059669' : '#5C2977' }}>
+                      {c.direction === 'inbound' ? '← IN' : '→ OUT'} {c.type}
+                    </span>
+                    <span style={{ color: '#9B8AAE', fontSize: 11 }}>{fmtInboxDate(c.created_at)}</span>
+                  </div>
+                  <div style={{ color: '#6B5B8A', marginBottom: 2 }}>{fmtPhone(c.phone_number) || c.phone_number || '(no phone)'}</div>
+                  <div style={{ color: '#1A0A2E', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {c.message_body || c.summary || c.type}
+                  </div>
+                  {!c.property_id && <div style={{ fontSize: 10, color: '#F59E0B', marginTop: 2 }}>⚠ No property match</div>}
+                </div>
+              ))
           ) : filteredThreads.length === 0 ? (
             <div style={{ padding: 24, textAlign: 'center', color: '#9B8AAE', fontSize: 13 }}>No conversations</div>
           ) : filteredThreads.map(t => {
