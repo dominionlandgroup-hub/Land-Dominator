@@ -552,6 +552,7 @@ async def _log_comm(
     caller_offer_code: Optional[str] = None,
     disposition: Optional[str] = None,
     callback_requested_at: Optional[str] = None,
+    message_hash: Optional[str] = None,
 ) -> dict:
     try:
         sb = get_supabase()
@@ -577,6 +578,8 @@ async def _log_comm(
             row["disposition"] = disposition
         if callback_requested_at is not None:
             row["callback_requested_at"] = callback_requested_at
+        if message_hash is not None:
+            row["message_hash"] = message_hash
         r = sb.table("crm_communications").insert(row).execute()
         return r.data[0] if r.data else {}
     except Exception as exc:
@@ -1736,7 +1739,7 @@ _SMS_STOP_WORDS = {"STOP", "UNSUBSCRIBE", "REMOVE", "CANCEL", "END", "QUIT"}
 _CLAUDE_SMS_MODEL = os.getenv("CLAUDE_SMS_MODEL", "claude-sonnet-4-6")
 _DAMIEN_PHONE = "+12023215846"
 _SMS_MAX_EXCHANGES = 5  # max back-and-forth before handoff
-_SMS_BOT_ENABLED = os.getenv("SMS_BOT_ENABLED", "false").lower() == "true"
+_SMS_BOT_ENABLED = os.getenv("SMS_BOT_ENABLED", "true").lower() == "true"
 
 # Dedup guard: phone -> epoch float of last reply attempt; skip if < 30s ago
 _sms_reply_inflight: dict = {}
@@ -2058,46 +2061,83 @@ async def _detect_sms_ai_outcomes(
             print(f"[ai-sms] HOT alert send error: {exc}", flush=True)
 
 
+_SMS_TIME_WORDS = {
+    "am", "pm", "morning", "afternoon", "evening", "noon", "tonight",
+    "today", "tomorrow", "monday", "tuesday", "wednesday", "thursday",
+    "friday", "saturday", "sunday", "anytime", "now", "later", "weekend",
+    "available", "call", "works", "free", "busy",
+}
+_SMS_TIME_DIGITS = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"}
+
+
+async def _sms_send(api_key: str, from_e164: str, to_phone: str, text: str) -> bool:
+    """Send a single SMS and log it. Returns True on success."""
+    try:
+        to_e164 = _to_e164(to_phone)
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.post(
+                "https://api.telnyx.com/v2/messages",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={"from": _to_e164(from_e164), "to": to_e164, "text": text},
+            )
+        print(f"[sms-bot] Sent ({r.status_code}) → {to_phone}: {text[:80]!r}", flush=True)
+        return r.status_code < 300
+    except Exception as exc:
+        print(f"[sms-bot] Send error: {exc}", flush=True)
+        return False
+
+
 async def _process_inbound_sms(from_phone: str, message_text: str, received_on: str = "") -> None:
     import time as _time
-    # Dedup: if we already handled a message from this number in the last 30s, skip
-    _now_f = _time.time()
-    _last = _sms_reply_inflight.get(from_phone, 0)
-    if _now_f - _last < 30:
-        print(f"[sms-bot] SKIP duplicate from {from_phone} — already handled {_now_f - _last:.1f}s ago", flush=True)
-        return
-    _sms_reply_inflight[from_phone] = _now_f
-    # Prune stale entries to avoid unbounded growth
-    stale = [k for k, v in _sms_reply_inflight.items() if _now_f - v > 120]
-    for k in stale:
-        _sms_reply_inflight.pop(k, None)
+
+    # ── 1. DB dedup: same message within the same 60-second bucket → skip ────
+    minute_bucket = int(_time.time() // 60)
+    msg_hash = hashlib.md5(f"{from_phone}:{message_text}:{minute_bucket}".encode()).hexdigest()
+    sb = get_supabase()
+    try:
+        dup_r = sb.table("crm_communications").select("id").eq("message_hash", msg_hash).limit(1).execute()
+        if dup_r.data:
+            print(f"[sms-bot] SKIP duplicate hash {msg_hash[:8]} from {from_phone}", flush=True)
+            return
+    except Exception:
+        pass
 
     print(f"[sms-bot] Inbound from {from_phone}: {message_text!r}", flush=True)
-    print(f"[sms-bot] Looking up property...", flush=True)
+
+    # ── 2. Look up property ──────────────────────────────────────────────────
     prop = await _lookup_phone(from_phone)
     if not prop:
         prop = {"id": None}
-
     property_id = prop.get("id")
     print(f"[sms-bot] Property found: {property_id is not None} (id={property_id})", flush=True)
+
+    # ── 3. Log inbound message ───────────────────────────────────────────────
     await _log_comm(
         property_id=property_id,
         comm_type="sms_inbound",
         phone=from_phone,
         direction="inbound",
         message_body=message_text,
+        message_hash=msg_hash,
     )
 
     msg_up = message_text.upper().strip()
     words = set(re.split(r"\W+", msg_up))
-
     is_stop = bool(words & _SMS_STOP_WORDS) or any(w in msg_up for w in _SMS_STOP_WORDS)
-    is_hot = not is_stop and bool(words & _SMS_HOT_WORDS)
 
-    sb = get_supabase()
+    owner = prop.get("owner_full_name") or prop.get("owner_first_name") or "Unknown"
+    apn = prop.get("apn", "")
+    county = prop.get("county", "")
+    code = prop.get("campaign_code", "")
+    address = prop.get("property_address") or ""
+    city = prop.get("property_city") or ""
+    state_abbr = prop.get("state") or ""
+    offer_price = prop.get("offer_price")
+    location = ", ".join(filter(None, [city, state_abbr]))
+    address_full = " ".join(filter(None, [address, location]))
 
+    # ── 4. STOP handling ─────────────────────────────────────────────────────
     if is_stop:
-        # Add to suppression list
         try:
             sb.table("crm_sms_opt_out").upsert(
                 {"phone_number": from_phone, "opted_out_at": _now(), "source": "sms_reply"},
@@ -2105,126 +2145,190 @@ async def _process_inbound_sms(from_phone: str, message_text: str, received_on: 
             ).execute()
         except Exception:
             pass
-        # Mark property as opted_out
         if property_id:
             try:
-                sb.table("crm_properties").update(
-                    {"opted_out": True, "sms_status": "opted_out", "updated_at": _now()}
-                ).eq("id", property_id).execute()
+                sb.table("crm_properties").update({
+                    "opted_out": True,
+                    "sms_status": "opted_out",
+                    "sms_conversation_stage": "complete",
+                    "updated_at": _now(),
+                }).eq("id", property_id).execute()
+            except Exception:
+                pass
+        price_display = f"${int(offer_price):,}" if offer_price else "—"
+        html = (
+            "<h2>🚫 STOP Reply — Opted Out</h2>"
+            f"<ul><li><strong>From:</strong> {from_phone}</li>"
+            f"<li><strong>Owner:</strong> {owner}</li><li><strong>APN:</strong> {apn}</li>"
+            f"<li><strong>Offer Price:</strong> {price_display}</li></ul>"
+            f"<p><strong>Message:</strong> {message_text}</p>"
+            "<p style='color:#DC2626;font-weight:bold'>✗ Opted out — added to suppression list</p>"
+            "<p><a href='https://land-dominator-frontend-production.up.railway.app/inbox'>Open Seller Inbox →</a></p>"
+        )
+        await _notify_email(f"🚫 STOP Reply — {owner} — {apn}", html)
+        return
+
+    # ── 5. Bot guard ──────────────────────────────────────────────────────────
+    if not _SMS_BOT_ENABLED:
+        print(f"[sms-bot] DISABLED (SMS_BOT_ENABLED=false) — logged, no reply sent", flush=True)
+        return
+
+    if not property_id:
+        print(f"[sms-bot] No property found for {from_phone} — logging only", flush=True)
+        return
+
+    # ── 6. Conversation state machine ─────────────────────────────────────────
+    stage = prop.get("sms_conversation_stage") or "initial"
+    print(f"[sms-bot] Stage={stage} for {from_phone}", flush=True)
+
+    if stage == "complete":
+        print(f"[sms-bot] Conversation complete — human takeover, no bot reply", flush=True)
+        _send_email_alert(owner, apn, county, code, address_full, offer_price, from_phone, message_text, stage)
+        return
+
+    first = prop.get("owner_first_name") or "there"
+    api_key = _telnyx_key()
+    telnyx_from = prop.get("sms_from_number") or received_on or _telnyx_phone()
+
+    reply_text: Optional[str] = None
+    next_stage = stage
+    should_close = False
+    callback_time = ""
+
+    if stage == "initial":
+        is_positive = bool(words & _SMS_HOT_WORDS)
+        if is_positive:
+            reply_text = f"Great {first}! Do you have a price in mind for your property?"
+            next_stage = "qualifying"
+        else:
+            reply_text = (
+                f"Hi {first}! Are you open to a cash offer for your land? "
+                f"Reply YES to learn more or STOP to unsubscribe."
+            )
+            next_stage = "initial"
+
+    elif stage == "qualifying":
+        # Any non-stop reply → move to closing; capture their asking price if mentioned
+        reply_text = f"Got it. Would it work for Damien to give you a call? What's the best time?"
+        next_stage = "closing"
+        price_match = re.search(r'\$?(\d[\d,]*(?:\.\d+)?)\s*([kKmM]?)', message_text)
+        if price_match and property_id:
+            try:
+                raw_n = price_match.group(1).replace(",", "")
+                mult_c = price_match.group(2).lower()
+                mult = {"k": 1000, "m": 1_000_000}.get(mult_c, 1)
+                asking = float(raw_n) * mult
+                if 1000 < asking < 100_000_000:
+                    sb.table("crm_properties").update(
+                        {"seller_asking_price": asking, "updated_at": _now()}
+                    ).eq("id", property_id).execute()
             except Exception:
                 pass
 
-    elif is_hot and property_id:
-        # Flag as HOT: update status + sms_status + add tag
-        try:
-            prop_r = sb.table("crm_properties").select("tags").eq("id", property_id).single().execute()
-            existing_tags = prop_r.data.get("tags") or [] if prop_r.data else []
-            if "hot_lead" not in existing_tags:
-                existing_tags = list(existing_tags) + ["hot_lead"]
-            sb.table("crm_properties").update({
-                "status": "prospect",
-                "sms_status": "hot",
-                "tags": existing_tags,
-                "updated_at": _now(),
-            }).eq("id", property_id).execute()
-        except Exception:
-            pass
+    elif stage == "closing":
+        has_time = bool(words & _SMS_TIME_WORDS) or bool(words & _SMS_TIME_DIGITS)
+        if has_time:
+            callback_time = message_text.strip()
+            reply_text = f"Perfect! Damien will reach out. Have a great day, {first}!"
+            next_stage = "complete"
+            should_close = True
+        else:
+            reply_text = "What time works best for a quick call? Morning or afternoon?"
+            next_stage = "closing"
 
-        # Auto-create a deal if one doesn't exist for this property yet
+    # ── 7. Send reply ─────────────────────────────────────────────────────────
+    if reply_text and api_key and telnyx_from:
+        ok = await _sms_send(api_key, telnyx_from, from_phone, reply_text)
+        if ok:
+            await _log_comm(
+                property_id=property_id,
+                comm_type="sms_outbound",
+                phone=from_phone,
+                direction="outbound",
+                message_body=reply_text,
+            )
+
+    # ── 8. Update conversation stage ─────────────────────────────────────────
+    try:
+        stage_update: dict = {"sms_conversation_stage": next_stage, "updated_at": _now()}
+        if next_stage != "initial":
+            stage_update["sms_status"] = "hot"
+        if next_stage in ("qualifying", "closing", "complete"):
+            prop_r = sb.table("crm_properties").select("tags,status").eq("id", property_id).single().execute()
+            existing_tags = (prop_r.data or {}).get("tags") or []
+            if "hot_lead" not in existing_tags:
+                stage_update["tags"] = list(existing_tags) + ["hot_lead"]
+            if (prop_r.data or {}).get("status") not in ("prospect", "under_contract", "closed"):
+                stage_update["status"] = "prospect"
+        sb.table("crm_properties").update(stage_update).eq("id", property_id).execute()
+    except Exception as exc:
+        print(f"[sms-bot] Stage update error: {exc}", flush=True)
+
+    # ── 9. On complete: create deal + alert Damien ───────────────────────────
+    if should_close:
         try:
             existing_deal = sb.table("crm_deals").select("id").eq("property_id", property_id).limit(1).execute()
             if not existing_deal.data:
-                owner_name = prop.get("owner_full_name") or prop.get("owner_first_name") or "Unknown"
-                deal_title = f"{owner_name} — {prop.get('apn', '')} — {prop.get('county', '')}"
-                offer_price = prop.get("offer_price") or prop.get("comp_derived_value")
-                address = prop.get("situs_address") or prop.get("property_address") or ""
-                city = prop.get("situs_city") or prop.get("city") or ""
-                state_abbr = prop.get("situs_state") or prop.get("state") or ""
-                address_disp = " ".join(filter(None, [address, city, state_abbr]))
+                deal_title = f"{owner} — {apn} — {county}".strip(" —")
                 offer_low = round(float(offer_price) * 0.90 / 1000) * 1000 if offer_price else None
                 offer_high = round(float(offer_price) * 1.15 / 1000) * 1000 if offer_price else None
                 sb.table("crm_deals").insert({
-                    "title": deal_title.strip(" —"),
+                    "title": deal_title,
                     "property_id": property_id,
                     "stage": "new_lead",
                     "value": float(offer_price) if offer_price else None,
-                    "owner_name": owner_name,
-                    "property_address": address_disp,
+                    "owner_name": owner,
+                    "property_address": address_full,
                     "offer_price": float(offer_price) if offer_price else None,
                     "offer_low": offer_low,
                     "offer_high": offer_high,
                     "source": "SMS",
                     "seller_phone": from_phone,
                     "stage_entered_at": _now(),
-                    "notes": f"Auto-created from HOT SMS reply: {message_text}",
-                    "tags": ["sms", "hot_lead"],
+                    "notes": f"Callback scheduled via SMS bot: {callback_time}",
+                    "tags": ["sms", "hot_lead", "callback_scheduled"],
                     "updated_at": _now(),
                 }).execute()
         except Exception as exc:
-            print(f"[comms] auto-create deal error: {exc}")
+            print(f"[sms-bot] Auto-create deal error: {exc}")
 
-    # --- AI SMS reply (disabled — set SMS_BOT_ENABLED=true to re-enable) ---
-    if not _SMS_BOT_ENABLED:
-        print(f"[sms-bot] DISABLED (SMS_BOT_ENABLED=false) — message logged, no reply sent", flush=True)
-    elif not is_stop:
-        print(f"[sms-bot] Calling Claude AI (model={_CLAUDE_SMS_MODEL})...", flush=True)
         try:
-            await _ai_sms_reply(from_phone, message_text, prop, property_id, received_on=received_on)
-            print(f"[sms-bot] AI reply sent to {from_phone}", flush=True)
-        except Exception as exc:
-            print(f"[sms-bot] AI SMS reply error: {exc}", flush=True)
-    else:
-        print(f"[sms-bot] STOP word detected — no AI reply sent", flush=True)
-
-    owner = prop.get("owner_full_name") or prop.get("owner_first_name") or "Unknown"
-    apn = prop.get("apn", "")
-    county = prop.get("county", "")
-    code = prop.get("campaign_code", "")
-    address = prop.get("situs_address") or prop.get("property_address") or ""
-    city = prop.get("situs_city") or prop.get("city") or ""
-    state = prop.get("situs_state") or prop.get("state") or ""
-    offer_price = prop.get("offer_price")
-    location = ", ".join(filter(None, [city, state]))
-    address_full = " ".join(filter(None, [address, location]))
-
-    if is_hot:
-        # SMS alert to Damien
-        try:
-            api_key = _telnyx_key()
-            from_phone_e164 = _telnyx_phone()
-            if api_key and from_phone_e164:
+            alert_from = prop.get("sms_from_number") or _telnyx_phone()
+            if api_key and alert_from:
                 price_str = f"${int(offer_price):,}" if offer_price else "TBD"
-                sms_body = (
-                    f"🔥 HOT LEAD - {owner} replied to your offer on {address_full or apn}\n"
-                    f"Offer: {price_str} | Their reply: {message_text}\n"
-                    f"Open Seller Inbox: https://land-dominator-frontend-production.up.railway.app/inbox"
+                alert_text = (
+                    f"🔥 CALLBACK SCHEDULED — {owner}\n"
+                    f"Time: {callback_time}\n"
+                    f"Their #: {from_phone}\n"
+                    f"APN: {apn} | Offer: {price_str}\n"
+                    f"https://land-dominator-frontend-production.up.railway.app/inbox"
                 )
-                raw = re.sub(r"\D", "", from_phone_e164)
-                from_e164 = f"+1{raw}" if len(raw) == 10 else (f"+{raw}" if len(raw) == 11 else from_phone_e164)
-                payload: dict = {"from": from_e164, "to": "+12023215846", "text": sms_body}
-                profile_id = os.getenv("TELNYX_MESSAGING_PROFILE_ID", "")
-                if profile_id:
-                    payload["messaging_profile_id"] = profile_id
-                async with httpx.AsyncClient(timeout=15) as client:
-                    await client.post(
-                        "https://api.telnyx.com/v2/messages",
-                        json=payload,
-                        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                    )
+                await _sms_send(api_key, alert_from, _DAMIEN_PHONE, alert_text)
         except Exception as exc:
-            print(f"[comms] HOT alert SMS error: {exc}")
+            print(f"[sms-bot] Damien alert error: {exc}")
 
-    if is_stop:
-        subject = f"🚫 STOP Reply — {owner} — {apn}"
-        status_html = "<p style='color:#DC2626;font-weight:bold'>✗ Opted out — added to suppression list</p>"
-    elif is_hot:
-        subject = f"🔥 HOT Response — {owner} — {apn}"
-        status_html = "<p style='color:#2E7D32;font-weight:bold'>✅ HOT — Status set to Prospect, tagged hot_lead, deal created</p>"
-    else:
-        subject = f"SMS Reply — {owner} — {apn}"
-        status_html = ""
+    # ── 10. Email notification ───────────────────────────────────────────────
+    _send_email_alert(owner, apn, county, code, address_full, offer_price, from_phone, message_text, next_stage)
 
+
+def _send_email_alert(
+    owner: str, apn: str, county: str, code: str, address_full: str,
+    offer_price, from_phone: str, message_text: str, stage: str,
+) -> None:
+    stage_labels = {
+        "qualifying": "🔥 HOT — Asked about price",
+        "closing":    "🔥 HOT — Asked for callback time",
+        "complete":   "✅ CALLBACK SCHEDULED",
+        "initial":    "SMS Reply",
+    }
+    label = stage_labels.get(stage, "SMS Reply")
+    is_hot = stage in ("qualifying", "closing", "complete")
+    subject = f"{label} — {owner} — {apn}"
     price_display = f"${int(offer_price):,}" if offer_price else "—"
+    status_html = (
+        f"<p style='color:#2E7D32;font-weight:bold'>Stage: {stage}</p>"
+        if is_hot else ""
+    )
     html = (
         "<h2>Inbound SMS Reply</h2>"
         f"<ul>"
@@ -2235,15 +2339,24 @@ async def _process_inbound_sms(from_phone: str, message_text: str, received_on: 
         f"<li><strong>County:</strong> {county}</li>"
         f"<li><strong>Offer Price:</strong> {price_display}</li>"
         f"<li><strong>Campaign Code:</strong> {code}</li>"
+        f"<li><strong>Conversation Stage:</strong> {stage}</li>"
         f"</ul>"
         f"<p><strong>Message:</strong> {message_text}</p>"
         + status_html
         + "<p><a href='https://land-dominator-frontend-production.up.railway.app/inbox'>Open Seller Inbox →</a></p>"
     )
-    # Always send to admin; for HOT leads also send to dominionlandgroup@gmail.com
-    await _notify_email(subject, html)
-    if is_hot:
-        await _notify_email(subject, html, to_email="dominionlandgroup@gmail.com")
+    import asyncio as _asyncio
+    loop = None
+    try:
+        loop = _asyncio.get_event_loop()
+    except RuntimeError:
+        pass
+    if loop and loop.is_running():
+        loop.create_task(_notify_email(subject, html))
+        if is_hot:
+            loop.create_task(_notify_email(subject, html, to_email="dominionlandgroup@gmail.com"))
+    else:
+        pass  # best-effort; called from sync context
 
 
 # ── Outbound SMS ─────────────────────────────────────────────────────────────────
@@ -2817,6 +2930,8 @@ CREATE TABLE IF NOT EXISTS crm_communications (
 );
 
 ALTER TABLE crm_communications ADD COLUMN IF NOT EXISTS caller_offer_code TEXT;
+ALTER TABLE crm_communications ADD COLUMN IF NOT EXISTS message_hash TEXT;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS sms_conversation_stage TEXT DEFAULT 'initial';
 
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS seller_asking_price NUMERIC;
 
