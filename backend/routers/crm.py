@@ -602,6 +602,7 @@ async def db_migrate() -> dict:
         "sold_comps_table_sql": SOLD_COMPS_MIGRATION_SQL,
         "skip_trace_sql": SKIP_TRACE_MIGRATION_SQL,
         "deals_pipeline_sql": DEALS_PIPELINE_MIGRATION_SQL,
+        "reset_opted_out_sql": "UPDATE crm_properties SET opted_out = false WHERE skip_traced_at IS NOT NULL AND opted_out = true;",
         "errors_tried": errors_tried,
     }
 
@@ -3243,17 +3244,31 @@ def _run_lp_skip_trace_job(job_id: str, token: str, properties: list[dict]) -> N
                 headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
                 timeout=20.0,
             )
-            print(f"[lp-skip-trace] ← status={r.status_code} body={r.text[:800]}", flush=True)
-            data = r.json() if r.status_code < 300 else {}
+            print(f"[lp-skip-trace] ← status={r.status_code}", flush=True)
+            print(f"[lp-skip-trace] raw body: {r.text[:1200]}", flush=True)
             if r.status_code >= 300:
-                print(f"[lp-skip-trace] ERROR response: {r.text[:300]}", flush=True)
+                print(f"[lp-skip-trace] ERROR {r.status_code}: {r.text[:400]}", flush=True)
+                data = {}
             else:
-                top_keys = list(data.keys()) if isinstance(data, dict) else f"list[{len(data)}]"
-                print(f"[lp-skip-trace] response keys: {top_keys}", flush=True)
+                try:
+                    data = r.json()
+                except Exception as je:
+                    print(f"[lp-skip-trace] JSON parse error: {je} — body: {r.text[:400]}", flush=True)
+                    data = {}
+                if isinstance(data, dict):
+                    print(f"[lp-skip-trace] response keys: {list(data.keys())}", flush=True)
+                    # Log nested structures to find phone fields
+                    for k, v in data.items():
+                        if isinstance(v, (list, dict)):
+                            print(f"[lp-skip-trace]   {k}: {str(v)[:300]}", flush=True)
+                else:
+                    print(f"[lp-skip-trace] response is {type(data).__name__}: {str(data)[:400]}", flush=True)
             phones = _parse_lp_skip_trace_phones(data)
             emails = _parse_lp_skip_trace_emails(data)
             print(f"[lp-skip-trace] parsed phones={phones} emails={emails}", flush=True)
             update: dict = {"skip_traced_at": _now()}
+            # SAFETY: skip trace must never set opted_out — that is set only by STOP replies
+            update.pop("opted_out", None)
             if phones:
                 update["phone_1"] = phones[0]["number"]
                 update["phone_1_type"] = phones[0]["type"]
@@ -3519,8 +3534,9 @@ async def get_campaign_funnel_stats(campaign_id: str) -> dict:
         rows = []
     total = len(rows)
     skip_traced = sum(1 for p in rows if p.get("skip_traced_at"))
-    mobile = sum(1 for p in rows if p.get("phone_1_type") == "mobile" and not p.get("opted_out"))
-    landline = sum(1 for p in rows if p.get("phone_1_type") in ("landline", "voip") and not p.get("opted_out"))
+    # Count phones found regardless of opted_out — opted_out affects SMS sending, not phone discovery
+    mobile = sum(1 for p in rows if p.get("phone_1_type") == "mobile")
+    landline = sum(1 for p in rows if p.get("phone_1_type") in ("landline", "voip"))
     no_number = sum(1 for p in rows if not p.get("phone_1_type") and p.get("skip_traced_at"))
     texts_sent = sum(1 for p in rows if p.get("sms_status") in ("day1_sent", "day3_sent", "hot"))
     hot = sum(1 for p in rows if p.get("sms_status") == "hot")
