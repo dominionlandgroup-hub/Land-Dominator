@@ -3595,7 +3595,7 @@ async def get_campaign_funnel_stats(campaign_id: str) -> dict:
     try:
         r = sb.table("crm_properties").select(
             "id,phone_1_type,phone_1_dnc,opted_out,sms_status,skip_traced_at"
-        ).eq("campaign_id", campaign_id).execute()
+        ).eq("campaign_id", campaign_id).limit(10000).execute()
         rows = r.data or []
     except Exception:
         rows = []
@@ -3627,7 +3627,7 @@ async def get_campaign_sms_stats(campaign_id: str) -> dict:
         r = sb.table("crm_properties").select(
             "id,phone_1,phone_1_type,phone_1_dnc,opted_out,sms_status,"
             "sms_day1_sent_at,sms_day3_sent_at,skip_traced_at"
-        ).eq("campaign_id", campaign_id).execute()
+        ).eq("campaign_id", campaign_id).limit(10000).execute()
         rows = r.data or []
     except Exception:
         rows = []
@@ -3638,6 +3638,7 @@ async def get_campaign_sms_stats(campaign_id: str) -> dict:
         p.get("phone_1") and p.get("phone_1_type") == "mobile"
         and not p.get("phone_1_dnc") and not p.get("opted_out")
         and not p.get("sms_day1_sent_at"))
+    print(f"[sms-stats] campaign={campaign_id} total_rows={len(rows)} mobile_ready_to_text={ready_to_text}", flush=True)
     sent_today = sum(1 for p in rows if
         p.get("sms_day1_sent_at") and p["sms_day1_sent_at"][:10] == today)
     sent_total = sum(1 for p in rows if p.get("sms_day1_sent_at"))
