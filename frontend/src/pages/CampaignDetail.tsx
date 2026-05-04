@@ -128,6 +128,11 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
   const [smsError, setSmsError] = useState<string | null>(null)
   const smsPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  // Single-record text confirm
+  const [singleTextProp, setSingleTextProp] = useState<CRMProperty | null>(null)
+  const [singleTextSending, setSingleTextSending] = useState(false)
+  const [singleTextResult, setSingleTextResult] = useState<string | null>(null)
+
   // Funnel stats
   const [funnel, setFunnel] = useState<CampaignFunnelStats | null>(null)
 
@@ -506,7 +511,7 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
   }
 
   // ── SMS Campaign ─────────────────────────────────────────────────────
-  async function handleStartSms(day = 1) {
+  async function handleStartSms(day = 1, ids?: string[]) {
     if (smsStatus === 'running') return
     setSmsStatus('running')
     setSmsDone(0)
@@ -516,7 +521,8 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
     setSmsDay(day)
     setSmsError(null)
     try {
-      const { job_id, total } = await startSmsCampaign(campaign.id, day)
+      const sendIds = ids ?? (selectedIds.size > 0 && !allPagesSelected ? Array.from(selectedIds) : undefined)
+      const { job_id, total } = await startSmsCampaign(campaign.id, day, sendIds)
       setSmsJobId(job_id)
       setSmsTotal(total)
       if (smsPollRef.current) clearInterval(smsPollRef.current)
@@ -540,6 +546,22 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
       setSmsError(err?.response?.data?.detail ?? 'Failed to start SMS campaign')
       setSmsStatus('error')
     }
+  }
+
+  // ── Single-record text send ────────────────────────────────────────────
+  async function handleSingleText(prop: CRMProperty) {
+    if (!prop.phone_1) return
+    setSingleTextSending(true)
+    setSingleTextResult(null)
+    try {
+      await startSmsCampaign(campaign.id, 1, [prop.id])
+      setSingleTextResult(`Text sent to ${prop.owner_first_name || prop.owner_full_name || 'owner'} at ${prop.phone_1}`)
+      setTimeout(() => { setSingleTextProp(null); setSingleTextResult(null) }, 2500)
+      loadFunnel()
+    } catch (e: unknown) {
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setSingleTextResult(detail ?? 'Failed to send text')
+    } finally { setSingleTextSending(false) }
   }
 
   // ── Funnel Stats ──────────────────────────────────────────────────────
@@ -1001,6 +1023,15 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
             </button>
             <button
               className="px-3 py-1.5 text-xs font-semibold rounded-lg"
+              style={{ background: '#E8F5E9', color: '#1B5E20', border: '1px solid #A5D6A7' }}
+              onClick={() => handleStartSms(1, Array.from(selectedIds))}
+              disabled={smsStatus === 'running'}
+              title="Send Day 1 SMS to selected records with mobile phones"
+            >
+              📱 Text Selected ({selectedIds.size})
+            </button>
+            <button
+              className="px-3 py-1.5 text-xs font-semibold rounded-lg"
               style={{ background: '#F0EBF8', color: '#5C2977', border: '1px solid #D4B8E8' }}
               onClick={handleExport}
             >
@@ -1069,6 +1100,7 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
                     { label: 'CODE', col: 'campaign_code' as SortBy },
                     { label: 'OFFER PRICE', col: 'offer_price' as SortBy },
                     { label: 'STATUS', col: 'status' as SortBy },
+                    { label: '', col: null },
                   ] as { label: string; col: SortBy | null }[]).map(({ label, col }) => (
                     <th
                       key={label}
@@ -1095,7 +1127,7 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
               <tbody>
                 {properties.length === 0 ? (
                   <tr>
-                    <td colSpan={9} style={{ padding: '40px 20px', textAlign: 'center', color: '#9B8AAE', fontSize: '13px' }}>
+                    <td colSpan={10} style={{ padding: '40px 20px', textAlign: 'center', color: '#9B8AAE', fontSize: '13px' }}>
                       No properties found.
                     </td>
                   </tr>
@@ -1150,6 +1182,21 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
                         >
                           {STATUS_LABELS[p.status ?? 'lead'] ?? p.status}
                         </span>
+                      </td>
+                      <td style={{ padding: '10px 8px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                        {p.phone_1 && p.phone_1_type === 'mobile' && !p.opted_out && (
+                          <button
+                            onClick={() => { setSingleTextProp(p); setSingleTextResult(null) }}
+                            title={`Text ${p.owner_first_name || 'owner'} at ${p.phone_1}`}
+                            style={{
+                              padding: '3px 8px', borderRadius: 6, border: '1px solid #A5D6A7',
+                              background: '#E8F5E9', color: '#1B5E20', fontSize: 11, fontWeight: 600,
+                              cursor: 'pointer', whiteSpace: 'nowrap',
+                            }}
+                          >
+                            📱
+                          </button>
+                        )}
                       </td>
                     </tr>
                   )
@@ -1286,6 +1333,47 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
                 disabled={deleting}
               >
                 {deleting ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Single-record text confirm modal */}
+      {singleTextProp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(26,10,46,0.55)' }}
+          onClick={() => { if (!singleTextSending) setSingleTextProp(null) }}>
+          <div className="bg-white rounded-2xl p-6 shadow-xl" style={{ maxWidth: '420px', width: '100%' }}
+            onClick={e => e.stopPropagation()}>
+            <h2 className="section-heading mb-3">Send Text Message</h2>
+            <div style={{ background: '#F7F3FC', borderRadius: 8, padding: '12px 14px', marginBottom: 16 }}>
+              <p style={{ fontSize: 13, color: '#1A0A2E', margin: 0 }}>
+                <strong>{singleTextProp.owner_first_name || singleTextProp.owner_full_name || 'Owner'}</strong>
+              </p>
+              <p style={{ fontSize: 12, color: '#6B5B8A', margin: '3px 0 0' }}>{singleTextProp.phone_1}</p>
+              {singleTextProp.property_address && (
+                <p style={{ fontSize: 11, color: '#9B8AAE', margin: '3px 0 0' }}>{singleTextProp.property_address}</p>
+              )}
+            </div>
+            <p style={{ fontSize: 12, color: '#6B5B8A', marginBottom: 20 }}>
+              Sends the Day 1 introduction message via Telnyx.
+            </p>
+            {singleTextResult && (
+              <p style={{ fontSize: 12, fontWeight: 600, color: singleTextResult.startsWith('Text sent') ? '#059669' : '#DC2626', marginBottom: 12 }}>
+                {singleTextResult}
+              </p>
+            )}
+            <div className="flex gap-3">
+              <button className="btn-secondary flex-1" onClick={() => setSingleTextProp(null)} disabled={singleTextSending}>
+                Cancel
+              </button>
+              <button
+                className="flex-1 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
+                style={{ background: singleTextSending ? '#9B8AAE' : '#1B5E20' }}
+                onClick={() => handleSingleText(singleTextProp)}
+                disabled={singleTextSending}
+              >
+                {singleTextSending ? 'Sending…' : 'Send Text'}
               </button>
             </div>
           </div>

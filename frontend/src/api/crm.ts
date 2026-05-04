@@ -682,8 +682,11 @@ export async function getLpSkipTraceStatus(campaignId: string, jobId: string): P
 
 // ── SMS Campaign ──────────────────────────────────────────────────────
 
-export async function startSmsCampaign(campaignId: string, day = 1): Promise<{ job_id: string; total: number; day: number }> {
-  const { data } = await api.post(`/crm/campaigns/${campaignId}/send-sms`, { day })
+export async function startSmsCampaign(campaignId: string, day = 1, propertyIds?: string[]): Promise<{ job_id: string; total: number; day: number }> {
+  const { data } = await api.post(`/crm/campaigns/${campaignId}/send-sms`, {
+    day,
+    ...(propertyIds && propertyIds.length > 0 ? { property_ids: propertyIds } : {}),
+  })
   return data
 }
 

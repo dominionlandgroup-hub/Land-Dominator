@@ -3412,8 +3412,15 @@ async def start_sms_campaign(
     if not c_r.data:
         raise HTTPException(status_code=404, detail="Campaign not found")
     day = int(body.get("day", 1))
+    property_ids: list = body.get("property_ids") or []
     import datetime as _dt
-    if day == 1:
+    if property_ids:
+        # Manual individual / selected send — fetch exactly those records, bypass sms_status filter
+        eligible = sb.table("crm_properties").select(
+            "id,owner_first_name,property_address,property_city,state,phone_1,phone_1_type,offer_price,opted_out,sms_status"
+        ).in_("id", property_ids).execute()
+        props = [p for p in (eligible.data or []) if not p.get("opted_out") and p.get("phone_1") and p.get("phone_1_type") == "mobile"]
+    elif day == 1:
         eligible = sb.table("crm_properties").select(
             "id,owner_first_name,property_address,property_city,state,phone_1,phone_1_type,offer_price,opted_out,sms_status"
         ).eq("campaign_id", campaign_id).eq("phone_1_type", "mobile").execute()

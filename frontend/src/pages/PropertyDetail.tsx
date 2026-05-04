@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import type { CRMProperty, PropertyStatus, Communication } from '../types/crm'
 import type { PropertyDocument } from '../api/crm'
-import { pullLpData, sendSms, initiateOutboundCall, listPropertyCommunications, listPropertyDocuments, uploadPropertyDocument, deleteDocument, getDocumentDownloadUrl, listPropertyNotes, addPropertyNote } from '../api/crm'
+import { pullLpData, sendSms, initiateOutboundCall, listPropertyCommunications, listPropertyDocuments, uploadPropertyDocument, deleteDocument, getDocumentDownloadUrl, listPropertyNotes, addPropertyNote, startSmsCampaign } from '../api/crm'
 import type { PropertyNote } from '../api/crm'
 import CommDetailModal, { ScoreBadge, TypeBadge, fmtTalk } from '../components/CommDetailModal'
 
@@ -235,6 +235,8 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
   const [smsSending, setSmsSending] = useState(false)
   const [smsError, setSmsError] = useState<string | null>(null)
   const [smsSuccess, setSmsSuccess] = useState<string | null>(null)
+  const [quickTextSending, setQuickTextSending] = useState(false)
+  const [quickTextResult, setQuickTextResult] = useState<string | null>(null)
   const [showCallModal, setShowCallModal] = useState(false)
   const [calling, setCalling] = useState(false)
   const [callMsg, setCallMsg] = useState<string | null>(null)
@@ -345,6 +347,19 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
       const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       setSmsError(detail ?? 'Failed to send SMS. Check TELNYX_API_KEY and TELNYX_PHONE_NUMBER.')
     } finally { setSmsSending(false) }
+  }
+
+  async function handleQuickText() {
+    if (!property?.id || !property?.campaign_id) return
+    setQuickTextSending(true); setQuickTextResult(null)
+    try {
+      const res = await startSmsCampaign(property.campaign_id, 1, [property.id])
+      setQuickTextResult(res.total > 0 ? '✓ Day 1 text queued' : 'No eligible mobile number found')
+      setTimeout(() => setQuickTextResult(null), 3000)
+    } catch (e: unknown) {
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setQuickTextResult(detail ?? 'Failed to send')
+    } finally { setQuickTextSending(false) }
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -542,6 +557,17 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
                 </svg>
                 Send Text
               </button>
+              {property?.campaign_id && (
+                <button
+                  className="btn-secondary text-sm flex items-center gap-1.5"
+                  onClick={handleQuickText}
+                  disabled={quickTextSending}
+                  title="Send Day 1 campaign text to this person"
+                  style={quickTextResult?.startsWith('✓') ? { color: '#059669', borderColor: '#059669' } : {}}
+                >
+                  📱 {quickTextSending ? 'Sending…' : quickTextResult || 'Text This Person'}
+                </button>
+              )}
             </>
           )}
           {!isNew && property?.property_id && (
