@@ -2307,19 +2307,8 @@ async def _process_inbound_sms(from_phone: str, message_text: str, received_on: 
             reply_text = "What time works best for a quick call? Morning or afternoon?"
             next_stage = "closing"
 
-    # ── 7. Send reply ─────────────────────────────────────────────────────────
-    if reply_text and api_key and telnyx_from:
-        ok = await _sms_send(api_key, telnyx_from, from_phone, reply_text)
-        if ok:
-            await _log_comm(
-                property_id=property_id,
-                comm_type="sms_outbound",
-                phone=from_phone,
-                direction="outbound",
-                message_body=reply_text,
-            )
-
-    # ── 8. Update conversation stage ─────────────────────────────────────────
+    # ── 7. Update conversation stage BEFORE sending reply ────────────────────
+    # Commit stage first so webhook retries see the new stage and don't re-send.
     try:
         stage_update: dict = {"sms_conversation_stage": next_stage, "updated_at": _now()}
         if next_stage != "initial":
@@ -2332,8 +2321,21 @@ async def _process_inbound_sms(from_phone: str, message_text: str, received_on: 
             if (prop_r.data or {}).get("status") not in ("prospect", "under_contract", "closed"):
                 stage_update["status"] = "prospect"
         sb.table("crm_properties").update(stage_update).eq("id", property_id).execute()
+        print(f"[sms-bot] Stage {stage} → {next_stage} committed for {property_id}", flush=True)
     except Exception as exc:
         print(f"[sms-bot] Stage update error: {exc}", flush=True)
+
+    # ── 8. Send reply ─────────────────────────────────────────────────────────
+    if reply_text and api_key and telnyx_from:
+        ok = await _sms_send(api_key, telnyx_from, from_phone, reply_text)
+        if ok:
+            await _log_comm(
+                property_id=property_id,
+                comm_type="sms_outbound",
+                phone=from_phone,
+                direction="outbound",
+                message_body=reply_text,
+            )
 
     # ── 9. On complete: create deal + alert Damien ───────────────────────────
     if should_close:

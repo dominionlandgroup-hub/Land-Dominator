@@ -3529,8 +3529,17 @@ def _run_sms_campaign_job(job_id: str, campaign_id: str, props: list[dict], day:
             continue
         from_e164 = from_numbers[record_idx % num_count]
         first = prop.get("owner_first_name") or "there"
-        addr = (prop.get("property_address") or prop.get("property_city")
-                or prop.get("county") or "your property")
+        _raw_addr = prop.get("property_address") or prop.get("property_city") or ""
+        if not _raw_addr:
+            _county = (prop.get("county") or "").strip()
+            _zip = (prop.get("property_zip") or "").strip()
+            if _county:
+                _raw_addr = f"your property in {_county.title()}"
+            elif _zip:
+                _raw_addr = f"your property near {_zip}"
+            else:
+                _raw_addr = "your property in the area"
+        addr = _raw_addr
         offer = float(prop.get("offer_price") or 0)
         offer_low = int(offer * 0.95) if offer > 0 else 0
         offer_high = int(offer * 1.10) if offer > 0 else 0
@@ -3545,23 +3554,26 @@ def _run_sms_campaign_job(job_id: str, campaign_id: str, props: list[dict], day:
             _sms_campaign_jobs[job_id].update({"done": sent + skipped, "sent": sent, "skipped": skipped})
             continue
         text = text.replace("[Property Address]", addr)
+        text = text.replace("your property", addr)
         text = text.replace("[Your Phone Number]", from_e164)
         text = text.replace("[TELNYX_PHONE_NUMBER]", from_e164)
-        # Dedup guard: re-check DB right before sending to prevent double-send from parallel jobs
+        # Atomic pre-mark: conditionally set sms_day1_sent_at only if still NULL.
+        # If another job already set it, the update returns no rows → skip.
+        now_ts = _now()
         if day == 1:
-            _chk = sb.table("crm_properties").select("sms_day1_sent_at").eq("id", prop["id"]).single().execute()
-            _sent_at = (_chk.data or {}).get("sms_day1_sent_at")
-            if _sent_at:
-                import datetime as _dt2
-                try:
-                    _age = (_dt2.datetime.now(_dt2.timezone.utc) - _dt2.datetime.fromisoformat(_sent_at.replace("Z", "+00:00"))).total_seconds()
-                    if _age < 60:
-                        print(f"[sms-campaign] SKIP {prop['id']} — already sent {_age:.0f}s ago", flush=True)
-                        skipped += 1
-                        _sms_campaign_jobs[job_id].update({"done": sent + skipped, "sent": sent, "skipped": skipped})
-                        continue
-                except Exception:
-                    pass
+            pre = (
+                sb.table("crm_properties")
+                .update({"sms_day1_sent_at": now_ts, "sms_status": "day1_sent",
+                         "sms_from_number": from_e164, "updated_at": now_ts})
+                .eq("id", prop["id"])
+                .is_("sms_day1_sent_at", "null")
+                .execute()
+            )
+            if not (pre.data):
+                print(f"[sms-campaign] SKIP {prop['id']} — already sent by another job", flush=True)
+                skipped += 1
+                _sms_campaign_jobs[job_id].update({"done": sent + skipped, "sent": sent, "skipped": skipped})
+                continue
         try:
             r = _httpx.post(
                 "https://api.telnyx.com/v2/messages",
@@ -3571,15 +3583,15 @@ def _run_sms_campaign_job(job_id: str, campaign_id: str, props: list[dict], day:
             )
             print(f"[sms-campaign] {to_number} → HTTP {r.status_code}", flush=True)
             if r.status_code < 300:
-                now_ts = _now()
                 update: dict = {"updated_at": now_ts, "sms_from_number": from_e164}
                 if day == 1:
-                    update["sms_status"] = "day1_sent"
-                    update["sms_day1_sent_at"] = now_ts
+                    # Already pre-marked above; nothing more needed for day 1
+                    pass
                 else:
                     update["sms_status"] = "day3_sent"
                     update["sms_day3_sent_at"] = now_ts
-                sb.table("crm_properties").update(update).eq("id", prop["id"]).execute()
+                if day != 1:
+                    sb.table("crm_properties").update(update).eq("id", prop["id"]).execute()
                 try:
                     sb.table("crm_communications").insert({
                         "property_id": prop["id"],
@@ -3597,10 +3609,26 @@ def _run_sms_campaign_job(job_id: str, campaign_id: str, props: list[dict], day:
                 err_detail = r.text[:120]
                 print(f"[sms-campaign] FAILED {to_number}: {err_detail}", flush=True)
                 errors.append(f"{to_number}: HTTP {r.status_code} {err_detail}")
+                # Revert the pre-mark so the record can be retried next run
+                if day == 1:
+                    try:
+                        sb.table("crm_properties").update({
+                            "sms_day1_sent_at": None, "sms_status": "pending", "updated_at": _now()
+                        }).eq("id", prop["id"]).execute()
+                    except Exception:
+                        pass
                 skipped += 1
         except Exception as exc:
             print(f"[sms-campaign] EXCEPTION {phone}: {exc}", flush=True)
             errors.append(f"{phone}: {str(exc)[:80]}")
+            # Revert pre-mark on exception too
+            if day == 1:
+                try:
+                    sb.table("crm_properties").update({
+                        "sms_day1_sent_at": None, "sms_status": "pending", "updated_at": _now()
+                    }).eq("id", prop["id"]).execute()
+                except Exception:
+                    pass
             skipped += 1
         done_so_far = sent + skipped
         elapsed = _t.time() - job_start
