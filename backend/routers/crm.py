@@ -2307,6 +2307,10 @@ async def update_property(property_id: str, body: PropertyUpdate) -> dict:
     try:
         sb = get_supabase()
         data = body.model_dump(exclude_unset=True)
+        print(f"=== PROPERTY UPDATE ===", flush=True)
+        print(f"Property ID: {property_id}", flush=True)
+        print(f"Update data keys: {sorted(data.keys())}", flush=True)
+        print(f"phone_1: {data.get('phone_1')!r}  phone_1_type: {data.get('phone_1_type')!r}  phone_1_dnc: {data.get('phone_1_dnc')!r}", flush=True)
         data["updated_at"] = _now()
         res = sb.table("crm_properties").update(data).eq("id", property_id).execute()
         if not res.data:

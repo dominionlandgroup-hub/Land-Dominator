@@ -149,7 +149,7 @@ function SkipTracedPhoneRow({
             type="tel"
             className="input-base"
             value={local}
-            onChange={e => { setLocal(e.target.value); setInvalid(false) }}
+            onChange={e => { setLocal(e.target.value); onPhone(e.target.value); setInvalid(false) }}
             onBlur={handleBlur}
             placeholder="(xxx) xxx-xxxx"
             style={invalid ? { borderColor: '#DC2626' } : undefined}
@@ -442,6 +442,7 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
     setSaving(true)
     setSavedOk(false)
     setError(null)
+    console.log('[PropertyDetail] Saving:', { phone_1: form.phone_1, phone_1_type: form.phone_1_type, phone_1_dnc: form.phone_1_dnc, phone_2: form.phone_2 })
     try {
       await onSave(form)
       if (isNew) {
