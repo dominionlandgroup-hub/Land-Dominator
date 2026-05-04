@@ -3474,12 +3474,13 @@ def _run_sms_campaign_job(job_id: str, campaign_id: str, props: list[dict], day:
     errors: list[str] = []
     daily_cap = _SMS_DAILY_LIMIT
 
-    # Load suppression list
+    # Load suppression list (always exclude internal numbers)
+    _INTERNAL_PHONES = {"+12023215846"}
     try:
         sup_r = sb.table("crm_sms_opt_out").select("phone_number").execute()
-        suppressed = {r["phone_number"] for r in (sup_r.data or [])}
+        suppressed = {r["phone_number"] for r in (sup_r.data or [])} | _INTERNAL_PHONES
     except Exception:
-        suppressed = set()
+        suppressed = set(_INTERNAL_PHONES)
 
     print(f"[sms-campaign] {job_id} day={day} starting — {len(props)} eligible records", flush=True)
 
@@ -3646,9 +3647,16 @@ async def get_sms_preview(campaign_id: str, day: int = Query(1)) -> dict:
     no_phone = 0
     already_sent = 0
 
+    _INTERNAL = {"+12023215846"}
     for p in rows:
         if p.get("opted_out"):
             opted_out_count += 1
+            continue
+        raw = p.get("phone_1") or ""
+        norm = re.sub(r"\D", "", raw)
+        e164 = f"+1{norm}" if len(norm) == 10 else (f"+{norm}" if len(norm) == 11 else raw)
+        if e164 in _INTERNAL:
+            dnc += 1
             continue
         if not p.get("phone_1") or p.get("phone_1_type") != "mobile":
             no_phone += 1
