@@ -1736,6 +1736,7 @@ _SMS_STOP_WORDS = {"STOP", "UNSUBSCRIBE", "REMOVE", "CANCEL", "END", "QUIT"}
 _CLAUDE_SMS_MODEL = os.getenv("CLAUDE_SMS_MODEL", "claude-sonnet-4-6")
 _DAMIEN_PHONE = "+12023215846"
 _SMS_MAX_EXCHANGES = 5  # max back-and-forth before handoff
+_SMS_BOT_ENABLED = os.getenv("SMS_BOT_ENABLED", "false").lower() == "true"
 
 # Dedup guard: phone -> epoch float of last reply attempt; skip if < 30s ago
 _sms_reply_inflight: dict = {}
@@ -2162,8 +2163,10 @@ async def _process_inbound_sms(from_phone: str, message_text: str, received_on: 
         except Exception as exc:
             print(f"[comms] auto-create deal error: {exc}")
 
-    # --- AI SMS reply (Myra responds to all non-STOP messages) ---
-    if not is_stop:
+    # --- AI SMS reply (disabled — set SMS_BOT_ENABLED=true to re-enable) ---
+    if not _SMS_BOT_ENABLED:
+        print(f"[sms-bot] DISABLED (SMS_BOT_ENABLED=false) — message logged, no reply sent", flush=True)
+    elif not is_stop:
         print(f"[sms-bot] Calling Claude AI (model={_CLAUDE_SMS_MODEL})...", flush=True)
         try:
             await _ai_sms_reply(from_phone, message_text, prop, property_id, received_on=received_on)
