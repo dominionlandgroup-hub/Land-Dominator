@@ -507,11 +507,22 @@ def _form_get(form, *keys: str) -> str:
 async def _lookup_phone(phone: str) -> Optional[dict]:
     try:
         sb = get_supabase()
+        norm = _normalize_phone(phone)
         digits = re.sub(r"\D", "", phone)[-10:]
-        r = sb.table("crm_properties").select("*").eq("owner_phone", _normalize_phone(phone)).limit(1).execute()
+        # Try owner_phone exact match
+        r = sb.table("crm_properties").select("*").eq("owner_phone", norm).limit(1).execute()
         if r.data:
             return r.data[0]
+        # Try phone_1 (skip-traced mobile) exact match
+        r = sb.table("crm_properties").select("*").eq("phone_1", norm).limit(1).execute()
+        if r.data:
+            return r.data[0]
+        # Partial fallback: owner_phone
         r = sb.table("crm_properties").select("*").ilike("owner_phone", f"%{digits}").limit(1).execute()
+        if r.data:
+            return r.data[0]
+        # Partial fallback: phone_1
+        r = sb.table("crm_properties").select("*").ilike("phone_1", f"%{digits}").limit(1).execute()
         if r.data:
             return r.data[0]
     except Exception:
@@ -1669,6 +1680,321 @@ async def inbound_sms(request: Request, background_tasks: BackgroundTasks) -> di
 _SMS_HOT_WORDS = {"YES", "INTERESTED", "HOW", "WHAT", "TELL", "MAYBE", "SURE", "INFO", "DETAILS", "YEAH", "YEP", "OK", "OKAY", "ACCEPT", "WANT", "READY", "SELL"}
 _SMS_STOP_WORDS = {"STOP", "UNSUBSCRIBE", "REMOVE", "CANCEL", "END", "QUIT"}
 
+# ── AI SMS Bot (Claude-powered) ──────────────────────────────────────────────
+
+_CLAUDE_SMS_MODEL = os.getenv("CLAUDE_SMS_MODEL", "claude-sonnet-4-20250514")
+_DAMIEN_PHONE = "+12023215846"
+_SMS_MAX_EXCHANGES = 5  # max back-and-forth before handoff
+
+
+def _to_e164(phone: str) -> str:
+    d = re.sub(r"\D", "", phone)
+    if len(d) == 10:
+        return f"+1{d}"
+    if len(d) == 11 and d.startswith("1"):
+        return f"+{d}"
+    return phone
+
+
+async def _send_sms_reply(api_key: str, from_phone: str, to_phone: str, text: str) -> bool:
+    """Send a single SMS via Telnyx. Returns True on success."""
+    try:
+        payload: dict = {"from": _to_e164(from_phone), "to": _to_e164(to_phone), "text": text}
+        profile_id = os.getenv("TELNYX_MESSAGING_PROFILE_ID", "")
+        if profile_id:
+            payload["messaging_profile_id"] = profile_id
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.post(
+                "https://api.telnyx.com/v2/messages",
+                json=payload,
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            )
+            print(f"[ai-sms] send to {to_phone} → HTTP {r.status_code}", flush=True)
+            return r.status_code < 300
+    except Exception as exc:
+        print(f"[ai-sms] send error: {exc}", flush=True)
+        return False
+
+
+async def _ai_sms_reply(
+    from_phone: str,
+    message_text: str,
+    prop: dict,
+    property_id: Optional[str],
+) -> None:
+    """Generate a Claude AI reply and send it back via SMS. Rate-limited to _SMS_MAX_EXCHANGES."""
+    import anthropic as _anthropic
+
+    api_key = _telnyx_key()
+    telnyx_from = _telnyx_phone()
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
+
+    if not api_key or not telnyx_from:
+        print("[ai-sms] missing TELNYX config — skipping AI reply", flush=True)
+        return
+    if not anthropic_key:
+        print("[ai-sms] missing ANTHROPIC_API_KEY — skipping AI reply", flush=True)
+        return
+
+    sb = get_supabase()
+    norm_phone = _normalize_phone(from_phone)
+
+    # --- Get conversation history for this phone ---
+    history_rows: list[dict] = []
+    try:
+        h_r = (
+            sb.table("crm_communications")
+            .select("direction,message_body,created_at")
+            .eq("phone_number", norm_phone)
+            .in_("type", ["sms_inbound", "sms_outbound"])
+            .order("created_at", desc=False)
+            .limit(30)
+            .execute()
+        )
+        history_rows = h_r.data or []
+    except Exception as exc:
+        print(f"[ai-sms] history fetch error: {exc}", flush=True)
+
+    # --- Rate limit: count AI outbound replies already sent ---
+    outbound_count = sum(1 for r in history_rows if r.get("direction") == "outbound")
+    if outbound_count >= _SMS_MAX_EXCHANGES:
+        handoff = "I'll have Damien reach out to you directly. What's the best time to reach you?"
+        await _send_sms_reply(api_key, telnyx_from, from_phone, handoff)
+        await _log_comm(
+            property_id=property_id, comm_type="sms_outbound", phone=from_phone,
+            direction="outbound", message_body=handoff,
+        )
+        print(f"[ai-sms] rate limit ({outbound_count} exchanges) for {from_phone} — sent handoff", flush=True)
+        return
+
+    # --- Format conversation history ---
+    history_lines = []
+    for r in history_rows:
+        body = (r.get("message_body") or "").strip()
+        if not body:
+            continue
+        role = "Seller" if r.get("direction") == "inbound" else "Myra"
+        history_lines.append(f"{role}: {body}")
+    conversation_history = "\n".join(history_lines) if history_lines else "(no prior messages)"
+
+    # --- Build property context ---
+    address = prop.get("property_address") or prop.get("situs_address") or ""
+    city = prop.get("property_city") or prop.get("situs_city") or prop.get("city") or ""
+    state_abbr = prop.get("state") or prop.get("situs_state") or ""
+    county = prop.get("county") or ""
+    acreage = prop.get("acreage")
+    offer_price = float(prop.get("offer_price") or 0)
+    offer_low = int(offer_price * 0.90 / 1000) * 1000 if offer_price else 0
+    offer_high = int(offer_price * 1.10 / 1000) * 1000 if offer_price else 0
+    full_address = " ".join(filter(None, [address, city, state_abbr])) or "their property"
+
+    prop_block = (
+        f"Their property info:\n"
+        f"- Address: {full_address}\n"
+        + (f"- County: {county}, {state_abbr}\n" if county else "")
+        + (f"- Acreage: {acreage} acres\n" if acreage else "")
+        + (f"- Our price range: ${offer_low:,} to ${offer_high:,}\n" if offer_low and offer_high else "")
+    )
+
+    system_prompt = (
+        f"You are Myra, a friendly acquisition assistant for Dominion Land Group.\n"
+        f"You are having a text conversation with a land owner.\n\n"
+        f"{prop_block}\n"
+        f"Your goal:\n"
+        f"1. Qualify their interest in selling\n"
+        f"2. Get their asking price if they have one\n"
+        f"3. Schedule a callback with Damien\n"
+        f"4. Disqualify politely if not interested\n\n"
+        f"Rules:\n"
+        f"- Keep responses SHORT — this is SMS, max 2 sentences\n"
+        f"- Never give an exact offer price — always give a range\n"
+        f"- Never say 'cash offer' or use spam trigger words\n"
+        f"- If they want to talk now, say Damien can call them\n"
+        f"- If they say STOP, immediately say you will remove them and stop replying\n"
+        f"- Be warm and natural, not robotic\n"
+        f"- If they ask something you can't answer, say Damien will call them\n\n"
+        f"Conversation history:\n{conversation_history}\n\n"
+        f"Latest message from seller: {message_text}\n\n"
+        f"Respond naturally in 1-2 sentences max."
+    )
+
+    # --- Call Claude API (sync client in thread pool) ---
+    ai_response = ""
+    try:
+        def _call_claude() -> str:
+            client = _anthropic.Anthropic(api_key=anthropic_key)
+            msg = client.messages.create(
+                model=_CLAUDE_SMS_MODEL,
+                max_tokens=150,
+                messages=[{"role": "user", "content": system_prompt}],
+            )
+            return next((b.text for b in msg.content if hasattr(b, "text")), "").strip()
+
+        ai_response = await asyncio.to_thread(_call_claude)
+        print(f"[ai-sms] Claude → {from_phone}: {ai_response[:120]!r}", flush=True)
+    except Exception as exc:
+        print(f"[ai-sms] Claude API error: {exc}", flush=True)
+        return
+
+    if not ai_response:
+        print(f"[ai-sms] empty Claude response — not sending", flush=True)
+        return
+
+    # --- Send reply via Telnyx ---
+    sent = await _send_sms_reply(api_key, telnyx_from, from_phone, ai_response)
+    if not sent:
+        return
+
+    # --- Log outbound AI reply ---
+    await _log_comm(
+        property_id=property_id, comm_type="sms_outbound", phone=from_phone,
+        direction="outbound", message_body=ai_response,
+    )
+
+    # --- Detect outcomes from seller's message ---
+    await _detect_sms_ai_outcomes(from_phone, message_text, ai_response, prop, property_id, sb)
+
+
+async def _detect_sms_ai_outcomes(
+    from_phone: str,
+    seller_msg: str,
+    ai_response: str,
+    prop: dict,
+    property_id: Optional[str],
+    sb,
+) -> None:
+    """Detect HOT, asking price, callback time from seller message and update DB."""
+    if not property_id:
+        return
+
+    msg_lower = seller_msg.lower()
+
+    # --- Detect asking price (e.g. "$50,000", "50k", "want 45000") ---
+    asking_price: Optional[float] = None
+    price_m = re.search(r"\$[\d,]+(?:k)?|\b(\d{2,3})[,.]?000\b|\b(\d+)k\b", seller_msg, re.IGNORECASE)
+    if price_m:
+        raw = price_m.group(0).replace("$", "").replace(",", "").lower()
+        try:
+            if raw.endswith("k"):
+                asking_price = float(raw[:-1]) * 1000
+            else:
+                asking_price = float(raw)
+            if asking_price < 100:
+                asking_price = None  # likely not a real price
+        except Exception:
+            asking_price = None
+
+    # --- Detect callback time ---
+    callback_words = [
+        "call me", "call back", "reach me", "tomorrow", "monday", "tuesday",
+        "wednesday", "thursday", "friday", "morning", "afternoon", "evening",
+        "anytime", "best time", "9am", "10am", "11am", "noon", "1pm", "2pm",
+        "3pm", "4pm", "5pm", "this week", "next week",
+    ]
+    has_callback = any(w in msg_lower for w in callback_words)
+
+    # --- Detect confirmed interest ---
+    interest_words = [
+        "interested", "yes", "sure", "okay", "yeah", "tell me", "how much",
+        "what's your offer", "what is your offer", "sell", "consider", "maybe",
+        "possibly", "sounds good", "let's talk", "lets talk", "go ahead",
+    ]
+    has_interest = any(w in msg_lower for w in interest_words)
+
+    is_hot = has_callback or has_interest
+
+    updates: dict = {"updated_at": _now()}
+
+    if asking_price:
+        try:
+            updates["seller_asking_price"] = asking_price
+        except Exception:
+            pass
+        print(f"[ai-sms] asking price ${asking_price:,.0f} detected for {from_phone}", flush=True)
+
+    if is_hot:
+        updates["status"] = "prospect"
+        updates["sms_status"] = "hot"
+        print(f"[ai-sms] HOT detected for {from_phone} — interest={has_interest} callback={has_callback}", flush=True)
+        try:
+            prop_r = sb.table("crm_properties").select("tags").eq("id", property_id).single().execute()
+            existing_tags = (prop_r.data or {}).get("tags") or []
+            if "hot_lead" not in existing_tags:
+                updates["tags"] = list(existing_tags) + ["hot_lead"]
+        except Exception:
+            pass
+
+    if len(updates) > 1:
+        try:
+            sb.table("crm_properties").update(updates).eq("id", property_id).execute()
+        except Exception as exc:
+            print(f"[ai-sms] property update error: {exc}", flush=True)
+
+    if is_hot:
+        # Auto-create deal if none exists
+        try:
+            existing = sb.table("crm_deals").select("id").eq("property_id", property_id).limit(1).execute()
+            if not existing.data:
+                owner = prop.get("owner_full_name") or prop.get("owner_first_name") or "Unknown"
+                apn = prop.get("apn", "")
+                county = prop.get("county", "")
+                op = prop.get("offer_price")
+                deal_val = asking_price or (float(op) if op else None)
+                offer_l = round(float(op) * 0.90 / 1000) * 1000 if op else None
+                offer_h = round(float(op) * 1.10 / 1000) * 1000 if op else None
+                addr = prop.get("property_address") or prop.get("situs_address") or ""
+                sb.table("crm_deals").insert({
+                    "title": f"{owner} — {apn} — {county}".strip(" —"),
+                    "property_id": property_id,
+                    "stage": "contacted",
+                    "value": deal_val,
+                    "owner_name": owner,
+                    "property_address": addr,
+                    "offer_price": float(op) if op else None,
+                    "offer_low": offer_l,
+                    "offer_high": offer_h,
+                    "source": "AI SMS",
+                    "seller_phone": from_phone,
+                    "stage_entered_at": _now(),
+                    "notes": f"AI SMS qualified. Seller said: {seller_msg}"
+                    + (f"\nAsking price: ${asking_price:,.0f}" if asking_price else ""),
+                    "tags": ["sms", "hot_lead", "ai_qualified"],
+                    "updated_at": _now(),
+                }).execute()
+                print(f"[ai-sms] deal created for {from_phone}", flush=True)
+        except Exception as exc:
+            print(f"[ai-sms] deal creation error: {exc}", flush=True)
+
+        # HOT alert to Damien
+        try:
+            api_key = _telnyx_key()
+            telnyx_from = _telnyx_phone()
+            if api_key and telnyx_from:
+                owner = prop.get("owner_full_name") or prop.get("owner_first_name") or "Unknown"
+                apn = prop.get("apn", "")
+                addr = prop.get("property_address") or prop.get("situs_address") or ""
+                op = prop.get("offer_price")
+                price_str = (
+                    f"${int(asking_price):,} (their ask)" if asking_price
+                    else (f"${int(op):,} (our offer)" if op else "TBD")
+                )
+                alert = "\n".join(filter(None, [
+                    f"🔥 HOT SMS LEAD — {owner}",
+                    f"Property: {addr or apn}",
+                    f"Their message: {seller_msg}",
+                    f"Price: {price_str}",
+                    f"https://land-dominator-frontend-production.up.railway.app/inbox",
+                ]))
+                async with httpx.AsyncClient(timeout=15) as client:
+                    await client.post(
+                        "https://api.telnyx.com/v2/messages",
+                        json={"from": _to_e164(telnyx_from), "to": _DAMIEN_PHONE, "text": alert},
+                        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                    )
+                print(f"[ai-sms] HOT alert sent to Damien for {from_phone}", flush=True)
+        except Exception as exc:
+            print(f"[ai-sms] HOT alert send error: {exc}", flush=True)
+
 
 async def _process_inbound_sms(from_phone: str, message_text: str) -> None:
     prop = await _lookup_phone(from_phone)
@@ -1758,6 +2084,13 @@ async def _process_inbound_sms(from_phone: str, message_text: str) -> None:
                 }).execute()
         except Exception as exc:
             print(f"[comms] auto-create deal error: {exc}")
+
+    # --- AI SMS reply (Myra responds to all non-STOP messages) ---
+    if not is_stop:
+        try:
+            await _ai_sms_reply(from_phone, message_text, prop, property_id)
+        except Exception as exc:
+            print(f"[comms] AI SMS reply error: {exc}", flush=True)
 
     owner = prop.get("owner_full_name") or prop.get("owner_first_name") or "Unknown"
     apn = prop.get("apn", "")
