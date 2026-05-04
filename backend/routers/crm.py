@@ -3737,8 +3737,15 @@ def _normalize_apn(apn: str) -> str:
 def _nh_ls(h: str) -> str:
     return h.strip().lower().replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "_")
 
+_LS_NULL = {"", "nan", "none", "null", "n/a", "#n/a"}
+
+def _clean_ls(v) -> str:
+    """Stringify, strip, return empty string for null-like values."""
+    s = str(v).strip() if v is not None else ""
+    return "" if s.lower() in _LS_NULL else s
+
 def _parse_bool_ls(v) -> bool:
-    return str(v or "").strip().lower() in ("true", "1", "yes", "y", "x")
+    return _clean_ls(v).lower() in ("true", "1", "yes", "y", "x", "dnc")
 
 def _norm_phone_type_ls(t: str) -> str:
     t = (t or "").strip().lower()
@@ -3749,8 +3756,8 @@ def _norm_phone_type_ls(t: str) -> str:
 
 def _to_e164_ls(phone: str) -> str:
     digits = re.sub(r"\D", "", phone or "")
-    if len(digits) == 10:                          return f"+1{digits}"
-    if len(digits) == 11 and digits[0] == "1":    return f"+{digits}"
+    if len(digits) == 10:                        return f"+1{digits}"
+    if len(digits) == 11 and digits[0] == "1":  return f"+{digits}"
     return ""
 
 def _strip_float_zero(v: str) -> str:
@@ -3761,75 +3768,124 @@ def _strip_float_zero(v: str) -> str:
     except Exception: pass
     return s
 
-def _parse_ls_row(row: dict) -> dict | None:
-    """Parse one Lead Sherpa CSV row. Returns None to skip (deceased/no data).
-    Uses exact Lead Sherpa column names after _nh_ls() normalization."""
-    nr = {_nh_ls(k): (v or "").strip() for k, v in row.items()}
+# Lead Sherpa exports phone columns as either "Owner Phone1" or "Owner Phone 1"
+# which normalise to "owner_phone1" or "owner_phone_1".  Try both.
+def _ls_get(nr: dict, *keys: str) -> str:
+    for k in keys:
+        v = _clean_ls(nr.get(k, ""))
+        if v:
+            return v
+    return ""
 
-    if _parse_bool_ls(nr.get("owner_is_deceased")):
+_LS_HEADERS_LOGGED: set = set()
+
+def _parse_ls_row(row: dict) -> dict | None:
+    """Parse one Lead Sherpa CSV row into a crm_properties-compatible dict.
+    Returns None to skip deceased records.
+    Handles both 'Owner Phone1' and 'Owner Phone 1' column name variants."""
+    nr = {_nh_ls(k): _clean_ls(v) for k, v in row.items()}
+
+    # Log column names once per unique set (for debugging)
+    cols_key = frozenset(nr.keys())
+    if cols_key not in _LS_HEADERS_LOGGED and len(_LS_HEADERS_LOGGED) < 3:
+        _LS_HEADERS_LOGGED.add(cols_key)
+        phone_cols = [k for k in nr if "phone" in k]
+        print(f"[lead-sherpa] CSV columns (phone-related): {sorted(phone_cols)}", flush=True)
+        print(f"[lead-sherpa] All columns: {sorted(nr.keys())}", flush=True)
+
+    # Deceased check — try both column variants
+    if _parse_bool_ls(_ls_get(nr, "owner_is_deceased", "is_deceased", "deceased")):
         return None
 
-    is_litigator = _parse_bool_ls(nr.get("litigator"))
+    is_litigator = _parse_bool_ls(_ls_get(nr, "litigator", "is_litigator"))
 
-    apn = (nr.get("property_apn") or nr.get("apn") or nr.get("parcel_number") or
-           nr.get("parcel_id") or "")
-    full  = nr.get("owner_full_name", "")
-    first = nr.get("owner_first_name", "")
-    last  = nr.get("owner_last_name", "")
+    # APN
+    apn = _ls_get(nr, "property_apn", "apn", "parcel_number", "parcel_id",
+                  "property_parcel_number", "assessors_parcel_number")
+
+    # Owner name — try both "Owner Full Name" and split first/last
+    full  = _ls_get(nr, "owner_full_name", "full_name", "owner_name", "name")
+    first = _ls_get(nr, "owner_first_name", "first_name")
+    last  = _ls_get(nr, "owner_last_name", "last_name")
     if not full and (first or last):
         full = f"{first} {last}".strip()
 
-    p1_raw = nr.get("owner_phone1", "")
-    p1_type = _norm_phone_type_ls(nr.get("owner_phone1_type", "")) if p1_raw else None
-    p1_dnc  = _parse_bool_ls(nr.get("owner_phone1_dnc_registered")) or is_litigator
-    p2_raw  = nr.get("owner_phone2", "")
-    p2_type = _norm_phone_type_ls(nr.get("owner_phone2_type", "")) if p2_raw else None
-    p2_dnc  = _parse_bool_ls(nr.get("owner_phone2_dnc_registered"))
-    p3_raw  = nr.get("owner_phone3", "")
-    p3_type = _norm_phone_type_ls(nr.get("owner_phone3_type", "")) if p3_raw else None
-    p3_dnc  = _parse_bool_ls(nr.get("owner_phone3_dnc_registered"))
+    # Phone 1 — "Owner Phone1" → owner_phone1, "Owner Phone 1" → owner_phone_1
+    p1_raw = _ls_get(nr, "owner_phone1", "owner_phone_1", "phone_1", "phone1",
+                     "primary_phone", "phone")
+    p1_type_raw = _ls_get(nr, "owner_phone1_type", "owner_phone_1_type",
+                          "phone_1_type", "phone1_type", "primary_phone_type")
+    p1_dnc_raw  = _ls_get(nr, "owner_phone1_dnc_registered", "owner_phone_1_dnc_registered",
+                          "phone_1_dnc", "phone1_dnc", "dnc_1", "dnc")
+
+    # Phone 2
+    p2_raw = _ls_get(nr, "owner_phone2", "owner_phone_2", "phone_2", "phone2")
+    p2_type_raw = _ls_get(nr, "owner_phone2_type", "owner_phone_2_type",
+                          "phone_2_type", "phone2_type")
+    p2_dnc_raw  = _ls_get(nr, "owner_phone2_dnc_registered", "owner_phone_2_dnc_registered",
+                          "phone_2_dnc", "phone2_dnc", "dnc_2")
+
+    # Phone 3
+    p3_raw = _ls_get(nr, "owner_phone3", "owner_phone_3", "phone_3", "phone3")
 
     phone1 = _to_e164_ls(p1_raw)
     phone2 = _to_e164_ls(p2_raw)
     phone3 = _to_e164_ls(p3_raw)
-    email  = nr.get("owner_email1", "")
 
-    prop_addr  = nr.get("property_address", "")
-    prop_city  = nr.get("property_city", "")
-    prop_state = nr.get("property_state", "")
-    prop_zip   = _strip_float_zero(nr.get("property_zipcode", ""))
-    county     = nr.get("property_county", "").title()
-    fips       = _strip_float_zero(nr.get("property_fips", ""))
-    mail_addr  = nr.get("property_mailing_address", "")
-    mail_city  = nr.get("property_mailing_city", "")
-    mail_state = nr.get("property_mailing_state", "")
-    mail_zip   = _strip_float_zero(nr.get("property_mailing_zipcode", ""))
+    p1_type = _norm_phone_type_ls(p1_type_raw) if phone1 else None
+    p2_type = _norm_phone_type_ls(p2_type_raw) if phone2 else None
+    p1_dnc  = _parse_bool_ls(p1_dnc_raw) or is_litigator
+    p2_dnc  = _parse_bool_ls(p2_dnc_raw)
+
+    email = _ls_get(nr, "owner_email1", "owner_email_1", "email_1", "email",
+                    "owner_email", "email_address")
+
+    # Property location
+    prop_addr  = _ls_get(nr, "property_address", "situs_address", "address")
+    prop_city  = _ls_get(nr, "property_city", "situs_city", "city")
+    prop_state = _ls_get(nr, "property_state", "situs_state", "state")
+    prop_zip   = _strip_float_zero(_ls_get(nr, "property_zipcode", "property_zip",
+                                           "situs_zip", "zip", "zipcode"))
+    county     = _ls_get(nr, "property_county", "county").title()
+    fips       = _strip_float_zero(_ls_get(nr, "property_fips", "fips"))
+
+    # Mailing address
+    mail_addr  = _ls_get(nr, "property_mailing_address", "mailing_address",
+                         "owner_mailing_address", "mail_address")
+    mail_city  = _ls_get(nr, "property_mailing_city", "mailing_city", "owner_mailing_city")
+    mail_state = _ls_get(nr, "property_mailing_state", "mailing_state", "owner_mailing_state")
+    mail_zip   = _strip_float_zero(_ls_get(nr, "property_mailing_zipcode", "mailing_zip",
+                                           "mailing_zipcode", "owner_mailing_zip"))
 
     rec: dict = {}
-    if apn:        rec["apn"]                    = apn
-    if full:       rec["owner_full_name"]         = full
-    if first:      rec["owner_first_name"]        = first
-    if last:       rec["owner_last_name"]         = last
-    if mail_addr:  rec["owner_mailing_address"]   = mail_addr
-    if mail_city:  rec["owner_mailing_city"]      = mail_city
-    if mail_state: rec["owner_mailing_state"]     = mail_state
-    if mail_zip:   rec["owner_mailing_zip"]       = mail_zip
-    if prop_addr:  rec["property_address"]        = prop_addr
-    if prop_city:  rec["property_city"]           = prop_city
-    if prop_state: rec["state"]                   = prop_state
-    if prop_zip:   rec["property_zip"]            = prop_zip
-    if county:     rec["county"]                  = county
-    if fips:       rec["fips"]                    = fips
+    if apn:        rec["apn"]                  = apn
+    if full:       rec["owner_full_name"]       = full
+    if first:      rec["owner_first_name"]      = first
+    if last:       rec["owner_last_name"]       = last
+    if mail_addr:  rec["owner_mailing_address"] = mail_addr
+    if mail_city:  rec["owner_mailing_city"]    = mail_city
+    if mail_state: rec["owner_mailing_state"]   = mail_state
+    if mail_zip:   rec["owner_mailing_zip"]     = mail_zip
+    if prop_addr:  rec["property_address"]      = prop_addr
+    if prop_city:  rec["property_city"]         = prop_city
+    if prop_state: rec["state"]                 = prop_state
+    if prop_zip:   rec["property_zip"]          = prop_zip
+    if county:     rec["county"]                = county
+    if fips:       rec["fips"]                  = fips
     if phone1:
-        rec["phone_1"] = phone1; rec["phone_1_type"] = p1_type; rec["phone_1_dnc"] = p1_dnc
+        rec["phone_1"]      = phone1
+        rec["phone_1_type"] = p1_type
+        rec["phone_1_dnc"]  = p1_dnc
     if phone2:
-        rec["phone_2"] = phone2; rec["phone_2_type"] = p2_type; rec["phone_2_dnc"] = p2_dnc
+        rec["phone_2"]      = phone2
+        rec["phone_2_type"] = p2_type
+        rec["phone_2_dnc"]  = p2_dnc
     if phone3:
-        rec["phone_3"] = phone3  # phone_3_type / phone_3_dnc columns don't exist in DB
+        rec["phone_3"] = phone3
     if email:
         rec["email_1"] = email
     if is_litigator:
-        rec["_is_litigator"] = True  # sentinel for caller, removed before DB insert
+        rec["_is_litigator"] = True
     return rec
 
 
@@ -3999,6 +4055,14 @@ async def create_campaign_from_lead_sherpa(body: dict = Body(...)) -> dict:
 
         # Strip any keys not in the allowed column set to prevent DB errors
         rec = {k: v for k, v in rec.items() if k in _ALLOWED_PROPS}
+
+        if imported + len(props_batch) < 5:
+            print(
+                f"[lead-sherpa] row sample: phone_1={rec.get('phone_1')!r} "
+                f"type={rec.get('phone_1_type')!r} dnc={rec.get('phone_1_dnc')!r} "
+                f"phone_2={rec.get('phone_2')!r} phone_3={rec.get('phone_3')!r}",
+                flush=True,
+            )
 
         p1 = rec.get("phone_1")
         p1_type = rec.get("phone_1_type")
