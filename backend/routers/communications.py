@@ -951,7 +951,7 @@ async def _claude_call_response(speech: str, state: dict) -> Optional[str]:
         def _call():
             client = _anthropic.Anthropic(api_key=api_key)
             msg = client.messages.create(
-                model="claude-sonnet-4-20250514",
+                model="claude-sonnet-4-6",
                 max_tokens=100,
                 system=system,
                 messages=messages,
@@ -960,10 +960,26 @@ async def _claude_call_response(speech: str, state: dict) -> Optional[str]:
 
         result = await asyncio.to_thread(_call)
         print(f"[voice-ai] Claude response: {result[:80]!r}", flush=True)
-        return result
+        return result or None
     except Exception as exc:
         print(f"[voice-ai] Claude error: {exc}", flush=True)
         return None
+
+
+# Scripted fallbacks when Claude is unavailable — keeps conversation going
+_CLAUDE_FALLBACKS = [
+    "I want to make sure I help you properly. Can you tell me your name and I will have someone from our team call you back?",
+    "Let me make sure I connect you with the right person. What is the best number to reach you?",
+    "I want to get you the right information. Could you share your name so we can follow up?",
+]
+_fallback_idx: int = 0
+
+
+def _get_fallback_response() -> str:
+    global _fallback_idx
+    resp = _CLAUDE_FALLBACKS[_fallback_idx % len(_CLAUDE_FALLBACKS)]
+    _fallback_idx += 1
+    return resp
 
 
 def _detect_call_hot_signals(speech: str, state: dict, call_sid: str) -> None:
@@ -1062,18 +1078,35 @@ async def inbound_call(request: Request) -> Response:
     return _texml_gather("ai_response", greeting_xml, call_sid, with_recording=True)
 
 
+# Compiled once at module level — NOT inside the request handler
+_STOP_RE = re.compile(r"\b(stop|remove me|take me off|unsubscribe|do not call|don'?t call|don'?t contact)\b", re.I)
+_WRONG_RE = re.compile(r"\b(wrong number|wrong person|don'?t own|not my|no property|who is this)\b", re.I)
+_TRANSFER_RE = re.compile(
+    r"\b(transfer me|connect me to someone|put me through|speak with a real person|talk to a real person|"
+    r"real person please|get me a human|speak to a human|talk to a human|i want a human|i need a human|"
+    r"talk to damien|speak to damien|get damien|get me damien|"
+    r"talk to your manager|speak to your manager|get me your manager)\b",
+    re.I,
+)
+
+
 @router.post("/api/calls/gather/{step}")
 async def call_gather(step: str, request: Request, background_tasks: BackgroundTasks) -> Response:
-    """Telnyx gather callback — Myra AI voice agent loop.
-    All conversation handled by Claude. Single step: ai_response."""
+    """Telnyx gather callback — Myra AI voice agent loop."""
+    # Parse form (TeXML posts form data)
+    call_sid = ""
+    speech = ""
+    timed_out = False
     try:
         form = await request.form()
         call_sid = _form_get(form, "CallSid", "call_control_id")
         speech = _form_get(form, "SpeechResult", "speech_result")
-        timed_out = form.get("timedout") == "1"
-    except Exception:
-        call_sid = speech = ""
-        timed_out = False
+        # timedout may arrive as query param OR form field
+        timed_out = (form.get("timedout") == "1") or (request.query_params.get("timedout") == "1")
+    except Exception as exc:
+        print(f"[voice-ai] gather parse error: {exc}", flush=True)
+
+    print(f"[voice-ai] gather step={step} call_sid={call_sid!r} speech={speech[:60]!r} timed_out={timed_out}", flush=True)
 
     state = _call_states.get(call_sid, {})
     low = (speech or "").lower().strip()
@@ -1083,86 +1116,92 @@ async def call_gather(step: str, request: Request, background_tasks: BackgroundT
         if call_sid in _call_states:
             _call_states[call_sid].update(kw)
 
-    # ── Global: STOP / wrong number / live transfer ───────────────────────
-    _STOP_RE = re.compile(r"\b(stop|remove me|take me off|unsubscribe|do not call|don'?t call|don'?t contact)\b")
-    _WRONG_RE = re.compile(r"\b(wrong number|wrong person|don'?t own|not my|no property|who is this)\b")
-    _TRANSFER_RE = re.compile(r"\b(transfer me|connect me to|put me through|speak with a (real )?person|talk to a (real )?person|real person please|get me a human|speak to a human|talk to a human|I want a human|I need a human|get me (damien|your manager|a manager|the manager))\b")
+    # ── Explicit STOP / opt-out ───────────────────────────────────────────
+    if speech and _STOP_RE.search(low):
+        caller = state.get("caller", "")
+        prop_id = state.get("property_id")
+        if prop_id:
+            try:
+                get_supabase().table("crm_properties").update(
+                    {"opted_out": True, "sms_status": "opted_out", "updated_at": _now()}
+                ).eq("id", prop_id).execute()
+            except Exception:
+                pass
+        if caller:
+            try:
+                get_supabase().table("crm_sms_opt_out").upsert(
+                    {"phone_number": caller, "opted_out_at": _now(), "source": "inbound_call"},
+                    on_conflict="phone_number",
+                ).execute()
+            except Exception:
+                pass
+        _upd(interest_score="cold")
+        background_tasks.add_task(_finalize_call, call_sid)
+        return _texml_hangup(await _get_response_audio(_PHRASES["opt_out"]))
 
-    if not timed_out and speech:
-        if _STOP_RE.search(low):
-            caller = state.get("caller", "")
-            prop_id = state.get("property_id")
-            if prop_id:
-                try:
-                    get_supabase().table("crm_properties").update(
-                        {"opted_out": True, "sms_status": "opted_out", "updated_at": _now()}
-                    ).eq("id", prop_id).execute()
-                except Exception:
-                    pass
-            if caller:
-                try:
-                    get_supabase().table("crm_sms_opt_out").upsert(
-                        {"phone_number": caller, "opted_out_at": _now(), "source": "inbound_call"},
-                        on_conflict="phone_number",
-                    ).execute()
-                except Exception:
-                    pass
-            _upd(interest_score="cold")
-            background_tasks.add_task(_finalize_call, call_sid)
-            return _texml_hangup(await _get_response_audio(_PHRASES["opt_out"]))
+    # ── Wrong number ──────────────────────────────────────────────────────
+    if speech and _WRONG_RE.search(low):
+        background_tasks.add_task(_finalize_call, call_sid)
+        return _texml_hangup(await _get_response_audio(_PHRASES["wrong_number"]))
 
-        if _WRONG_RE.search(low):
-            background_tasks.add_task(_finalize_call, call_sid)
-            return _texml_hangup(await _get_response_audio(_PHRASES["wrong_number"]))
+    # ── Explicit live transfer request ONLY ──────────────────────────────
+    if speech and _TRANSFER_RE.search(low):
+        print(f"[voice-ai] Explicit transfer requested: {speech[:60]!r}", flush=True)
+        return await _do_live_transfer(call_sid, state, background_tasks)
 
-        if _TRANSFER_RE.search(low):
-            return await _do_live_transfer(call_sid, state, background_tasks)
-
-    # ── No speech / silence ───────────────────────────────────────────────
-    if not speech or timed_out:
+    # ── No speech / silence — ask again, never transfer ──────────────────
+    if not speech:
         silence = state.get("silence_retries", 0) + 1
         _upd(silence_retries=silence)
-        if silence >= 3:
-            # Too many silences — graceful goodbye
+        print(f"[voice-ai] Silence #{silence} for {call_sid}", flush=True)
+        if silence >= 4:
             background_tasks.add_task(_finalize_call, call_sid)
-            return _texml_hangup(await _get_response_audio("Thank you for calling. Someone will reach out to you shortly."))
-        sorry = "I am sorry, I did not catch that. Could you say that again?"
-        return _texml_gather("ai_response", await _get_response_audio(sorry), call_sid)
+            return _texml_hangup(await _get_response_audio(
+                "Thank you for calling Dominion Land Group. We will follow up with you soon. Goodbye."
+            ))
+        if silence == 1:
+            prompt = "I am sorry, I did not catch that. How can I help you today?"
+        else:
+            prompt = "Are you still there? How can I help you today?"
+        return _texml_gather("ai_response", _say(prompt), call_sid)
 
     _upd(silence_retries=0)
 
-    # ── Rate limit — max 10 exchanges ────────────────────────────────────
+    # ── Max exchanges — ask for callback time, then end ───────────────────
     exchanges = state.get("exchange_count", 0)
-    if exchanges >= _VOICE_AI_MAX_EXCHANGES:
-        handoff = "I will have Damien call you back. Thank you for your time!"
-        background_tasks.add_task(_finalize_call, call_sid)
-        return _texml_hangup(await _get_response_audio(handoff))
+    if exchanges >= 8:
+        handoff = "I want to make sure Damien follows up with you personally. What is the best time to reach you?"
+        if exchanges >= 9:
+            background_tasks.add_task(_finalize_call, call_sid)
+            return _texml_hangup(await _get_response_audio(
+                "Perfect. Damien will be in touch. Have a great day."
+            ))
+        _upd(exchange_count=exchanges + 1)
+        return _texml_gather("ai_response", await _get_response_audio(handoff), call_sid)
 
     # ── Detect HOT interest ───────────────────────────────────────────────
     _detect_call_hot_signals(speech, state, call_sid)
 
-    # ── Update AI transcript (user turn) ────────────────────────────────
+    # ── Update transcripts ────────────────────────────────────────────────
     ai_transcript = state.setdefault("ai_transcript", [])
     ai_transcript.append({"role": "user", "content": speech})
-
-    # Also update legacy transcript for _finalize_call scoring
-    state.setdefault("transcript", []).append({
-        "step": "ai_response", "agent": "", "speech": speech, "timed_out": False,
-    })
+    state.setdefault("transcript", []).append(
+        {"step": "ai_response", "agent": "", "speech": speech, "timed_out": False}
+    )
 
     # ── Call Claude AI ────────────────────────────────────────────────────
     ai_text = await _claude_call_response(speech, state)
 
     if not ai_text:
-        # Claude failed — connect to Damien with apology
-        print(f"[voice-ai] Claude failed — transferring {call_sid} to Damien", flush=True)
-        return await _do_live_transfer(call_sid, state, background_tasks)
+        # Claude unavailable — use scripted fallback, NEVER auto-transfer
+        ai_text = _get_fallback_response()
+        print(f"[voice-ai] Claude unavailable — using fallback: {ai_text[:60]!r}", flush=True)
 
-    # ── Update AI transcript (assistant turn) ───────────────────────────
+    # ── Update transcript with assistant turn ────────────────────────────
     ai_transcript.append({"role": "assistant", "content": ai_text})
     _upd(exchange_count=exchanges + 1, ai_transcript=ai_transcript)
 
-    # ── Generate Cartesia audio and return ───────────────────────────────
+    # ── Generate audio and loop ───────────────────────────────────────────
     response_xml = await _get_response_audio(ai_text)
     return _texml_gather("ai_response", response_xml, call_sid)
 
