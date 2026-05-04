@@ -110,6 +110,7 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated, on
   const [smsCapped, setSmsCapped] = useState(false)
   const [smsDay, setSmsDay] = useState(1)
   const [smsError, setSmsError] = useState<string | null>(null)
+  const [smsEta, setSmsEta] = useState(0)
   const smsPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Single-record text confirm
@@ -525,6 +526,7 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated, on
           setSmsTotal(s.total)
           setSmsSent(s.sent)
           setSmsCapped(!!s.capped)
+          setSmsEta(s.eta_seconds ?? 0)
           if (s.status === 'done' || s.status === 'error') {
             setSmsStatus(s.status as 'done' | 'error')
             if (s.status === 'error') setSmsError('SMS send failed')
@@ -714,7 +716,8 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated, on
           {/* SMS status */}
           {smsStatus === 'running' && (
             <span className="text-xs" style={{ color: '#9CA3AF' }}>
-              💬 Texting Day {smsDay}… {smsDone.toLocaleString()} of {smsTotal.toLocaleString()}
+              💬 Sending… {smsDone.toLocaleString()} of {smsTotal.toLocaleString()}
+              {smsEta > 0 && ` · ~${smsEta >= 60 ? `${Math.ceil(smsEta / 60)} min` : `${smsEta}s`} remaining`}
             </span>
           )}
           {smsStatus === 'done' && (
@@ -768,7 +771,7 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated, on
             disabled={smsStatus === 'running'}
             title="Send Day 1 SMS to all mobile numbers"
           >
-            💬 {smsStatus === 'running' ? `Texting… ${smsDone.toLocaleString()}/${smsTotal.toLocaleString()}` : 'Start Texting'}
+            💬 {smsStatus === 'running' ? `Sending… ${smsDone.toLocaleString()}/${smsTotal.toLocaleString()}${smsEta > 0 ? ` · ~${Math.ceil(smsEta / 60)}m` : ''}` : 'Start Texting'}
           </button>
           {funnel && funnel.skip_traced > 0 && (
             <button
@@ -936,7 +939,7 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated, on
                     onClick={() => openSmsConfirm(1)}
                     disabled={smsRunning}
                   >
-                    {smsRunning ? `Sending… ${smsDone.toLocaleString()}/${smsTotal.toLocaleString()}` : '💬 Send Next Batch'}
+                    {smsRunning ? `Sending… ${smsDone.toLocaleString()}/${smsTotal.toLocaleString()}${smsEta > 0 ? ` · ~${Math.ceil(smsEta / 60)}m left` : ''}` : '💬 Send Next Batch'}
                   </button>
                   {(smsStats?.sent_total ?? 0) > 0 && (
                     <button

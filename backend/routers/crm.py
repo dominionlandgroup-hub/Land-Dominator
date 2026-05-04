@@ -3475,6 +3475,7 @@ async def get_sms_campaign_status(campaign_id: str, job_id: str) -> dict:
 
 def _run_sms_campaign_job(job_id: str, campaign_id: str, props: list[dict], day: int, telnyx_key: str, telnyx_phones: list[str]) -> None:
     import time as _t
+    import random as _random
     import httpx as _httpx
 
     def format_e164(phone: str) -> str | None:
@@ -3508,7 +3509,8 @@ def _run_sms_campaign_job(job_id: str, campaign_id: str, props: list[dict], day:
     except Exception:
         suppressed = set()
 
-    print(f"[sms-campaign] {job_id} day={day} starting — {len(props)} eligible records", flush=True)
+    job_start = _t.time()
+    print(f"[sms-campaign] {job_id} day={day} starting — {len(props)} eligible records (drip: 6-10 s/msg)", flush=True)
 
     for record_idx, prop in enumerate(props):
         if sent >= daily_cap:
@@ -3582,8 +3584,19 @@ def _run_sms_campaign_job(job_id: str, campaign_id: str, props: list[dict], day:
             print(f"[sms-campaign] EXCEPTION {phone}: {exc}", flush=True)
             errors.append(f"{phone}: {str(exc)[:80]}")
             skipped += 1
-        _sms_campaign_jobs[job_id].update({"done": sent + skipped, "sent": sent, "skipped": skipped, "errors": errors[:5]})
-        _t.sleep(0.05)  # ~20 msg/sec max
+        done_so_far = sent + skipped
+        elapsed = _t.time() - job_start
+        remaining = len(props) - done_so_far
+        # ETA: avg 8 s per record for records not yet processed
+        eta_seconds = int(remaining * 8)
+        _sms_campaign_jobs[job_id].update({
+            "done": done_so_far, "sent": sent, "skipped": skipped,
+            "errors": errors[:5], "eta_seconds": eta_seconds,
+        })
+        # Drip delay: 6-10 s between each send — looks human to carriers
+        delay = _random.uniform(6, 10)
+        print(f"[sms-campaign] Sent {sent} of {len(props)} — waiting {delay:.1f}s", flush=True)
+        _t.sleep(delay)
 
     # Move Day5+ no-response to mail_queue
     if day >= 3:
@@ -3599,7 +3612,7 @@ def _run_sms_campaign_job(job_id: str, campaign_id: str, props: list[dict], day:
     _sms_campaign_jobs[job_id] = {
         "status": "done", "done": sent + skipped, "total": len(props),
         "sent": sent, "skipped": skipped, "errors": errors[:5], "day": day,
-        "capped": sent >= daily_cap,
+        "capped": sent >= daily_cap, "eta_seconds": 0,
     }
     print(f"[sms-campaign] {job_id} day={day} sent={sent} skipped={skipped}", flush=True)
 
