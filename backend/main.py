@@ -128,6 +128,29 @@ async def apply_db_migrations() -> None:
     except Exception as exc:
         print(f"[migration] DB migration skipped: {exc}", flush=True)
 
+    # SMS columns migration
+    try:
+        from supabase import create_client
+        admin = create_client(url, service_key)
+        sms_sql = (
+            "ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS sms_day1_sent_at TIMESTAMPTZ; "
+            "ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS sms_day3_sent_at TIMESTAMPTZ; "
+            "ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS phone_1 TEXT; "
+            "ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS phone_1_type TEXT; "
+            "ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS phone_1_dnc BOOLEAN DEFAULT FALSE; "
+            "ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS phone_2_type TEXT; "
+            "ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS phone_2_dnc BOOLEAN DEFAULT FALSE; "
+            "ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS email_1 TEXT; "
+            "ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS skip_traced_at TIMESTAMPTZ; "
+            "ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS opted_out BOOLEAN DEFAULT FALSE; "
+            "ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS sms_status TEXT DEFAULT 'pending'; "
+            "ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS seller_asking_price NUMERIC;"
+        )
+        admin.rpc("exec_sql", {"sql": sms_sql}).execute()
+        print("[migration] SMS columns applied", flush=True)
+    except Exception as exc:
+        print(f"[migration] SMS columns migration skipped: {exc}", flush=True)
+
 
 @app.on_event("startup")
 async def check_env_vars() -> None:
@@ -137,8 +160,6 @@ async def check_env_vars() -> None:
         "TELNYX_PHONE_NUMBER",
         "TELNYX_CALLBACK_NUMBER",
         "TELNYX_CONNECTION_ID",
-        "ELEVENLABS_API_KEY",
-        "ELEVENLABS_VOICE_ID",
         "SENDGRID_API_KEY",
         "SUPABASE_URL",
         "SUPABASE_KEY",
@@ -151,6 +172,16 @@ async def check_env_vars() -> None:
             print(f"  ✓ {var} is set")
         else:
             print(f"  ✗ {var} is MISSING")
+    cartesia_key = os.getenv("CARTESIA_API_KEY")
+    cartesia_voice = os.getenv("CARTESIA_VOICE_ID")
+    if cartesia_key:
+        print(f"  ✓ CARTESIA_API_KEY is set")
+    else:
+        print(f"  ✗ CARTESIA_API_KEY is MISSING")
+    if cartesia_voice:
+        print(f"  ✓ CARTESIA_VOICE_ID is set")
+    else:
+        print(f"  ✗ CARTESIA_VOICE_ID is MISSING")
     print("=================================")
 
 

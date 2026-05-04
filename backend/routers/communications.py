@@ -52,7 +52,7 @@ _AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 # Core phrases pre-cached with Cartesia at startup (1 s gap each).
 _WARMUP_KEYS: frozenset[str] = frozenset({
     "greeting", "collect_name", "collect_callback_time",
-    "close_hot_base", "close_cold", "still_there", "voicemail", "after_hours",
+    "close_hot_base", "close_cold", "still_there", "voicemail",
 })
 
 # Static phrase texts used for Polly <Say> fallback when Cartesia cache is absent.
@@ -77,11 +77,6 @@ _PHRASES: dict[str, str] = {
     "wrong_number":   "Sorry about that.",
     "opt_out":        "Done. You will not hear from us again.",
     "live_transfer":  "Hold on one moment. Let me connect you.",
-    "after_hours": (
-        "Thank you for calling Dominion Land Group. "
-        "We are currently closed. "
-        "Please leave a message or text us and we will get back to you within 24 hours."
-    ),
     "voicemail": (
         "Hi, this is Myra with Dominion Land Group. "
         "We reached out about your property recently and just wanted to connect. "
@@ -393,19 +388,6 @@ def _texml_hangup(inner_xml: str) -> Response:
         "</Response>"
     )
     return Response(xml, media_type="text/xml")
-
-
-# ── Business hours ──────────────────────────────────────────────────────────────
-
-def _is_business_hours() -> bool:
-    """True if current time is within business hours (8am–9pm Eastern)."""
-    try:
-        import zoneinfo
-        eastern = zoneinfo.ZoneInfo("America/New_York")
-        now_et = datetime.now(eastern)
-        return 8 <= now_et.hour < 21
-    except Exception:
-        return True  # default open on any error
 
 
 # ── Acquisitions manager helper ──────────────────────────────────────────────────
