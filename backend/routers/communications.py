@@ -80,6 +80,10 @@ _PHRASES: dict[str, str] = {
         "Give us a call back at {telnyx_number} or reply to our text. "
         "Talk soon."
     ),
+    "one_moment":     "One moment please.",
+    "i_understand":   "I understand.",
+    "let_me_note":    "Let me note that for you.",
+    "will_reach_out": "Damien will reach out shortly.",
 }
 
 # All static phrases are pre-cached at startup
@@ -227,6 +231,37 @@ async def serve_tts_audio(cache_key: str) -> Response:
     )
 
 
+@router.get("/api/calls/audio/live/{stream_id}")
+async def live_audio(stream_id: str) -> Response:
+    """Serve dynamically generated Cartesia audio for an in-flight call.
+
+    The webhook handler stores an asyncio.Future in _live_audio keyed by
+    stream_id, then returns TeXML pointing here immediately (before Claude
+    finishes).  Telnyx fetches this URL; we await the future (max 6 s) so
+    that by the time Telnyx starts reading the bytes, Cartesia is done.
+    Falls back to the cached 'one_moment' phrase if generation fails.
+    """
+    fut = _live_audio.get(stream_id)
+    if not fut:
+        raise HTTPException(status_code=404, detail="Stream not found")
+    try:
+        cache_key: Optional[str] = await asyncio.wait_for(asyncio.shield(fut), timeout=6.0)
+    except (asyncio.TimeoutError, Exception):
+        cache_key = None
+    _live_audio.pop(stream_id, None)
+    if cache_key:
+        path = _audio_path(cache_key)
+        if path.exists():
+            return Response(path.read_bytes(), media_type="audio/wav",
+                            headers={"Cache-Control": "no-store"})
+    # Fallback: serve one_moment so caller hears something
+    fallback = _audio_path("one_moment")
+    if fallback.exists():
+        return Response(fallback.read_bytes(), media_type="audio/wav",
+                        headers={"Cache-Control": "no-store"})
+    raise HTTPException(status_code=503, detail="Audio unavailable")
+
+
 @router.get("/api/calls/health")
 async def calls_health() -> dict:
     """Health check for the voice agent system."""
@@ -347,7 +382,7 @@ def _texml_gather(
     with_recording: bool = False,
     hints: str = "zero one two three four five six seven eight nine dash hyphen oh yes no",
     timeout: int = 5,
-    speech_timeout: int = 2,
+    speech_timeout: int = 1,
 ) -> Response:
     """Build a Gather TeXML with proper timeouts that never hang up on silence."""
     action = f"{_base_url()}/api/calls/gather/{next_step}"
@@ -976,8 +1011,8 @@ async def _claude_call_response(speech: str, state: dict) -> Optional[str]:
         def _call():
             client = _anthropic.Anthropic(api_key=api_key)
             msg = client.messages.create(
-                model="claude-sonnet-4-6",
-                max_tokens=100,
+                model="claude-haiku-4-5-20251001",
+                max_tokens=50,
                 system=system,
                 messages=messages,
             )
@@ -1214,26 +1249,59 @@ async def call_gather(step: str, request: Request, background_tasks: BackgroundT
         {"step": "ai_response", "agent": "", "speech": speech, "timed_out": False}
     )
 
-    # ── Call Claude AI ────────────────────────────────────────────────────
-    ai_text = await _claude_call_response(speech, state)
+    # ── Increment exchange count immediately so next gather is correct ────
+    _upd(exchange_count=exchanges + 1)
 
-    if not ai_text:
-        # Claude unavailable — use scripted fallback, NEVER auto-transfer
-        ai_text = _get_fallback_response()
-        print(f"[voice-ai] Claude unavailable — using fallback: {ai_text[:60]!r}", flush=True)
+    # ── Fire Claude + Cartesia in background; return TeXML instantly ──────
+    stream_id = hashlib.md5(f"{call_sid}:{exchanges}:{speech[:20]}".encode()).hexdigest()[:16]
+    loop = asyncio.get_event_loop()
+    fut: asyncio.Future = loop.create_future()
+    _live_audio[stream_id] = fut
 
-    # ── Update transcript with assistant turn ────────────────────────────
-    ai_transcript.append({"role": "assistant", "content": ai_text})
-    _upd(exchange_count=exchanges + 1, ai_transcript=ai_transcript)
+    async def _bg_generate() -> None:
+        try:
+            ai_text = await _claude_call_response(speech, state)
+            if not ai_text:
+                ai_text = _get_fallback_response()
+                print(f"[voice-ai] Claude unavailable — fallback: {ai_text[:60]!r}", flush=True)
+            print(f"[voice-ai] Claude response: {ai_text[:80]!r}", flush=True)
+            ai_transcript.append({"role": "assistant", "content": ai_text})
+            _upd(ai_transcript=ai_transcript)
+            # Check static/dynamic disk cache first (zero latency)
+            cache_key: Optional[str] = None
+            for k, v in _PHRASES.items():
+                if v.strip() == ai_text.strip() and _audio_path(k).exists():
+                    cache_key = k
+                    break
+            if not cache_key:
+                dyn_key = f"dyn_{hashlib.md5(ai_text.encode()).hexdigest()[:16]}"
+                ok = await asyncio.wait_for(
+                    asyncio.shield(_tts_generate(ai_text, dyn_key)), timeout=5.0
+                )
+                cache_key = dyn_key if ok else None
+        except Exception as exc:
+            print(f"[voice-ai] bg_generate error: {exc}", flush=True)
+            cache_key = None
+        finally:
+            if not fut.done():
+                fut.set_result(cache_key)
+        # Pre-warm "still there?" for next silence
+        asyncio.create_task(_tts_generate(_PHRASES["still_there"], "still_there"))
 
-    # ── Generate audio (2 s cap → Polly fallback, Cartesia caches in bg) ─
-    response_xml = await _get_response_audio(ai_text)
+    asyncio.create_task(_bg_generate())
 
-    # Pre-generate Cartesia for the "still there?" prompt in background —
-    # it will be ready if the next gather fires after silence.
-    asyncio.create_task(_tts_generate(_PHRASES["still_there"], "still_there"))
+    # Play "one moment please" (cached, instant) then stream the real response.
+    # Telnyx fetches the live URL after the filler phrase, by which time
+    # Haiku + Cartesia have finished (~700 ms total).
+    one_moment_url = f"{_base_url()}/api/calls/audio/one_moment"
+    live_url = f"{_base_url()}/api/calls/audio/live/{stream_id}"
+    if _audio_path("one_moment").exists():
+        inner_xml = f'<Play>{one_moment_url}</Play>\n    <Play>{live_url}</Play>'
+    else:
+        # one_moment not yet cached — use Polly filler + live URL
+        inner_xml = f'{_say("One moment please.")}\n    <Play>{live_url}</Play>'
 
-    return _texml_gather("ai_response", response_xml, call_sid)
+    return _texml_gather("ai_response", inner_xml, call_sid)
 
 
 # ── Recording status callback ────────────────────────────────────────────────────
@@ -1743,6 +1811,9 @@ _SMS_BOT_ENABLED = os.getenv("SMS_BOT_ENABLED", "true").lower() == "true"
 
 # Dedup guard: phone -> epoch float of last reply attempt; skip if < 30s ago
 _sms_reply_inflight: dict = {}
+
+# Async streaming: stream_id -> asyncio.Future[str | None] (cache_key on disk)
+_live_audio: dict = {}
 
 
 def _to_e164(phone: str) -> str:
