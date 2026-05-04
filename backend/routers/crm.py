@@ -3374,7 +3374,8 @@ def _run_lp_skip_trace_job(job_id: str, token: str, properties: list[dict]) -> N
 
 _HOT_WORDS = {"YES", "INTERESTED", "HOW", "WHAT", "TELL", "MAYBE", "SURE", "INFO", "DETAILS", "YEAH", "YEP", "OK", "OKAY", "ACCEPT", "WANT", "READY"}
 _STOP_WORDS = {"STOP", "UNSUBSCRIBE", "REMOVE", "DONT", "DON'T", "DO NOT", "CANCEL", "END", "QUIT"}
-_SMS_DAILY_LIMIT = 500
+_SMS_DAILY_LIMIT_PER_NUMBER = 250
+_SMS_DAILY_LIMIT = 500  # fallback for single-number config
 
 
 def _sms_day1_template(first_name: str, address: str, offer_low: int, offer_high: int, from_number: str) -> str:
@@ -3405,10 +3406,11 @@ async def start_sms_campaign(
 ) -> dict:
     """Start a background SMS campaign job. day=1 (default) or day=3."""
     telnyx_key = os.environ.get("TELNYX_API_KEY", "")
-    telnyx_phone = os.environ.get("TELNYX_PHONE_NUMBER", "")
+    _raw_numbers = os.environ.get("TELNYX_PHONE_NUMBERS") or os.environ.get("TELNYX_PHONE_NUMBER", "")
+    telnyx_phones = [n.strip() for n in _raw_numbers.split(",") if n.strip()]
     if not telnyx_key:
         raise HTTPException(status_code=503, detail="TELNYX_API_KEY not configured")
-    if not telnyx_phone:
+    if not telnyx_phones:
         raise HTTPException(status_code=503, detail="TELNYX_PHONE_NUMBER not configured")
     sb = get_supabase()
     c_r = sb.table("crm_campaigns").select("id").eq("id", campaign_id).execute()
@@ -3437,7 +3439,7 @@ async def start_sms_campaign(
     total = len(props)
     job_id = str(uuid.uuid4())
     _sms_campaign_jobs[job_id] = {"status": "running", "done": 0, "total": total, "sent": 0, "skipped": 0, "errors": [], "day": day}
-    background_tasks.add_task(_run_sms_campaign_job, job_id, campaign_id, props, day, telnyx_key, telnyx_phone)
+    background_tasks.add_task(_run_sms_campaign_job, job_id, campaign_id, props, day, telnyx_key, telnyx_phones)
     return {"job_id": job_id, "total": total, "day": day}
 
 
@@ -3449,7 +3451,7 @@ async def get_sms_campaign_status(campaign_id: str, job_id: str) -> dict:
     return job
 
 
-def _run_sms_campaign_job(job_id: str, campaign_id: str, props: list[dict], day: int, telnyx_key: str, telnyx_phone: str) -> None:
+def _run_sms_campaign_job(job_id: str, campaign_id: str, props: list[dict], day: int, telnyx_key: str, telnyx_phones: list[str]) -> None:
     import time as _t
     import httpx as _httpx
 
@@ -3463,16 +3465,19 @@ def _run_sms_campaign_job(job_id: str, campaign_id: str, props: list[dict], day:
             return f"+{digits}"
         return None
 
-    from_e164 = format_e164(telnyx_phone)
-    if not from_e164:
-        from_e164 = telnyx_phone if telnyx_phone.startswith("+") else f"+1{re.sub(r'[^0-9]', '', telnyx_phone)}"
-    print(f"[sms-campaign] from_number={from_e164}", flush=True)
+    def normalize_number(n: str) -> str:
+        e = format_e164(n)
+        return e if e else (n if n.startswith("+") else f"+1{re.sub(r'[^0-9]', '', n)}")
+
+    from_numbers = [normalize_number(n) for n in telnyx_phones]
+    num_count = len(from_numbers)
+    daily_cap = _SMS_DAILY_LIMIT_PER_NUMBER * num_count
+    print(f"[sms-campaign] {job_id} from_numbers={from_numbers} daily_cap={daily_cap}", flush=True)
 
     sb = get_supabase()
     sent = 0
     skipped = 0
     errors: list[str] = []
-    daily_cap = _SMS_DAILY_LIMIT
 
     # Load opt-out suppression list
     try:
@@ -3483,7 +3488,7 @@ def _run_sms_campaign_job(job_id: str, campaign_id: str, props: list[dict], day:
 
     print(f"[sms-campaign] {job_id} day={day} starting — {len(props)} eligible records", flush=True)
 
-    for prop in props:
+    for record_idx, prop in enumerate(props):
         if sent >= daily_cap:
             break
         raw_phone = prop.get("phone_1") or ""
@@ -3497,6 +3502,7 @@ def _run_sms_campaign_job(job_id: str, campaign_id: str, props: list[dict], day:
             skipped += 1
             _sms_campaign_jobs[job_id].update({"done": sent + skipped, "sent": sent, "skipped": skipped})
             continue
+        from_e164 = from_numbers[record_idx % num_count]
         first = prop.get("owner_first_name") or "there"
         addr = prop.get("property_address") or prop.get("property_city") or "your property"
         offer = float(prop.get("offer_price") or 0)
