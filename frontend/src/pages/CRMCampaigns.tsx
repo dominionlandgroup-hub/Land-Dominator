@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { listCrmCampaigns, createCrmCampaign, deleteCrmCampaign } from '../api/crm'
+import { listCrmCampaigns, createCrmCampaign, deleteCrmCampaign, getCrmCampaign } from '../api/crm'
 import type { CRMCampaign } from '../types/crm'
 import CampaignDetail from './CampaignDetail'
 
@@ -102,6 +102,19 @@ export default function CRMCampaigns() {
 
   function openDetail(camp: CRMCampaign) { setSelectedCampaign(camp); setView('detail') }
 
+  async function handleNavigateToCampaign(campaignId: string) {
+    try {
+      const camp = await getCrmCampaign(campaignId)
+      setCampaigns(prev => prev.some(c => c.id === campaignId) ? prev : [camp, ...prev])
+      setSelectedCampaign(camp)
+      setView('detail')
+    } catch {
+      // Refresh list and navigate
+      await fetchCampaigns()
+      setView('list')
+    }
+  }
+
   function handleCampaignUpdated(updated: CRMCampaign) {
     setCampaigns(prev => prev.map(c => c.id === updated.id ? updated : c))
     if (selectedCampaign?.id === updated.id) setSelectedCampaign(updated)
@@ -135,7 +148,7 @@ export default function CRMCampaigns() {
   }, [campaigns, search, sortKey, sortDir])
 
   if (view === 'detail' && selectedCampaign) {
-    return <CampaignDetail campaign={selectedCampaign} onBack={() => setView('list')} onCampaignUpdated={handleCampaignUpdated} />
+    return <CampaignDetail campaign={selectedCampaign} onBack={() => setView('list')} onCampaignUpdated={handleCampaignUpdated} onNavigateToCampaign={handleNavigateToCampaign} />
   }
 
   function TH({ label, sk }: { label: string; sk?: SortKey }) {

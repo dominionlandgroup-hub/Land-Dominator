@@ -3825,7 +3825,7 @@ def _parse_ls_row(row: dict) -> dict | None:
     if phone2:
         rec["phone_2"] = phone2; rec["phone_2_type"] = p2_type; rec["phone_2_dnc"] = p2_dnc
     if phone3:
-        rec["phone_3"] = phone3; rec["phone_3_type"] = p3_type; rec["phone_3_dnc"] = p3_dnc
+        rec["phone_3"] = phone3  # phone_3_type / phone_3_dnc columns don't exist in DB
     if email:
         rec["email_1"] = email
     if is_litigator:
@@ -3912,10 +3912,13 @@ async def import_lead_sherpa(campaign_id: str, body: dict = Body(...)) -> dict:
 async def create_campaign_from_lead_sherpa(body: dict = Body(...)) -> dict:
     """Create a new campaign and import all rows from a Lead Sherpa CSV."""
     import datetime as _dt
+    import traceback as _tb
     from collections import Counter
     rows = body.get("rows", [])
     if not rows:
         raise HTTPException(status_code=400, detail="No rows provided")
+
+    print(f"[lead-sherpa] Creating campaign from Lead Sherpa: {len(rows)} records", flush=True)
 
     campaign_name = (body.get("campaign_name") or "").strip()
 
@@ -3928,26 +3931,51 @@ async def create_campaign_from_lead_sherpa(body: dict = Body(...)) -> dict:
                 if st:
                     state_counter[st] += 1
         dominant_state = state_counter.most_common(1)[0][0] if state_counter else ""
-        today = _dt.datetime.utcnow().date().strftime("%b %d %Y")
+        today = _dt.datetime.utcnow().strftime("%b %Y")
         campaign_name = f"{dominant_state + ' ' if dominant_state else ''}Lead Sherpa {today}".strip()
 
+    print(f"[lead-sherpa] Campaign name: {campaign_name!r}", flush=True)
+
     sb = get_supabase()
-    camp_r = sb.table("crm_campaigns").insert({
-        "name": campaign_name,
-        "created_at": _now(),
-        "updated_at": _now(),
-    }).execute()
-    if not camp_r.data:
-        raise HTTPException(status_code=500, detail="Failed to create campaign")
-    campaign_id = camp_r.data[0]["id"]
+    try:
+        camp_r = sb.table("crm_campaigns").insert({
+            "name": campaign_name,
+            "status": "active",
+            "offer_pct": 52.5,
+            "created_at": _now(),
+            "updated_at": _now(),
+        }).execute()
+        if not camp_r.data:
+            raise HTTPException(status_code=500, detail="Failed to create campaign — no data returned")
+        campaign_id = camp_r.data[0]["id"]
+        print(f"[lead-sherpa] Created campaign id={campaign_id}", flush=True)
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[lead-sherpa] Campaign insert error: {e}", flush=True)
+        _tb.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to create campaign: {e}")
+
+    # Columns known to exist in crm_properties
+    _ALLOWED_PROPS = frozenset({
+        "campaign_id", "status", "created_at", "updated_at", "skip_traced_at",
+        "apn", "owner_full_name", "owner_first_name", "owner_last_name",
+        "owner_mailing_address", "owner_mailing_city", "owner_mailing_state", "owner_mailing_zip",
+        "property_address", "property_city", "property_zip", "state", "county", "fips",
+        "phone_1", "phone_1_type", "phone_1_dnc",
+        "phone_2", "phone_2_type", "phone_2_dnc",
+        "phone_3", "email_1",
+    })
 
     imported = 0
+    insert_errors = 0
     mobile_ready = 0
     dnc_flagged = 0
     deceased_skipped = 0
     litigators = 0
     mail_only = 0
     props_batch: list[dict] = []
+    now_ts = _now()
 
     for row in rows:
         parsed = _parse_ls_row(row)
@@ -3962,12 +3990,15 @@ async def create_campaign_from_lead_sherpa(body: dict = Body(...)) -> dict:
         rec = {
             **parsed,
             "campaign_id": campaign_id,
-            "created_at": _now(),
-            "updated_at": _now(),
+            "created_at": now_ts,
+            "updated_at": now_ts,
             "status": "lead",
         }
         if any(k.startswith("phone_") for k in rec):
-            rec["skip_traced_at"] = _now()
+            rec["skip_traced_at"] = now_ts
+
+        # Strip any keys not in the allowed column set to prevent DB errors
+        rec = {k: v for k, v in rec.items() if k in _ALLOWED_PROPS}
 
         p1 = rec.get("phone_1")
         p1_type = rec.get("phone_1_type")
@@ -3976,12 +4007,8 @@ async def create_campaign_from_lead_sherpa(body: dict = Body(...)) -> dict:
         p2_type = rec.get("phone_2_type")
         p2_dnc = rec.get("phone_2_dnc", False)
 
-        has_mobile = (
-            (p1 and p1_type == "mobile") or (p2 and p2_type == "mobile")
-        )
-        all_dnc = (
-            (not p1 or p1_dnc) and (not p2 or p2_dnc)
-        )
+        has_mobile = (p1 and p1_type == "mobile") or (p2 and p2_type == "mobile")
+        all_dnc = ((not p1 or p1_dnc) and (not p2 or p2_dnc))
 
         if p1_dnc or p2_dnc:
             dnc_flagged += 1
@@ -3997,16 +4024,42 @@ async def create_campaign_from_lead_sherpa(body: dict = Body(...)) -> dict:
             try:
                 sb.table("crm_properties").insert(props_batch).execute()
                 imported += len(props_batch)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[lead-sherpa] Batch insert error (batch of {len(props_batch)}): {e}", flush=True)
+                _tb.print_exc()
+                # Retry one by one to salvage as many as possible
+                for single_rec in props_batch:
+                    try:
+                        sb.table("crm_properties").insert(single_rec).execute()
+                        imported += 1
+                    except Exception as e2:
+                        insert_errors += 1
+                        if insert_errors <= 3:
+                            print(f"[lead-sherpa] Single insert error: {e2} | keys={list(single_rec.keys())}", flush=True)
             props_batch = []
 
     if props_batch:
         try:
             sb.table("crm_properties").insert(props_batch).execute()
             imported += len(props_batch)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[lead-sherpa] Final batch insert error: {e}", flush=True)
+            _tb.print_exc()
+            for single_rec in props_batch:
+                try:
+                    sb.table("crm_properties").insert(single_rec).execute()
+                    imported += 1
+                except Exception as e2:
+                    insert_errors += 1
+                    if insert_errors <= 3:
+                        print(f"[lead-sherpa] Single insert error: {e2}", flush=True)
+
+    print(
+        f"[lead-sherpa] Done: imported={imported} mobile_ready={mobile_ready} "
+        f"dnc_flagged={dnc_flagged} deceased_skipped={deceased_skipped} "
+        f"litigators={litigators} mail_only={mail_only} insert_errors={insert_errors}",
+        flush=True,
+    )
 
     return {
         "campaign_id": campaign_id,
@@ -4017,4 +4070,5 @@ async def create_campaign_from_lead_sherpa(body: dict = Body(...)) -> dict:
         "deceased_skipped": deceased_skipped,
         "litigators": litigators,
         "mail_only": mail_only,
+        "insert_errors": insert_errors,
     }

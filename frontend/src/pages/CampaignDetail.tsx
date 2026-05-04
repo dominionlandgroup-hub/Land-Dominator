@@ -49,9 +49,10 @@ interface Props {
   campaign: CRMCampaign
   onBack: () => void
   onCampaignUpdated: (c: CRMCampaign) => void
+  onNavigateToCampaign?: (campaignId: string) => void
 }
 
-export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: Props) {
+export default function CampaignDetail({ campaign, onBack, onCampaignUpdated, onNavigateToCampaign }: Props) {
   const [stats, setStats] = useState<CRMCampaign>(campaign)
   const [properties, setProperties] = useState<CRMProperty[]>([])
   const [totalCount, setTotalCount] = useState(0)
@@ -1583,7 +1584,14 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
                 {lsCreateResult.dnc_flagged > 0 && <p style={{ fontSize: 13, color: '#B45309', margin: '2px 0' }}>🚫 {lsCreateResult.dnc_flagged.toLocaleString()} DNC numbers flagged</p>}
                 {lsCreateResult.deceased_skipped > 0 && <p style={{ fontSize: 13, color: '#6B7280', margin: '2px 0' }}>⚰️ {lsCreateResult.deceased_skipped.toLocaleString()} deceased owners skipped</p>}
                 {lsCreateResult.litigators > 0 && <p style={{ fontSize: 13, color: '#B91C1C', margin: '2px 0' }}>⚠️ {lsCreateResult.litigators.toLocaleString()} litigators flagged</p>}
-                <p style={{ fontSize: 12, color: '#6B7280', margin: '8px 0 0' }}>Navigate to "{lsCreateResult.campaign_name}" to start texting.</p>
+                {onNavigateToCampaign && (
+                  <button
+                    className="btn-primary text-sm mt-3 w-full"
+                    onClick={() => { setShowLeadSherpaModal(false); onNavigateToCampaign(lsCreateResult.campaign_id) }}
+                  >
+                    Go to {lsCreateResult.campaign_name} →
+                  </button>
+                )}
               </div>
             )}
 
