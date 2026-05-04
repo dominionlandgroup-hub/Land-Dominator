@@ -3250,18 +3250,20 @@ _SMS_DAILY_LIMIT = 500
 def _sms_day1_template(first_name: str, address: str, offer_low: int, offer_high: int, from_number: str) -> str:
     return (
         f"Hi {first_name}, this is Myra with Dominion Land Group. "
-        f"We're interested in buying your vacant land at {address}. "
-        f"We can offer around ${offer_low:,}-${offer_high:,} cash. "
-        f"Interested? Reply YES or call {from_number}. "
-        f"Reply STOP to opt out."
+        f"I noticed you own land at {address}. "
+        f"We purchase vacant properties in your area and would love to connect. "
+        f"Interested in a conversation? "
+        f"Reply YES or call {from_number}. "
+        f"Reply STOP to unsubscribe."
     )
 
 
 def _sms_day3_template(first_name: str, address: str, offer: int) -> str:
     return (
-        f"Hi {first_name}, following up on your land at {address}. "
-        f"Our cash offer of ${offer:,} is still available. "
-        f"Interested? Reply YES or STOP to opt out."
+        f"Hi {first_name}, Myra again from Dominion Land Group. "
+        f"Just following up on my previous message about your land at {address}. "
+        f"We are still looking to connect with property owners in the area. "
+        f"Reply YES if interested, or STOP to unsubscribe."
     )
 
 
@@ -3314,14 +3316,20 @@ def _run_sms_campaign_job(job_id: str, campaign_id: str, props: list[dict], day:
     import time as _t
     import httpx as _httpx
 
-    # Normalize from_phone to E.164
-    raw = re.sub(r"\D", "", telnyx_phone)
-    if len(raw) == 10:
-        from_e164 = f"+1{raw}"
-    elif len(raw) == 11 and raw.startswith("1"):
-        from_e164 = f"+{raw}"
-    else:
-        from_e164 = telnyx_phone
+    def format_e164(phone: str) -> str | None:
+        if not phone:
+            return None
+        digits = ''.join(filter(str.isdigit, str(phone)))
+        if len(digits) == 10:
+            return f"+1{digits}"
+        elif len(digits) == 11 and digits.startswith('1'):
+            return f"+{digits}"
+        return None
+
+    from_e164 = format_e164(telnyx_phone)
+    if not from_e164:
+        from_e164 = telnyx_phone if telnyx_phone.startswith("+") else f"+1{re.sub(r'[^0-9]', '', telnyx_phone)}"
+    print(f"[sms-campaign] from_number={from_e164}", flush=True)
 
     sb = get_supabase()
     sent = 0
@@ -3342,7 +3350,7 @@ def _run_sms_campaign_job(job_id: str, campaign_id: str, props: list[dict], day:
         if sent >= daily_cap:
             break
         raw_phone = prop.get("phone_1") or ""
-        phone = _normalize_phone(raw_phone)
+        phone = format_e164(raw_phone)
         if not phone:
             print(f"[sms-campaign] skipping {prop.get('id')} — invalid phone: {repr(raw_phone)}", flush=True)
             skipped += 1
@@ -3361,14 +3369,22 @@ def _run_sms_campaign_job(job_id: str, campaign_id: str, props: list[dict], day:
             text = _sms_day1_template(first, addr, offer_low, offer_high, from_e164)
         else:
             text = _sms_day3_template(first, addr, int(offer))
+        to_number = format_e164(phone)
+        if not to_number:
+            print(f"[sms-campaign] skipping {prop.get('id')} — bad to_number: {repr(phone)}", flush=True)
+            skipped += 1
+            _sms_campaign_jobs[job_id].update({"done": sent + skipped, "sent": sent, "skipped": skipped})
+            continue
+        text = text.replace("[Your Phone Number]", from_e164)
+        text = text.replace("[TELNYX_PHONE_NUMBER]", from_e164)
         try:
             r = _httpx.post(
                 "https://api.telnyx.com/v2/messages",
                 headers={"Authorization": f"Bearer {telnyx_key}", "Content-Type": "application/json"},
-                json={"from": from_e164, "to": phone, "text": text},
+                json={"from": from_e164, "to": to_number, "text": text},
                 timeout=15.0,
             )
-            print(f"[sms-campaign] {phone} → HTTP {r.status_code}", flush=True)
+            print(f"[sms-campaign] {to_number} → HTTP {r.status_code}", flush=True)
             if r.status_code < 300:
                 now_ts = _now()
                 update: dict = {"updated_at": now_ts}
@@ -3383,7 +3399,7 @@ def _run_sms_campaign_job(job_id: str, campaign_id: str, props: list[dict], day:
                     sb.table("crm_communications").insert({
                         "property_id": prop["id"],
                         "type": "sms_outbound",
-                        "phone_number": phone,
+                        "phone_number": to_number,
                         "direction": "outbound",
                         "message_body": text,
                         "is_read": True,
@@ -3394,8 +3410,8 @@ def _run_sms_campaign_job(job_id: str, campaign_id: str, props: list[dict], day:
                 sent += 1
             else:
                 err_detail = r.text[:120]
-                print(f"[sms-campaign] FAILED {phone}: {err_detail}", flush=True)
-                errors.append(f"{phone}: HTTP {r.status_code} {err_detail}")
+                print(f"[sms-campaign] FAILED {to_number}: {err_detail}", flush=True)
+                errors.append(f"{to_number}: HTTP {r.status_code} {err_detail}")
                 skipped += 1
         except Exception as exc:
             print(f"[sms-campaign] EXCEPTION {phone}: {exc}", flush=True)
