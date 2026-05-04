@@ -381,8 +381,8 @@ def _texml_gather(
     call_sid: str,
     with_recording: bool = False,
     hints: str = "zero one two three four five six seven eight nine dash hyphen oh yes no",
-    timeout: int = 5,
-    speech_timeout: int = 1,
+    timeout: int = 8,
+    speech_timeout: int = 3,
 ) -> Response:
     """Build a Gather TeXML with proper timeouts that never hang up on silence."""
     action = f"{_base_url()}/api/calls/gather/{next_step}"
@@ -402,7 +402,7 @@ def _texml_gather(
         "<Response>\n"
         f'  <Gather input="speech dtmf" action="{action}" method="POST"\n'
         f'          timeout="{timeout}" speechTimeout="{speech_timeout}" language="en-US"\n'
-        f'          profanityFilter="false"\n'
+        f'          enhanced="true" profanityFilter="false"\n'
         f'          hints="{hints}"\n'
         f'          actionOnEmptyResult="true"{record_attrs}>\n'
         f"    {inner_xml}\n"
@@ -1107,10 +1107,11 @@ async def inbound_call(request: Request) -> Response:
         "interest_score": "warm",
         "seller_asking_price": None,
         "callback_time": None,
-        "transcript": [],          # legacy format for _finalize_call
-        "ai_transcript": [],       # Claude messages format
+        "transcript": [],
+        "ai_transcript": [],
         "exchange_count": 0,
         "silence_retries": 0,
+        "failed_attempts": 0,
         "started_at": _now(),
         "retries": {},
         "comm_id": None,
@@ -1166,10 +1167,11 @@ async def call_gather(step: str, request: Request, background_tasks: BackgroundT
     except Exception as exc:
         print(f"[voice-ai] gather parse error: {exc}", flush=True)
 
-    print(f"[voice-ai] gather step={step} call_sid={call_sid!r} speech={speech[:60]!r} timed_out={timed_out}", flush=True)
+    speech = (speech or "").strip()
+    print(f"[myra] Caller said: {speech!r}  step={step} timed_out={timed_out}", flush=True)
 
     state = _call_states.get(call_sid, {})
-    low = (speech or "").lower().strip()
+    low = speech.lower()
 
     def _upd(**kw) -> None:
         state.update(kw)
@@ -1209,33 +1211,43 @@ async def call_gather(step: str, request: Request, background_tasks: BackgroundT
         print(f"[voice-ai] Explicit transfer requested: {speech[:60]!r}", flush=True)
         return await _do_live_transfer(call_sid, state, background_tasks)
 
-    # ── No speech / silence — ask again, never transfer ──────────────────
+    # ── No speech / silence ───────────────────────────────────────────────
     if not speech:
+        failed = state.get("failed_attempts", 0) + 1
         silence = state.get("silence_retries", 0) + 1
-        _upd(silence_retries=silence)
-        print(f"[voice-ai] Silence #{silence} for {call_sid}", flush=True)
+        _upd(failed_attempts=failed, silence_retries=silence)
+        print(f"[myra] No speech — failed_attempts={failed} silence={silence} for {call_sid}", flush=True)
+
+        # After 2 consecutive recognition failures → transfer to team
+        if failed >= 2:
+            print(f"[myra] Speech recognition failing repeatedly — transferring to team", flush=True)
+            return await _do_live_transfer(call_sid, state, background_tasks)
+
+        # After 4 total silences → goodbye
         if silence >= 4:
             background_tasks.add_task(_finalize_call, call_sid)
             return _texml_hangup(await _get_response_audio(
                 "Thank you for calling Dominion Land Group. We will follow up with you soon. Goodbye."
             ))
+
         if silence == 1:
-            prompt = "I am sorry, I did not catch that. How can I help you today?"
+            prompt = "I did not catch that. Could you please repeat?"
         else:
             prompt = "Are you still there? How can I help you today?"
         return _texml_gather("ai_response", _say(prompt), call_sid)
 
-    _upd(silence_retries=0)
+    # Valid speech — reset failure counters
+    _upd(silence_retries=0, failed_attempts=0)
 
-    # ── Max exchanges — ask for callback time, then end ───────────────────
+    # ── Max exchanges — graceful close after 10 ───────────────────────────
     exchanges = state.get("exchange_count", 0)
-    if exchanges >= 8:
-        handoff = "I want to make sure Damien follows up with you personally. What is the best time to reach you?"
-        if exchanges >= 9:
+    if exchanges >= 10:
+        if exchanges >= 11:
             background_tasks.add_task(_finalize_call, call_sid)
             return _texml_hangup(await _get_response_audio(
                 "Perfect. Damien will be in touch. Have a great day."
             ))
+        handoff = "Let me have Damien give you a call back. What is the best number to reach you?"
         _upd(exchange_count=exchanges + 1)
         return _texml_gather("ai_response", await _get_response_audio(handoff), call_sid)
 
