@@ -323,11 +323,26 @@ function Field({
   )
 }
 
+interface NavContext {
+  list: CRMProperty[]
+  index: number
+  offset: number
+  total: number
+  onNavigate: (p: CRMProperty, idx: number) => void
+  hasPrevPage: boolean
+  hasNextPage: boolean
+  onPrevPage?: () => void
+  onNextPage?: () => void
+  campaignName?: string
+  onBreadcrumb?: () => void
+}
+
 interface Props {
   property: CRMProperty | null
   onBack: () => void
   onSave: (data: Partial<CRMProperty>) => Promise<void>
   onDelete: () => Promise<void>
+  nav?: NavContext
 }
 
 const STATUS_OPTIONS: { value: PropertyStatus; label: string }[] = [
@@ -341,7 +356,7 @@ const STATUS_OPTIONS: { value: PropertyStatus; label: string }[] = [
   { value: 'dead', label: 'Dead' },
 ]
 
-export default function PropertyDetail({ property, onBack, onSave, onDelete }: Props) {
+export default function PropertyDetail({ property, onBack, onSave, onDelete, nav }: Props) {
   const [form, setForm] = useState<Partial<CRMProperty>>(property ?? { status: 'lead' })
   const [saving, setSaving] = useState(false)
   const [savedOk, setSavedOk] = useState(false)
@@ -605,13 +620,101 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
 
   const accordionProps = { openSections, toggleSection }
 
+  function goToPrev() {
+    if (!nav) return
+    if (nav.index > 0) {
+      nav.onNavigate(nav.list[nav.index - 1], nav.index - 1)
+    } else if (nav.hasPrevPage && nav.onPrevPage) {
+      nav.onPrevPage()
+    }
+  }
+
+  function goToNext() {
+    if (!nav) return
+    if (nav.index < nav.list.length - 1) {
+      nav.onNavigate(nav.list[nav.index + 1], nav.index + 1)
+    } else if (nav.hasNextPage && nav.onNextPage) {
+      nav.onNextPage()
+    }
+  }
+
+  const navCanGoPrev = nav ? (nav.index > 0 || nav.hasPrevPage) : false
+  const navCanGoNext = nav ? (nav.index < nav.list.length - 1 || nav.hasNextPage) : false
+  const navGlobalPos = nav ? nav.offset + nav.index + 1 : null
+
+  useEffect(() => {
+    if (!nav) return
+    function onKey(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement).tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      if (e.key === 'ArrowLeft') goToPrev()
+      else if (e.key === 'ArrowRight') goToNext()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [nav])
+
   return (
     <div className="page-content">
+      {/* Breadcrumb */}
+      {nav && (
+        <div style={{ padding: '8px 24px', borderBottom: '1px solid #E8E0F0', background: '#FAFAF9', display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#9B8AAE' }}>
+          <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9B8AAE', fontSize: 12, padding: 0 }}>
+            Properties
+          </button>
+          {nav.campaignName && (
+            <>
+              <span>→</span>
+              <button onClick={nav.onBreadcrumb ?? onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9B8AAE', fontSize: 12, padding: 0 }}>
+                {nav.campaignName}
+              </button>
+            </>
+          )}
+          <span>→</span>
+          <span style={{ color: '#5C2977', fontWeight: 600 }}>
+            Lead {navGlobalPos?.toLocaleString()} of {nav.total.toLocaleString()}
+          </span>
+        </div>
+      )}
+
       <div className="page-header">
         <div className="flex items-center gap-3">
-          <button onClick={onBack} className="btn-secondary text-xs" style={{ height: '32px', padding: '0 12px' }}>
-            ← Back
-          </button>
+          {!nav && (
+            <button onClick={onBack} className="btn-secondary text-xs" style={{ height: '32px', padding: '0 12px' }}>
+              ← Back
+            </button>
+          )}
+          {nav && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button
+                onClick={goToPrev}
+                disabled={!navCanGoPrev}
+                style={{
+                  height: 32, padding: '0 12px', fontSize: 12, fontWeight: 600, borderRadius: 6, border: '1.5px solid #E8E0F0',
+                  background: navCanGoPrev ? '#fff' : '#F7F3FC', color: navCanGoPrev ? '#5C2977' : '#C4B5D4',
+                  cursor: navCanGoPrev ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 4,
+                }}
+                title="Previous lead (←)"
+              >
+                ← Prev
+              </button>
+              <span style={{ fontSize: 12, color: '#9B8AAE', fontWeight: 500, whiteSpace: 'nowrap' }}>
+                Lead {navGlobalPos?.toLocaleString()} of {nav.total.toLocaleString()}
+              </span>
+              <button
+                onClick={goToNext}
+                disabled={!navCanGoNext}
+                style={{
+                  height: 32, padding: '0 12px', fontSize: 12, fontWeight: 600, borderRadius: 6, border: '1.5px solid #E8E0F0',
+                  background: navCanGoNext ? '#fff' : '#F7F3FC', color: navCanGoNext ? '#5C2977' : '#C4B5D4',
+                  cursor: navCanGoNext ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 4,
+                }}
+                title="Next lead (→)"
+              >
+                Next →
+              </button>
+            </div>
+          )}
           <div className="page-header-left">
             <h1 className="page-title">{isNew ? 'New Property' : (form.apn || 'Property Detail')}</h1>
             {!isNew && (form.county || form.state) && (

@@ -150,6 +150,7 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated, on
 
   // Property detail drill-in
   const [viewingProperty, setViewingProperty] = useState<CRMProperty | null>(null)
+  const afterNavRef = useRef<'first' | 'last' | null>(null)
 
   // Import
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -172,6 +173,13 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated, on
     const t = setTimeout(() => setMailSuccess(null), 5000)
     return () => clearTimeout(t)
   }, [mailSuccess])
+
+  useEffect(() => {
+    if (!afterNavRef.current || properties.length === 0 || loading) return
+    if (afterNavRef.current === 'first') setViewingProperty(properties[0])
+    else setViewingProperty(properties[properties.length - 1])
+    afterNavRef.current = null
+  }, [properties, loading])
 
   async function refreshStats() {
     try {
@@ -639,6 +647,29 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated, on
         onBack={() => setViewingProperty(null)}
         onSave={handlePropertySave}
         onDelete={handlePropertyDelete}
+        nav={(() => {
+          const idx = properties.findIndex(p => p.id === viewingProperty!.id)
+          const totalPages = Math.ceil(totalCount / PAGE_SIZE)
+          return {
+            list: properties,
+            index: idx >= 0 ? idx : 0,
+            offset: (page - 1) * PAGE_SIZE,
+            total: totalCount,
+            onNavigate: (p) => setViewingProperty(p),
+            hasPrevPage: page > 1,
+            hasNextPage: page < totalPages,
+            onPrevPage: () => {
+              afterNavRef.current = 'last'
+              loadProperties(page - 1, statusFilter, search)
+            },
+            onNextPage: () => {
+              afterNavRef.current = 'first'
+              loadProperties(page + 1, statusFilter, search)
+            },
+            campaignName: campaign.name,
+            onBreadcrumb: () => setViewingProperty(null),
+          }
+        })()}
       />
     )
   }

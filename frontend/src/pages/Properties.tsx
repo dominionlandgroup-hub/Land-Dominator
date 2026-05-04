@@ -36,6 +36,7 @@ export default function Properties() {
   const { propertyCampaignId, setPropertyCampaignId, selectedPropertyId, setSelectedPropertyId } = useApp()
   const [view, setView] = useState<View>('list')
   const [selected, setSelected] = useState<CRMProperty | null>(null)
+  const afterNavRef = useRef<'first' | 'last' | null>(null)
 
   const [properties, setProperties] = useState<CRMProperty[]>([])
   const [totalCount, setTotalCount] = useState(0)
@@ -181,13 +182,39 @@ export default function Properties() {
     finally { setExporting(false) }
   }
 
+  useEffect(() => {
+    if (!afterNavRef.current || properties.length === 0 || loading) return
+    if (afterNavRef.current === 'first') setSelected(properties[0])
+    else setSelected(properties[properties.length - 1])
+    afterNavRef.current = null
+  }, [properties, loading])
+
   if (view === 'detail' && selected) {
+    const navIdx = properties.findIndex(p => p.id === selected.id)
+    const totalPages = Math.ceil(totalCount / PAGE_SIZE)
     return (
       <PropertyDetail
         property={selected}
         onBack={() => { setView('list'); setSelected(null); reload({ p: page }) }}
         onSave={async updates => { const u = await updateProperty(selected.id, updates); setSelected(u) }}
         onDelete={async () => { await deleteProperty(selected.id); setView('list'); setSelected(null); reload() }}
+        nav={{
+          list: properties,
+          index: navIdx >= 0 ? navIdx : 0,
+          offset: (page - 1) * PAGE_SIZE,
+          total: totalCount,
+          onNavigate: (p) => setSelected(p),
+          hasPrevPage: page > 1,
+          hasNextPage: page < totalPages,
+          onPrevPage: () => {
+            afterNavRef.current = 'last'
+            reload({ p: page - 1 })
+          },
+          onNextPage: () => {
+            afterNavRef.current = 'first'
+            reload({ p: page + 1 })
+          },
+        }}
       />
     )
   }
