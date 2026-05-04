@@ -3033,26 +3033,73 @@ def _run_skip_trace_job(job_id: str, campaign_id: str, api_key: str, properties:
     errors: list[str] = []
     BATCH = 100
 
+    # Try all known BL auth header styles; pick whichever returns 2xx on first record
+    _bl_auth_styles = [
+        {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        {"x-api-key": api_key, "Content-Type": "application/json"},
+        {"Authorization": api_key, "Content-Type": "application/json"},
+    ]
+    _bl_auth_idx = 0  # index of currently working style
+
     for i, prop in enumerate(properties):
-        addr = prop.get("property_address") or ""
-        city = prop.get("property_city") or ""
-        state_val = prop.get("state") or ""
-        zip_val = prop.get("property_zip") or ""
+        addr = prop.get("property_address") or prop.get("owner_mailing_address") or ""
+        city = prop.get("property_city") or prop.get("owner_mailing_city") or ""
+        state_val = prop.get("state") or prop.get("owner_mailing_state") or ""
+        zip_val = prop.get("property_zip") or prop.get("owner_mailing_zip") or ""
+        first = prop.get("owner_first_name") or ""
+        last = prop.get("owner_last_name") or ""
         if not addr:
             no_number += 1
             done += 1
             _skip_trace_jobs[job_id].update({"done": done, "mobile": mobile, "landline": landline, "no_number": no_number})
             continue
         try:
-            r = _httpx.post(
-                f"{_BATCH_LEADS_BASE}/property/skip-trace",
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                json={"address": addr, "city": city, "state": state_val, "zip": zip_val},
-                timeout=15.0,
-            )
-            data = r.json() if r.status_code < 300 else {}
+            url = f"{_BATCH_LEADS_BASE}/property/skip-trace"
+            payload: dict = {"address": addr, "city": city, "state": state_val, "zip": zip_val}
+            if first:
+                payload["firstName"] = first
+            if last:
+                payload["lastName"] = last
+            headers = _bl_auth_styles[_bl_auth_idx]
+
+            # Log first 3 records in full; log status for all others
+            if done < 3:
+                import json as _json
+                print(f"[skip-trace] request #{done+1}:", flush=True)
+                print(f"  URL: {url}", flush=True)
+                print(f"  Headers: {headers}", flush=True)
+                print(f"  Body: {_json.dumps(payload)}", flush=True)
+
+            r = _httpx.post(url, headers=headers, json=payload, timeout=15.0)
+
+            if done < 3 or r.status_code >= 300:
+                print(f"[skip-trace] response #{done+1}: status={r.status_code} body={r.text[:800]}", flush=True)
+
+            # If auth failed and we haven't exhausted styles, try the next style once
+            if r.status_code == 401 and _bl_auth_idx < len(_bl_auth_styles) - 1:
+                _bl_auth_idx += 1
+                headers = _bl_auth_styles[_bl_auth_idx]
+                print(f"[skip-trace] 401 — retrying with auth style {_bl_auth_idx}: {headers}", flush=True)
+                r = _httpx.post(url, headers=headers, json=payload, timeout=15.0)
+                print(f"[skip-trace] retry response: status={r.status_code} body={r.text[:400]}", flush=True)
+
+            if r.status_code < 300:
+                try:
+                    data = r.json()
+                except Exception as je:
+                    print(f"[skip-trace] JSON parse error: {je} body={r.text[:200]}", flush=True)
+                    data = {}
+                if done < 3 and isinstance(data, dict):
+                    print(f"[skip-trace] response keys: {list(data.keys())}", flush=True)
+                    for k, v in data.items():
+                        if isinstance(v, (list, dict)):
+                            print(f"[skip-trace]   {k}: {str(v)[:300]}", flush=True)
+            else:
+                data = {}
             phones = _parse_batch_leads_phones(data)
             emails = _parse_batch_leads_emails(data)
+            if done < 3:
+                print(f"[skip-trace] parsed phones={phones} emails={emails}", flush=True)
             update: dict = {"skip_traced_at": _now()}
             if phones:
                 update["phone_1"] = phones[0]["number"]
