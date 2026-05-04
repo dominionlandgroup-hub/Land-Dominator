@@ -3169,27 +3169,66 @@ async def start_lp_skip_trace(
     total = len(eligible)
     job_id = str(uuid.uuid4())
     _lp_skip_trace_jobs[job_id] = {"status": "running", "done": 0, "total": total, "mobile": 0, "landline": 0, "no_number": 0, "errors": []}
+    try:
+        sb.table("crm_match_jobs").upsert({
+            "id": job_id,
+            "status": "running",
+            "total_targets": total,
+            "progress": 0,
+            "message": "LP skip trace started",
+        }, on_conflict="id").execute()
+    except Exception as _e:
+        print(f"[lp-skip-trace] DB insert failed: {_e}", flush=True)
     background_tasks.add_task(_run_lp_skip_trace_job, job_id, token, eligible)
     return {"job_id": job_id, "total": total}
 
 
 @router.get("/campaigns/{campaign_id}/lp-skip-trace-status/{job_id}")
 async def get_lp_skip_trace_status(campaign_id: str, job_id: str) -> dict:
+    import json as _json
+    # Try in-memory first (fast path while job is running on this instance)
     job = _lp_skip_trace_jobs.get(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-    return job
+    if job:
+        return job
+    # Fall back to DB (survives server restarts)
+    try:
+        res = get_supabase().table("crm_match_jobs").select("*").eq("id", job_id).limit(1).execute()
+    except Exception as _e:
+        return {"status": "not_found", "message": f"DB lookup failed: {str(_e)}", "done": 0, "total": 0, "mobile": 0, "landline": 0, "no_number": 0}
+    if not (res.data):
+        return {"status": "not_found", "message": "Job not found - may have completed before restart", "done": 0, "total": 0, "mobile": 0, "landline": 0, "no_number": 0}
+    row = res.data[0]
+    mobile = landline = no_number = 0
+    if row.get("status") == "done":
+        try:
+            counts = _json.loads(row.get("message") or "{}")
+            mobile = counts.get("mobile", 0)
+            landline = counts.get("landline", 0)
+            no_number = counts.get("no_number", 0)
+        except Exception:
+            pass
+    return {
+        "status": row.get("status", "unknown"),
+        "done": row.get("progress", 0),
+        "total": row.get("total_targets", 0),
+        "mobile": mobile,
+        "landline": landline,
+        "no_number": no_number,
+        "errors": [],
+    }
 
 
 def _run_lp_skip_trace_job(job_id: str, token: str, properties: list[dict]) -> None:
     import time as _t
     import httpx as _httpx
+    import json as _json
 
     sb = get_supabase()
     done = 0
     mobile = 0
     landline = 0
     no_number = 0
+    total = len(properties)
     errors: list[str] = []
 
     for prop in properties:
@@ -3230,13 +3269,31 @@ def _run_lp_skip_trace_job(job_id: str, token: str, properties: list[dict]) -> N
             no_number += 1
         done += 1
         _lp_skip_trace_jobs[job_id].update({"done": done, "mobile": mobile, "landline": landline, "no_number": no_number})
+        # Persist progress to DB every 10 records
+        if done % 10 == 0:
+            try:
+                sb.table("crm_match_jobs").update({
+                    "progress": done,
+                    "message": f"{done}/{total} processed",
+                }).eq("id", job_id).execute()
+            except Exception:
+                pass
         _t.sleep(0.5)
 
-    _lp_skip_trace_jobs[job_id] = {
+    final_state = {
         "status": "done", "done": done, "total": done,
         "mobile": mobile, "landline": landline, "no_number": no_number,
         "errors": errors[:5],
     }
+    _lp_skip_trace_jobs[job_id] = final_state
+    try:
+        sb.table("crm_match_jobs").update({
+            "status": "done",
+            "progress": done,
+            "message": _json.dumps({"mobile": mobile, "landline": landline, "no_number": no_number}),
+        }).eq("id", job_id).execute()
+    except Exception as _e:
+        print(f"[lp-skip-trace] DB final update failed: {_e}", flush=True)
     print(f"[lp-skip-trace] {job_id} done: mobile={mobile} landline={landline} no_number={no_number}", flush=True)
 
 

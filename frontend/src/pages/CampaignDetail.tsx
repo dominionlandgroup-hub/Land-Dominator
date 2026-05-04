@@ -111,10 +111,11 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
   const [lpStJobId, setLpStJobId] = useState<string | null>(null)
   const [lpStDone, setLpStDone] = useState(0)
   const [lpStTotal, setLpStTotal] = useState(0)
-  const [lpStStatus, setLpStStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
+  const [lpStStatus, setLpStStatus] = useState<'idle' | 'running' | 'done' | 'error' | 'interrupted'>('idle')
   const [lpStResult, setLpStResult] = useState<{ mobile: number; landline: number; no_number: number } | null>(null)
   const [lpStError, setLpStError] = useState<string | null>(null)
   const lpStPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const lpSt404Ref = useRef(0)
 
   // SMS campaign
   const [smsJobId, setSmsJobId] = useState<string | null>(null)
@@ -467,12 +468,20 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
       const { job_id, total } = await startLpSkipTrace(campaign.id, hasSelection ? ids : undefined)
       setLpStJobId(job_id)
       setLpStTotal(total)
+      lpSt404Ref.current = 0
       if (lpStPollRef.current) clearInterval(lpStPollRef.current)
       lpStPollRef.current = setInterval(async () => {
         try {
           const s = await getLpSkipTraceStatus(campaign.id, job_id)
+          lpSt404Ref.current = 0
           setLpStDone(s.done)
           setLpStTotal(s.total)
+          if (s.status === 'not_found') {
+            if (lpStPollRef.current) { clearInterval(lpStPollRef.current); lpStPollRef.current = null }
+            setLpStStatus('interrupted')
+            setLpStError('Skip trace job was interrupted. Check property records for results so far.')
+            return
+          }
           if (s.status === 'done' || s.status === 'error') {
             setLpStStatus(s.status as 'done' | 'error')
             if (s.status === 'done') setLpStResult({ mobile: s.mobile, landline: s.landline, no_number: s.no_number })
@@ -480,7 +489,14 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
             if (lpStPollRef.current) { clearInterval(lpStPollRef.current); lpStPollRef.current = null }
             loadFunnel()
           }
-        } catch {}
+        } catch {
+          lpSt404Ref.current += 1
+          if (lpSt404Ref.current >= 10) {
+            if (lpStPollRef.current) { clearInterval(lpStPollRef.current); lpStPollRef.current = null }
+            setLpStStatus('interrupted')
+            setLpStError('Skip trace job was interrupted. Check property records for results so far.')
+          }
+        }
       }, 2000)
     } catch (e: unknown) {
       const err = e as { response?: { data?: { detail?: string } } }
@@ -685,6 +701,9 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
           )}
           {lpStStatus === 'error' && (
             <span className="text-xs font-semibold" style={{ color: '#DC2626' }}>LP skip trace failed: {lpStError}</span>
+          )}
+          {lpStStatus === 'interrupted' && (
+            <span className="text-xs font-semibold" style={{ color: '#F59E0B' }}>⚠ {lpStError}</span>
           )}
 
           {/* SMS status */}
