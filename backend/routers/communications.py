@@ -49,11 +49,8 @@ _warmup_done: bool = False
 _AUDIO_DIR = Path("/tmp/tts_cache")
 _AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 
-# Core phrases pre-cached with Cartesia at startup (1 s gap each).
-_WARMUP_KEYS: frozenset[str] = frozenset({
-    "greeting", "collect_name", "collect_callback_time",
-    "close_hot_base", "close_cold", "still_there", "voicemail",
-})
+# All static phrases pre-cached with Cartesia at startup.
+# _WARMUP_KEYS is set dynamically after _PHRASES is defined (see below).
 
 # Static phrase texts used for Polly <Say> fallback when Cartesia cache is absent.
 _PHRASES: dict[str, str] = {
@@ -84,6 +81,9 @@ _PHRASES: dict[str, str] = {
         "Talk soon."
     ),
 }
+
+# All static phrases are pre-cached at startup
+_WARMUP_KEYS: frozenset[str] = frozenset(_PHRASES.keys())
 
 # ── FAQ knowledge base ────────────────────────────────────────────────────────────
 _DEFAULT_FAQ: list[dict] = [
@@ -278,9 +278,8 @@ async def save_faq(request: Request) -> dict:
 
 
 async def warmup() -> None:
-    """Pre-cache core Cartesia phrases at startup with 1 s gap each.
-    Server accepts calls immediately via Polly <Say> while warmup runs.
-    Once all core phrases are cached, Cartesia <Play> is used for the whole call."""
+    """Pre-cache ALL static phrases with Cartesia in parallel at startup.
+    Server accepts calls immediately via Polly <Say> while warmup runs."""
     global _warmup_done
     if not _cartesia_key() or not _cartesia_voice():
         print("[comms] Cartesia not configured — Polly fallback active for all calls")
@@ -288,24 +287,24 @@ async def warmup() -> None:
         return
 
     keys_to_cache = [(k, _PHRASES[k]) for k in _WARMUP_KEYS if k in _PHRASES]
-    print(f"[comms] Warmup starting — {len(keys_to_cache)} core phrases via Cartesia, 1 s gap each...")
+    print(f"[comms] Warmup starting — {len(keys_to_cache)} phrases in parallel...")
 
-    ok = 0
-    for key, text in keys_to_cache:
+    # Generate all phrases concurrently with a per-phrase 8 s timeout
+    async def _cache_one(key: str, text: str) -> bool:
         try:
-            result = await _tts_generate(text, key)
-            if result:
-                ok += 1
-                print(f"[comms] Cached: {key}", flush=True)
-            else:
-                print(f"[comms] Failed to cache: {key}", flush=True)
+            return await asyncio.wait_for(_tts_generate(text, key), timeout=8.0)
+        except asyncio.TimeoutError:
+            print(f"[comms] Warmup timeout for {key}", flush=True)
+            return False
         except Exception as exc:
             print(f"[comms] Warmup error for {key}: {exc}", flush=True)
-        await asyncio.sleep(1.0)
+            return False
+
+    results = await asyncio.gather(*[_cache_one(k, t) for k, t in keys_to_cache])
+    ok = sum(results)
 
     _warmup_done = True
-    all_ready = _all_core_cached()
-    voice_mode = "Cartesia" if all_ready else "Polly (some phrases missing)"
+    voice_mode = "Cartesia" if _all_core_cached() else "mixed Cartesia+Polly"
     print(f"[comms] Warmup done — {ok}/{len(keys_to_cache)} cached, voice mode: {voice_mode}", flush=True)
 
 
@@ -899,21 +898,44 @@ _VOICE_AI_SYSTEM = (
 )
 
 
+_TTS_TIMEOUT = 2.0  # max seconds to wait for Cartesia before falling back to Polly
+
+
 async def _get_response_audio(text: str) -> str:
-    """Generate Cartesia TTS and return <Play> XML. Falls back to Polly <Say> if Cartesia fails."""
+    """Return <Play> or <Say> XML.
+
+    Priority:
+      1. Disk cache hit → instant Cartesia <Play>
+      2. Cartesia generation within 2 s → <Play>  (task keeps running if it times out)
+      3. Polly <Say> → zero latency fallback
+
+    When we fall back to Polly, the Cartesia task continues in the background
+    (via asyncio.shield) and caches the result for the next call.
+    """
     if not text:
         return ""
-    # Check static cache first (for pre-cached fixed phrases)
+    # 1. Static phrase cache (zero latency)
     for key, phrase_text in _PHRASES.items():
         if phrase_text.strip() == text.strip() and _audio_path(key).exists():
             url = f"{_base_url()}/api/calls/audio/{key}"
             return f'<Play>{url}</Play>'
-    # Generate dynamic Cartesia audio with hash-based cache key
+    # 2. Dynamic hash cache (zero latency)
     cache_key = f"dyn_{hashlib.md5(text.encode()).hexdigest()[:16]}"
-    if await _tts_generate(text, cache_key):
+    if _audio_path(cache_key).exists():
         url = f"{_base_url()}/api/calls/audio/{cache_key}"
         return f'<Play>{url}</Play>'
-    # Cartesia failed — Polly fallback (same voice flow, just different source)
+    # 3. Try Cartesia with hard 2 s cap; shield keeps it running after timeout
+    tts_task = asyncio.create_task(_tts_generate(text, cache_key))
+    try:
+        success = await asyncio.wait_for(asyncio.shield(tts_task), timeout=_TTS_TIMEOUT)
+        if success:
+            url = f"{_base_url()}/api/calls/audio/{cache_key}"
+            return f'<Play>{url}</Play>'
+    except asyncio.TimeoutError:
+        print(f"[voice-ai] Cartesia >{_TTS_TIMEOUT}s — Polly now, Cartesia caching in bg: {text[:50]!r}", flush=True)
+    except Exception as exc:
+        print(f"[voice-ai] Cartesia error — Polly fallback: {exc}", flush=True)
+    # 4. Polly instant fallback
     return _say(text)
 
 
@@ -1201,8 +1223,13 @@ async def call_gather(step: str, request: Request, background_tasks: BackgroundT
     ai_transcript.append({"role": "assistant", "content": ai_text})
     _upd(exchange_count=exchanges + 1, ai_transcript=ai_transcript)
 
-    # ── Generate audio and loop ───────────────────────────────────────────
+    # ── Generate audio (2 s cap → Polly fallback, Cartesia caches in bg) ─
     response_xml = await _get_response_audio(ai_text)
+
+    # Pre-generate Cartesia for the "still there?" prompt in background —
+    # it will be ready if the next gather fires after silence.
+    asyncio.create_task(_tts_generate(_PHRASES["still_there"], "still_there"))
+
     return _texml_gather("ai_response", response_xml, call_sid)
 
 
