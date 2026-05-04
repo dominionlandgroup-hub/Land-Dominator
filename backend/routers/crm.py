@@ -3425,21 +3425,39 @@ async def start_sms_campaign(
     import datetime as _dt
     if property_ids:
         # Manual individual / selected send — fetch exactly those records, bypass sms_status filter
-        eligible = sb.table("crm_properties").select(
-            "id,owner_first_name,property_address,property_city,state,phone_1,phone_1_type,phone_1_dnc,offer_price,opted_out,sms_status"
+        eligible_r = sb.table("crm_properties").select(
+            "id,owner_first_name,property_address,property_city,state,phone_1,phone_1_type,phone_1_dnc,offer_price,opted_out,sms_status,sms_day1_sent_at"
         ).in_("id", property_ids).execute()
-        props = [p for p in (eligible.data or []) if not p.get("opted_out") and not p.get("phone_1_dnc") and p.get("phone_1") and p.get("phone_1_type") == "mobile"]
+        all_rows = eligible_r.data or []
+        props = [p for p in all_rows
+                 if p.get("phone_1")
+                 and str(p.get("phone_1_type") or "").lower().strip() == "mobile"
+                 and not (p.get("phone_1_dnc") or False)
+                 and not (p.get("opted_out") or False)]
     elif day == 1:
-        eligible = sb.table("crm_properties").select(
-            "id,owner_first_name,property_address,property_city,state,phone_1,phone_1_type,phone_1_dnc,offer_price,opted_out,sms_status"
-        ).eq("campaign_id", campaign_id).eq("phone_1_type", "mobile").execute()
-        props = [p for p in (eligible.data or []) if not p.get("opted_out") and not p.get("phone_1_dnc") and p.get("sms_status") in ("pending", None)]
+        all_rows = _fetch_all_campaign_rows(
+            sb, campaign_id,
+            "id,owner_first_name,property_address,property_city,state,phone_1,phone_1_type,phone_1_dnc,offer_price,opted_out,sms_status,sms_day1_sent_at"
+        )
+        props = [p for p in all_rows
+                 if p.get("phone_1")
+                 and str(p.get("phone_1_type") or "").lower().strip() == "mobile"
+                 and not (p.get("phone_1_dnc") or False)
+                 and not (p.get("opted_out") or False)
+                 and not p.get("sms_day1_sent_at")]
     else:
         cutoff = (_dt.datetime.utcnow() - _dt.timedelta(days=2)).isoformat()
-        eligible = sb.table("crm_properties").select(
+        all_rows = _fetch_all_campaign_rows(
+            sb, campaign_id,
             "id,owner_first_name,property_address,property_city,state,phone_1,phone_1_type,phone_1_dnc,offer_price,opted_out,sms_status,sms_day1_sent_at"
-        ).eq("campaign_id", campaign_id).eq("phone_1_type", "mobile").eq("sms_status", "day1_sent").lt("sms_day1_sent_at", cutoff).execute()
-        props = [p for p in (eligible.data or []) if not p.get("opted_out") and not p.get("phone_1_dnc")]
+        )
+        props = [p for p in all_rows
+                 if str(p.get("phone_1_type") or "").lower().strip() == "mobile"
+                 and p.get("sms_status") == "day1_sent"
+                 and p.get("sms_day1_sent_at", "") < cutoff
+                 and not (p.get("opted_out") or False)
+                 and not (p.get("phone_1_dnc") or False)]
+    print(f"[send-sms] campaign={campaign_id} day={day} eligible={len(props)}", flush=True)
     total = len(props)
     job_id = str(uuid.uuid4())
     _sms_campaign_jobs[job_id] = {"status": "running", "done": 0, "total": total, "sent": 0, "skipped": 0, "errors": [], "day": day}
@@ -3764,10 +3782,10 @@ async def get_sms_preview(campaign_id: str, day: int = Query(1)) -> dict:
     """Return per-category counts for SMS confirmation modal."""
     import datetime as _dt
     sb = get_supabase()
-    r = sb.table("crm_properties").select(
+    rows = _fetch_all_campaign_rows(
+        sb, campaign_id,
         "id,phone_1,phone_1_type,phone_1_dnc,opted_out,sms_status,sms_day1_sent_at"
-    ).eq("campaign_id", campaign_id).execute()
-    rows = r.data or []
+    )
 
     mobile_ready = 0
     dnc = 0
@@ -3776,31 +3794,38 @@ async def get_sms_preview(campaign_id: str, day: int = Query(1)) -> dict:
     already_sent = 0
 
     for p in rows:
-        if p.get("opted_out"):
+        phone = p.get("phone_1")
+        ptype = str(p.get("phone_1_type") or "").lower().strip()
+        is_dnc = p.get("phone_1_dnc") or False
+        is_opted_out = p.get("opted_out") or False
+        day1_sent = p.get("sms_day1_sent_at")
+
+        if is_opted_out:
             opted_out_count += 1
             continue
-        if not p.get("phone_1") or p.get("phone_1_type") != "mobile":
+        if not phone or ptype != "mobile":
             no_phone += 1
             continue
-        if p.get("phone_1_dnc"):
+        if is_dnc:
             dnc += 1
             continue
-        sms_status = p.get("sms_status")
         if day == 1:
-            if sms_status not in ("pending", None):
+            if day1_sent:
                 already_sent += 1
                 continue
         else:
+            sms_status = p.get("sms_status")
             if sms_status != "day1_sent":
                 already_sent += 1
                 continue
-            sent_at = p.get("sms_day1_sent_at")
-            if sent_at:
+            if day1_sent:
                 cutoff = (_dt.datetime.utcnow() - _dt.timedelta(days=2)).isoformat()
-                if sent_at >= cutoff:
+                if day1_sent >= cutoff:
                     already_sent += 1
                     continue
         mobile_ready += 1
+
+    print(f"[sms-preview] campaign={campaign_id} day={day} total_rows={len(rows)} mobile_ready={mobile_ready} dnc={dnc} opted_out={opted_out_count} no_phone={no_phone} already_sent={already_sent}", flush=True)
 
     return {
         "mobile_ready": mobile_ready,
