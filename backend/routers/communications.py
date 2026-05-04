@@ -352,6 +352,8 @@ def _texml_gather(
     call_sid: str,
     with_recording: bool = False,
     hints: str = "zero one two three four five six seven eight nine dash hyphen oh yes no",
+    timeout: int = 5,
+    speech_timeout: int = 2,
 ) -> Response:
     """Build a Gather TeXML with proper timeouts that never hang up on silence."""
     action = f"{_base_url()}/api/calls/gather/{next_step}"
@@ -366,18 +368,16 @@ def _texml_gather(
             f'\n          recordingStatusCallbackMethod="POST"'
         )
 
-    # bargeIn is implicit when input="speech" — caller speaking stops <Play>/<Say> immediately
     xml = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         "<Response>\n"
-        f'  <Gather input="speech" action="{action}" method="POST"\n'
-        f'          timeout="10" speechTimeout="1" language="en-US"\n'
-        f'          enhanced="true" profanityFilter="false"\n'
+        f'  <Gather input="speech dtmf" action="{action}" method="POST"\n'
+        f'          timeout="{timeout}" speechTimeout="{speech_timeout}" language="en-US"\n'
+        f'          profanityFilter="false"\n'
         f'          hints="{hints}"\n'
         f'          actionOnEmptyResult="true"{record_attrs}>\n'
         f"    {inner_xml}\n"
         "  </Gather>\n"
-        # On timeout/silence: redirect back to same step with timedout flag
         f'  <Redirect method="POST">{timeout_url}</Redirect>\n'
         "</Response>"
     )
@@ -901,12 +901,110 @@ async def _do_live_transfer(call_sid: str, state: dict, background_tasks: Backgr
     return _texml_hangup(_phrase("live_transfer"))
 
 
+# ── AI Voice helpers ─────────────────────────────────────────────────────────────
+
+_VOICE_AI_MAX_EXCHANGES = 10
+_VOICE_AI_SYSTEM = (
+    "You are Myra, an assistant for Dominion Land Group.\n"
+    "You answer calls from land owners who received a text or mailer about their land.\n"
+    "Keep responses SHORT - max 2 sentences for phone. This is a voice call.\n"
+    "Goal: get their name, interest level, and best callback time for Damien.\n"
+    "Never give an exact offer price - say Damien will call with details.\n"
+    "If they want to talk to someone now, say you will connect them.\n"
+    "If they say stop or remove me, say you will take care of it.\n"
+    "Be warm and natural. Never hang up on the caller. Always respond.\n"
+    "If asked 'are you real' or 'are you a bot', say you are Myra, an assistant."
+)
+
+
+async def _get_response_audio(text: str) -> str:
+    """Generate Cartesia TTS and return <Play> XML. Falls back to Polly <Say> if Cartesia fails."""
+    if not text:
+        return ""
+    # Check static cache first (for pre-cached fixed phrases)
+    for key, phrase_text in _PHRASES.items():
+        if phrase_text.strip() == text.strip() and _audio_path(key).exists():
+            url = f"{_base_url()}/api/calls/audio/{key}"
+            return f'<Play>{url}</Play>'
+    # Generate dynamic Cartesia audio with hash-based cache key
+    cache_key = f"dyn_{hashlib.md5(text.encode()).hexdigest()[:16]}"
+    if await _tts_generate(text, cache_key):
+        url = f"{_base_url()}/api/calls/audio/{cache_key}"
+        return f'<Play>{url}</Play>'
+    # Cartesia failed — Polly fallback (same voice flow, just different source)
+    return _say(text)
+
+
+async def _claude_call_response(speech: str, state: dict) -> Optional[str]:
+    """Call Claude API and return Myra's response text for voice call."""
+    try:
+        import anthropic as _anthropic
+    except ImportError:
+        return None
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return None
+
+    # Build property context for system prompt
+    address = state.get("property_address", "")
+    city = state.get("property_city", "")
+    state_abbr = state.get("property_state", "")
+    offer_price = state.get("offer_price")
+    full_address = " ".join(filter(None, [address, city, state_abbr]))
+
+    system = _VOICE_AI_SYSTEM
+    if full_address:
+        system += f"\nCaller's property address: {full_address}."
+    if offer_price:
+        low_s, high_s = _offer_price_range(offer_price)
+        system += f"\nOur price range for their property: {low_s} to {high_s}."
+
+    # Build messages from stored AI transcript (last 10 exchanges)
+    ai_transcript = state.get("ai_transcript", [])
+    messages = [{"role": e["role"], "content": e["content"]} for e in ai_transcript[-10:]]
+    if not messages or messages[-1]["role"] != "user":
+        messages.append({"role": "user", "content": speech})
+
+    try:
+        def _call():
+            client = _anthropic.Anthropic(api_key=api_key)
+            msg = client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=100,
+                system=system,
+                messages=messages,
+            )
+            return next((b.text for b in msg.content if hasattr(b, "text")), "").strip()
+
+        result = await asyncio.to_thread(_call)
+        print(f"[voice-ai] Claude response: {result[:80]!r}", flush=True)
+        return result
+    except Exception as exc:
+        print(f"[voice-ai] Claude error: {exc}", flush=True)
+        return None
+
+
+def _detect_call_hot_signals(speech: str, state: dict, call_sid: str) -> None:
+    """Update interest_score to 'hot' if seller expresses interest."""
+    low = speech.lower()
+    hot_phrases = [
+        "yes", "yeah", "yep", "sure", "okay", "interested", "sell",
+        "how much", "tell me more", "consider", "let's talk", "lets talk",
+        "go ahead", "sounds good", "definitely", "absolutely",
+    ]
+    if any(p in low for p in hot_phrases):
+        state["interest_score"] = "hot"
+        if call_sid in _call_states:
+            _call_states[call_sid]["interest_score"] = "hot"
+        print(f"[voice-ai] HOT signal detected: {speech[:60]!r}", flush=True)
+
+
 # ── Inbound call ──────────────────────────────────────────────────────────────────
 
 @router.post("/api/calls/inbound")
 async def inbound_call(request: Request) -> Response:
-    """Telnyx TeXML webhook — answers inbound call with Myra (blind offer flow).
-    Returns TeXML immediately. Cartesia audio used if cached; Polly <Say> fallback."""
+    """Telnyx TeXML webhook — answers inbound call with Myra AI voice agent.
+    Always answers. Cartesia audio for greeting; falls back to Polly if unavailable."""
     call_sid = f"call_{_now()}"
     caller = ""
     try:
@@ -923,11 +1021,9 @@ async def inbound_call(request: Request) -> Response:
         except Exception:
             pass
 
-    # Check business hours
-    if not _is_business_hours():
-        return _texml_hangup(_phrase("after_hours"))
+    # Always answer — no business hours check
 
-    # Pre-load property by caller phone (for offer price range)
+    # Look up caller's property
     prop: dict = {}
     if caller:
         try:
@@ -941,9 +1037,7 @@ async def inbound_call(request: Request) -> Response:
         "caller": caller,
         "property_id": prop.get("id"),
         "offer_price": prop.get("offer_price"),
-        "property_address": (
-            prop.get("situs_address") or prop.get("property_address") or ""
-        ),
+        "property_address": prop.get("situs_address") or prop.get("property_address") or "",
         "property_city": prop.get("situs_city") or prop.get("property_city") or "",
         "property_state": prop.get("situs_state") or prop.get("state") or "",
         "owner_name": prop.get("owner_full_name") or prop.get("owner_first_name") or "",
@@ -951,13 +1045,16 @@ async def inbound_call(request: Request) -> Response:
         "interest_score": "warm",
         "seller_asking_price": None,
         "callback_time": None,
-        "transcript": [],
+        "transcript": [],          # legacy format for _finalize_call
+        "ai_transcript": [],       # Claude messages format
+        "exchange_count": 0,
+        "silence_retries": 0,
         "started_at": _now(),
         "retries": {},
         "comm_id": None,
     }
 
-    # Create the DB record immediately so missed/short calls are always logged
+    # Log call immediately so missed calls are always recorded
     try:
         comm = await _log_comm(
             property_id=prop.get("id"),
@@ -972,18 +1069,15 @@ async def inbound_call(request: Request) -> Response:
     except Exception as exc:
         print(f"[comms] inbound log error: {exc}")
 
-    return _texml_gather("greeting", _phrase("greeting"), call_sid, with_recording=True)
+    # Play greeting → loop on ai_response step
+    greeting_xml = await _get_response_audio(_PHRASES["greeting"])
+    return _texml_gather("ai_response", greeting_xml, call_sid, with_recording=True)
 
 
 @router.post("/api/calls/gather/{step}")
 async def call_gather(step: str, request: Request, background_tasks: BackgroundTasks) -> Response:
-    """Telnyx gather callback — Myra blind-offer conversation state machine.
-
-    Steps: greeting → offer_intro → interest → collect_name →
-           collect_callback_time → confirm_callback_number → close_hot
-    Side paths: follow_up_check → close  |  collect_asking_price → callback_time
-    Any step: live_transfer trigger, opt-out, wrong number.
-    """
+    """Telnyx gather callback — Myra AI voice agent loop.
+    All conversation handled by Claude. Single step: ai_response."""
     try:
         form = await request.form()
         call_sid = _form_get(form, "CallSid", "call_control_id")
@@ -994,33 +1088,17 @@ async def call_gather(step: str, request: Request, background_tasks: BackgroundT
         timed_out = False
 
     state = _call_states.get(call_sid, {})
-    mgr = _get_acq_manager_name()
+    low = (speech or "").lower().strip()
 
     def _upd(**kw) -> None:
         state.update(kw)
         if call_sid in _call_states:
             _call_states[call_sid].update(kw)
 
-    def _inc(key: str) -> int:
-        return _inc_step_retries(call_sid, state, key)
-
-    def _t(agent_text: str) -> None:
-        state.setdefault("transcript", []).append({
-            "step": step, "agent": agent_text, "speech": speech, "timed_out": timed_out,
-        })
-        if call_sid in _call_states:
-            _call_states[call_sid].setdefault("transcript", state["transcript"])
-
-    low = (speech or "").lower().strip()
-
-    # ── Global: opt-out / wrong number detection (any step) ──────────────
+    # ── Global: STOP / wrong number / live transfer ───────────────────────
     _STOP_RE = re.compile(r"\b(stop|remove me|take me off|unsubscribe|do not call|don'?t call|don'?t contact)\b")
     _WRONG_RE = re.compile(r"\b(wrong number|wrong person|don'?t own|not my|no property|who is this)\b")
-    _TRANSFER_PHRASES = [
-        "talk to someone", "speak to a person", "real person", "human",
-        f"talk to {mgr.lower()}", "transfer me", "talk to your manager",
-        "talk to someone now", "speak to someone", "speak with someone",
-    ]
+    _TRANSFER_RE = re.compile(r"\b(talk to someone|speak to a person|real person|human|transfer me|talk to your manager|speak with someone|speak to someone)\b")
 
     if not timed_out and speech:
         if _STOP_RE.search(low):
@@ -1043,212 +1121,62 @@ async def call_gather(step: str, request: Request, background_tasks: BackgroundT
                     pass
             _upd(interest_score="cold")
             background_tasks.add_task(_finalize_call, call_sid)
-            return _texml_hangup(_phrase("opt_out"))
+            return _texml_hangup(await _get_response_audio(_PHRASES["opt_out"]))
 
         if _WRONG_RE.search(low):
             background_tasks.add_task(_finalize_call, call_sid)
-            return _texml_hangup(_phrase("wrong_number"))
+            return _texml_hangup(await _get_response_audio(_PHRASES["wrong_number"]))
 
-        if any(phrase in low for phrase in _TRANSFER_PHRASES):
+        if _TRANSFER_RE.search(low):
             return await _do_live_transfer(call_sid, state, background_tasks)
 
-    # ── Step: greeting ────────────────────────────────────────────────────
-    if step == "greeting":
-        agent_text = _PHRASES["greeting"]
-        _t(agent_text)
-
-        if timed_out or not speech:
-            n = _inc("timeout_greeting")
-            if n < 2:
-                return _texml_gather("greeting", _phrase("still_there"), call_sid)
+    # ── No speech / silence ───────────────────────────────────────────────
+    if not speech or timed_out:
+        silence = state.get("silence_retries", 0) + 1
+        _upd(silence_retries=silence)
+        if silence >= 3:
+            # Too many silences — graceful goodbye
             background_tasks.add_task(_finalize_call, call_sid)
-            return _texml_hangup(_phrase("goodbye"))
+            return _texml_hangup(await _get_response_audio("Thank you for calling. Someone will reach out to you shortly."))
+        sorry = "I am sorry, I did not catch that. Could you say that again?"
+        return _texml_gather("ai_response", await _get_response_audio(sorry), call_sid)
 
-        # "Are you a real person?" → honest deflect
-        if re.search(r"\b(real person|are you (a |an )?(real|human|person|bot|robot|ai))\b", low):
-            resp = _say("I am Myra, an assistant with Dominion Land Group. How can I help you?")
-            return _texml_gather("greeting", resp, call_sid)
+    _upd(silence_retries=0)
 
-        # FAQ / objection before offer_intro
-        if _is_faq_question(speech) or _looks_like_question(speech):
-            faq_list = await _load_faq()
-            answer = _match_faq_answer(speech, faq_list)
-            if answer:
-                inner = _say(answer) + _say("Is there anything else I can help you with?")
-                return _texml_gather("offer_intro", inner, call_sid)
-
-        # Fall through to offer intro in all cases
-        return await _build_offer_intro(call_sid, state)
-
-    # ── Step: offer_intro (dynamic — built by _build_offer_intro) ────────
-    elif step == "offer_intro":
-        agent_text = state.get("_offer_intro_text", "")
-        _t(agent_text)
-
-        if timed_out or not speech:
-            n = _inc("timeout_offer")
-            if n < 2:
-                return _texml_gather("offer_intro", _phrase("still_there"), call_sid)
-            # Advance to collect name anyway
-            return _texml_gather("collect_name", _phrase("collect_name"), call_sid)
-
-        # FAQ / objections
-        if _is_faq_question(speech) or _looks_like_question(speech):
-            faq_list = await _load_faq()
-            answer = _match_faq_answer(speech, faq_list)
-            if answer:
-                inner = _say(answer) + _say("When is a good time for us to talk more?")
-                return _texml_gather("collect_callback_time", inner, call_sid)
-
-        # "too low" / counter offer
-        _TOO_LOW_RE = re.compile(r"\b(too low|not enough|higher|more than that|need more|want more|expecting|looking for more)\b")
-        _PRICE_RE = re.compile(r"\$[\d,]+|\d+[\s,]*(?:thousand|k|hundred)|\d{4,6}")
-        if _TOO_LOW_RE.search(low) or (
-            _PRICE_RE.search(low) and re.search(r"\b(want|need|asking|expecting|looking|thinking)\b", low)
-        ):
-            _upd(interest_score="warm")
-            return _texml_gather(
-                "collect_asking_price",
-                _say("I understand. What number were you thinking?"),
-                call_sid,
-            )
-
-        # NO / not interested
-        _NO_RE = re.compile(r"\b(no|not interested|nope|not selling|don'?t want|pass|not at this time)\b")
-        if _NO_RE.search(low):
-            _upd(interest_score="cold")
-            return _texml_gather("follow_up_check", _phrase("close_cold"), call_sid)
-
-        # YES / positive
-        _YES_RE = re.compile(r"\b(yes|yeah|yep|sure|sounds good|interested|tell me more|go ahead|okay|ok)\b")
-        if _YES_RE.search(low) or _score_interest(speech) in ("hot", "warm"):
-            _upd(interest_score="warm")
-            return _texml_gather("collect_name", _phrase("collect_name"), call_sid)
-
-        # Ambiguous — move to name collection
-        return _texml_gather("collect_name", _phrase("collect_name"), call_sid)
-
-    # ── Step: address_lookup (when property not found at greeting) ────────
-    elif step == "address_lookup":
-        _t(state.get("_address_lookup_text", ""))
-        if speech and not timed_out:
-            prop = await _lookup_by_address(speech)
-            if not prop:
-                prop = await _lookup_by_name_county(speech, "")
-                prop = (prop or [None])[0] if isinstance(prop, list) else prop
-            if prop:
-                _upd(
-                    property_id=prop.get("id"),
-                    offer_price=prop.get("offer_price"),
-                    property_address=prop.get("situs_address") or prop.get("property_address") or speech,
-                )
-                return await _build_offer_intro(call_sid, state)
-        # Couldn't find by address — proceed without price
-        return await _build_offer_intro(call_sid, state)
-
-    # ── Step: collect_asking_price ────────────────────────────────────────
-    elif step == "collect_asking_price":
-        _t("I understand. What number were you thinking?")
-        if speech and not timed_out:
-            _upd(seller_asking_price=speech.strip(), interest_score="warm")
-        close_text = (
-            f"I will pass that along to {mgr} and he will reach out to discuss further. "
-            f"What is the best time for him to call you?"
-        )
-        return _texml_gather("collect_callback_time", _say(close_text), call_sid)
-
-    # ── Step: collect_name ────────────────────────────────────────────────
-    elif step == "collect_name":
-        _t(_PHRASES["collect_name"])
-        if timed_out or not speech:
-            n = _inc("timeout_name")
-            if n >= 2:
-                background_tasks.add_task(_finalize_call, call_sid)
-                return _texml_hangup(_phrase("goodbye"))
-            return _texml_gather("collect_name", _phrase("still_there"), call_sid)
-
-        if _is_faq_question(speech) or _looks_like_question(speech):
-            faq_list = await _load_faq()
-            answer = _match_faq_answer(speech, faq_list)
-            if answer:
-                inner = _say(answer) + _phrase("collect_name")
-                return _texml_gather("collect_name", inner, call_sid)
-
-        _upd(caller_name=speech.strip())
-        return _texml_gather("collect_callback_time", _phrase("collect_callback_time"), call_sid)
-
-    # ── Step: collect_callback_time ───────────────────────────────────────
-    elif step == "collect_callback_time":
-        _t(_PHRASES["collect_callback_time"])
-        if timed_out or not speech:
-            n = _inc("timeout_callback")
-            if n >= 2:
-                # Close without callback time
-                _upd(interest_score="warm")
-                background_tasks.add_task(_finalize_call, call_sid)
-                return _texml_hangup(_phrase("close_hot_base"))
-            return _texml_gather("collect_callback_time", _phrase("still_there"), call_sid)
-
-        _upd(callback_time=speech.strip())
-
-        # Confirm their phone number
-        caller_phone = state.get("caller", "")
-        if caller_phone:
-            digits = re.sub(r"\D", "", caller_phone)[-10:]
-            fmt = f"{digits[:3]} {digits[3:6]} {digits[6:]}" if len(digits) == 10 else caller_phone
-            confirm_q = f"Is {fmt} the best number to reach you?"
-        else:
-            confirm_q = "Is the number you called from the best number to reach you?"
-        return _texml_gather("confirm_callback_number", _say(confirm_q), call_sid)
-
-    # ── Step: confirm_callback_number ────────────────────────────────────
-    elif step == "confirm_callback_number":
-        low2 = (speech or "").lower()
-        wants_different = bool(re.search(r"\b(no|nope|different|other|change|wrong|another)\b", low2))
-        if wants_different and not timed_out:
-            return _texml_gather("ask_different_number", _say("What number should we use?"), call_sid)
-
-        _upd(interest_score="hot")
-        close_text = (
-            f"Got it. I will have {mgr} give you a call within 24 to 48 hours. "
-            "Have a great day."
-        )
+    # ── Rate limit — max 10 exchanges ────────────────────────────────────
+    exchanges = state.get("exchange_count", 0)
+    if exchanges >= _VOICE_AI_MAX_EXCHANGES:
+        handoff = "I will have Damien call you back. Thank you for your time!"
         background_tasks.add_task(_finalize_call, call_sid)
-        return _texml_hangup(_say(close_text))
+        return _texml_hangup(await _get_response_audio(handoff))
 
-    # ── Step: ask_different_number ────────────────────────────────────────
-    elif step == "ask_different_number":
-        if speech and not timed_out:
-            _upd(preferred_callback=speech.strip())
-        _upd(interest_score="hot")
-        close_text = (
-            f"Got it. I will have {mgr} give you a call within 24 to 48 hours. "
-            "Have a great day."
-        )
-        background_tasks.add_task(_finalize_call, call_sid)
-        return _texml_hangup(_say(close_text))
+    # ── Detect HOT interest ───────────────────────────────────────────────
+    _detect_call_hot_signals(speech, state, call_sid)
 
-    # ── Step: follow_up_check — ask if follow-up in months is OK ─────────
-    elif step == "follow_up_check":
-        _t(_PHRASES["close_cold"])
-        if timed_out or not speech:
-            background_tasks.add_task(_finalize_call, call_sid)
-            return _texml_hangup(_phrase("goodbye"))
+    # ── Update AI transcript (user turn) ────────────────────────────────
+    ai_transcript = state.setdefault("ai_transcript", [])
+    ai_transcript.append({"role": "user", "content": speech})
 
-        is_yes = bool(re.search(r"\b(yes|yeah|yep|sure|okay|ok|that'?s fine|fine)\b", low))
-        if is_yes:
-            _upd(interest_score="cold")  # warm cold = follow up later
-            background_tasks.add_task(_finalize_call, call_sid)
-            return _texml_hangup(_phrase("follow_up_yes"))
-        else:
-            _upd(interest_score="cold")
-            background_tasks.add_task(_finalize_call, call_sid)
-            return _texml_hangup(_phrase("not_interested"))
+    # Also update legacy transcript for _finalize_call scoring
+    state.setdefault("transcript", []).append({
+        "step": "ai_response", "agent": "", "speech": speech, "timed_out": False,
+    })
 
-    # ── Fallback ─────────────────────────────────────────────────────────
-    else:
-        background_tasks.add_task(_finalize_call, call_sid)
-        return _texml_hangup(_phrase("goodbye"))
+    # ── Call Claude AI ────────────────────────────────────────────────────
+    ai_text = await _claude_call_response(speech, state)
+
+    if not ai_text:
+        # Claude failed — connect to Damien with apology
+        print(f"[voice-ai] Claude failed — transferring {call_sid} to Damien", flush=True)
+        return await _do_live_transfer(call_sid, state, background_tasks)
+
+    # ── Update AI transcript (assistant turn) ───────────────────────────
+    ai_transcript.append({"role": "assistant", "content": ai_text})
+    _upd(exchange_count=exchanges + 1, ai_transcript=ai_transcript)
+
+    # ── Generate Cartesia audio and return ───────────────────────────────
+    response_xml = await _get_response_audio(ai_text)
+    return _texml_gather("ai_response", response_xml, call_sid)
 
 
 # ── Recording status callback ────────────────────────────────────────────────────
