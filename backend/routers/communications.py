@@ -967,12 +967,16 @@ async def _claude_call_response(speech: str, state: dict) -> Optional[str]:
 
 
 def _detect_call_hot_signals(speech: str, state: dict, call_sid: str) -> None:
-    """Update interest_score to 'hot' if seller expresses interest."""
+    """Update interest_score to 'hot' only if seller explicitly expresses interest in selling."""
     low = speech.lower()
+    # Require genuine interest signals — NOT simple acknowledgments ("yes", "okay", "sure")
     hot_phrases = [
-        "yes", "yeah", "yep", "sure", "okay", "interested", "sell",
-        "how much", "tell me more", "consider", "let's talk", "lets talk",
-        "go ahead", "sounds good", "definitely", "absolutely",
+        "interested in selling", "want to sell", "willing to sell", "open to selling",
+        "sell the land", "sell my land", "sell the property", "sell my property",
+        "how much", "what's your offer", "what is your offer", "what would you pay",
+        "tell me more", "let's talk", "lets talk", "sounds good to me",
+        "definitely", "absolutely", "ready to sell", "thinking about selling",
+        "been thinking about selling", "considering selling",
     ]
     if any(p in low for p in hot_phrases):
         state["interest_score"] = "hot"
@@ -1051,8 +1055,10 @@ async def inbound_call(request: Request) -> Response:
     except Exception as exc:
         print(f"[comms] inbound log error: {exc}")
 
-    # Play greeting → loop on ai_response step
-    greeting_xml = await _get_response_audio(_PHRASES["greeting"])
+    # Play greeting instantly — use static cache (zero latency), fall back to Polly <Say>
+    greeting_xml = _phrase("greeting")
+    cached = "cache-hit" if _audio_path("greeting").exists() else "polly-fallback"
+    print(f"[voice-ai] Greeting for {caller}: {cached}", flush=True)
     return _texml_gather("ai_response", greeting_xml, call_sid, with_recording=True)
 
 
@@ -1080,7 +1086,7 @@ async def call_gather(step: str, request: Request, background_tasks: BackgroundT
     # ── Global: STOP / wrong number / live transfer ───────────────────────
     _STOP_RE = re.compile(r"\b(stop|remove me|take me off|unsubscribe|do not call|don'?t call|don'?t contact)\b")
     _WRONG_RE = re.compile(r"\b(wrong number|wrong person|don'?t own|not my|no property|who is this)\b")
-    _TRANSFER_RE = re.compile(r"\b(talk to someone|speak to a person|real person|human|transfer me|talk to your manager|speak with someone|speak to someone)\b")
+    _TRANSFER_RE = re.compile(r"\b(transfer me|connect me to|put me through|speak with a (real )?person|talk to a (real )?person|real person please|get me a human|speak to a human|talk to a human|I want a human|I need a human|get me (damien|your manager|a manager|the manager))\b")
 
     if not timed_out and speech:
         if _STOP_RE.search(low):
@@ -1402,97 +1408,109 @@ async def _finalize_call(call_sid: str) -> None:
     if score == "hot" or disposition == "INTERESTED":
         prop_data: dict = {}
         try:
-            r = get_supabase().table("crm_properties").select("*").eq("id", property_id).execute()
-            prop_data = r.data[0] if r.data else {}
+            if property_id:
+                r = get_supabase().table("crm_properties").select("*").eq("id", property_id).execute()
+                prop_data = r.data[0] if r.data else {}
+            elif caller:
+                # Re-lookup by phone in case initial lookup missed it
+                found2 = await _lookup_phone(caller)
+                if found2:
+                    prop_data = found2
+                    property_id = found2.get("id")
         except Exception:
             pass
-        owner = prop_data.get("owner_full_name") or caller_name or "Unknown"
-        address_disp = " ".join(filter(None, [
-            prop_data.get("situs_address") or prop_address,
-            prop_data.get("situs_city") or prop_city,
-            prop_data.get("situs_state") or prop_state_abbr,
-        ]))
-        apn = prop_data.get("apn", "")
-        county = prop_data.get("county", "")
-        offer = prop_data.get("offer_price")
-        offer_str = f"${int(offer):,}" if offer else "N/A"
-        asking_str = seller_asking_price or "not stated"
-        cb_display = callback_time_spoken or callback_time or "not stated"
 
-        # SMS to Damien
-        try:
-            api_key = _telnyx_key()
-            from_phone_e164 = _telnyx_phone()
-            if api_key and from_phone_e164:
-                raw = re.sub(r"\D", "", from_phone_e164)
-                from_e164 = f"+1{raw}" if len(raw) == 10 else (f"+{raw}" if len(raw) == 11 else from_phone_e164)
-                sms_body = (
-                    f"HOT LEAD\n"
-                    f"Name: {owner}\n"
-                    f"Property: {address_disp or apn or 'unknown'}\n"
-                    f"Asking: {asking_str}\n"
-                    f"Best time: {cb_display}\n"
-                    f"View: https://land-dominator-frontend-production.up.railway.app/inbox"
-                )
-                payload: dict = {"from": from_e164, "to": "+12023215846", "text": sms_body}
-                profile_id = os.getenv("TELNYX_MESSAGING_PROFILE_ID", "")
-                if profile_id:
-                    payload["messaging_profile_id"] = profile_id
-                async with httpx.AsyncClient(timeout=15) as client:
-                    await client.post(
-                        "https://api.telnyx.com/v2/messages",
-                        json=payload,
-                        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        # Skip HOT alert if caller can't be identified at all
+        if not property_id and not (prop_data.get("owner_full_name") or caller_name):
+            print(f"[voice-ai] HOT alert skipped — no property match for {caller}", flush=True)
+        else:
+            owner = prop_data.get("owner_full_name") or caller_name or "Unknown"
+            address_disp = " ".join(filter(None, [
+                prop_data.get("situs_address") or prop_address,
+                prop_data.get("situs_city") or prop_city,
+                prop_data.get("situs_state") or prop_state_abbr,
+            ]))
+            apn = prop_data.get("apn", "")
+            county = prop_data.get("county", "")
+            offer = prop_data.get("offer_price")
+            offer_str = f"${int(offer):,}" if offer else "N/A"
+            asking_str = seller_asking_price or "not stated"
+            cb_display = callback_time_spoken or callback_time or "not stated"
+
+            # SMS to Damien
+            try:
+                api_key = _telnyx_key()
+                from_phone_e164 = _telnyx_phone()
+                if api_key and from_phone_e164:
+                    raw = re.sub(r"\D", "", from_phone_e164)
+                    from_e164 = f"+1{raw}" if len(raw) == 10 else (f"+{raw}" if len(raw) == 11 else from_phone_e164)
+                    sms_body = (
+                        f"HOT LEAD\n"
+                        f"Name: {owner}\n"
+                        f"Property: {address_disp or apn or 'unknown'}\n"
+                        f"Asking: {asking_str}\n"
+                        f"Best time: {cb_display}\n"
+                        f"View: https://land-dominator-frontend-production.up.railway.app/inbox"
                     )
-        except Exception as exc:
-            print(f"[comms] HOT call alert SMS error: {exc}")
+                    payload: dict = {"from": from_e164, "to": "+12023215846", "text": sms_body}
+                    profile_id = os.getenv("TELNYX_MESSAGING_PROFILE_ID", "")
+                    if profile_id:
+                        payload["messaging_profile_id"] = profile_id
+                    async with httpx.AsyncClient(timeout=15) as client:
+                        await client.post(
+                            "https://api.telnyx.com/v2/messages",
+                            json=payload,
+                            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                        )
+            except Exception as exc:
+                print(f"[comms] HOT call alert SMS error: {exc}")
 
-        # Auto-create deal
-        try:
-            sb = get_supabase()
-            if property_id:
-                existing_deal = sb.table("crm_deals").select("id").eq("property_id", property_id).limit(1).execute()
-                if not existing_deal.data:
-                    deal_title = " — ".join(filter(None, [owner, apn, county])).strip(" —")
-                    offer_low = round(float(offer) * 0.90 / 1000) * 1000 if offer else None
-                    offer_high = round(float(offer) * 1.15 / 1000) * 1000 if offer else None
-                    sb.table("crm_deals").insert({
-                        "title": deal_title or "Unknown Property",
-                        "property_id": property_id,
-                        "stage": "new_lead",
-                        "value": float(offer) if offer else None,
-                        "owner_name": owner,
-                        "property_address": address_disp,
-                        "offer_price": float(offer) if offer else None,
-                        "offer_low": offer_low,
-                        "offer_high": offer_high,
-                        "source": "CALL",
-                        "seller_phone": caller,
-                        "stage_entered_at": _now(),
-                        "notes": f"Auto-created from HOT call. Asking: {asking_str}. Best time: {cb_display}",
-                        "tags": ["call", "hot_lead"],
-                        "updated_at": _now(),
-                    }).execute()
-        except Exception as exc:
-            print(f"[comms] auto-create deal (call) error: {exc}")
+            # Auto-create deal
+            try:
+                sb = get_supabase()
+                if property_id:
+                    existing_deal = sb.table("crm_deals").select("id").eq("property_id", property_id).limit(1).execute()
+                    if not existing_deal.data:
+                        deal_title = " — ".join(filter(None, [owner, apn, county])).strip(" —")
+                        offer_low = round(float(offer) * 0.90 / 1000) * 1000 if offer else None
+                        offer_high = round(float(offer) * 1.15 / 1000) * 1000 if offer else None
+                        sb.table("crm_deals").insert({
+                            "title": deal_title or "Unknown Property",
+                            "property_id": property_id,
+                            "stage": "new_lead",
+                            "value": float(offer) if offer else None,
+                            "owner_name": owner,
+                            "property_address": address_disp,
+                            "offer_price": float(offer) if offer else None,
+                            "offer_low": offer_low,
+                            "offer_high": offer_high,
+                            "source": "CALL",
+                            "seller_phone": caller,
+                            "stage_entered_at": _now(),
+                            "notes": f"Auto-created from HOT call. Asking: {asking_str}. Best time: {cb_display}",
+                            "tags": ["call", "hot_lead"],
+                            "updated_at": _now(),
+                        }).execute()
+            except Exception as exc:
+                print(f"[comms] auto-create deal (call) error: {exc}")
 
-        html = (
-            f"<h2 style='color:#B71C1C'>🔥 HOT LEAD — Inbound Call</h2>"
-            f"<ul>"
-            f"<li><strong>Name:</strong> {owner}</li>"
-            f"<li><strong>Phone:</strong> {caller}</li>"
-            f"<li><strong>Property:</strong> {address_disp or apn or '—'}</li>"
-            f"<li><strong>County:</strong> {county}</li>"
-            f"<li><strong>Our Offer Range:</strong> {offer_str}</li>"
-            f"<li><strong>Seller Asking:</strong> {asking_str}</li>"
-            f"<li><strong>Best Callback Time:</strong> {cb_display}</li>"
-            f"</ul>"
-            f"<p><strong>Summary:</strong> {summary}</p>"
-            f"<p><a href='https://land-dominator-frontend-production.up.railway.app/inbox'>Open Seller Inbox →</a></p>"
-        )
-        subject = f"🔥 HOT LEAD — {owner} — {address_disp or county}"
-        await _notify_email(subject, html)
-        await _notify_email(subject, html, to_email="dominionlandgroup@gmail.com")
+            html = (
+                f"<h2 style='color:#B71C1C'>🔥 HOT LEAD — Inbound Call</h2>"
+                f"<ul>"
+                f"<li><strong>Name:</strong> {owner}</li>"
+                f"<li><strong>Phone:</strong> {caller}</li>"
+                f"<li><strong>Property:</strong> {address_disp or apn or '—'}</li>"
+                f"<li><strong>County:</strong> {county}</li>"
+                f"<li><strong>Our Offer Range:</strong> {offer_str}</li>"
+                f"<li><strong>Seller Asking:</strong> {asking_str}</li>"
+                f"<li><strong>Best Callback Time:</strong> {cb_display}</li>"
+                f"</ul>"
+                f"<p><strong>Summary:</strong> {summary}</p>"
+                f"<p><a href='https://land-dominator-frontend-production.up.railway.app/inbox'>Open Seller Inbox →</a></p>"
+            )
+            subject = f"🔥 HOT LEAD — {owner} — {address_disp or county}"
+            await _notify_email(subject, html)
+            await _notify_email(subject, html, to_email="dominionlandgroup@gmail.com")
 
 
 async def _finalize_unmatched_call(call_sid: str) -> None:
