@@ -3592,24 +3592,29 @@ def _run_sms_campaign_job(job_id: str, campaign_id: str, props: list[dict], day:
 async def get_campaign_funnel_stats(campaign_id: str) -> dict:
     """Return skip trace + SMS funnel counts for the campaign dashboard."""
     sb = get_supabase()
-    try:
-        r = sb.table("crm_properties").select(
-            "id,phone_1_type,phone_1_dnc,opted_out,sms_status,skip_traced_at"
-        ).eq("campaign_id", campaign_id).limit(10000).execute()
-        rows = r.data or []
-    except Exception:
-        rows = []
-    total = len(rows)
-    skip_traced = sum(1 for p in rows if p.get("skip_traced_at"))
-    # Count phones found regardless of opted_out — opted_out affects SMS sending, not phone discovery
-    mobile = sum(1 for p in rows if p.get("phone_1_type") == "mobile")
-    landline = sum(1 for p in rows if p.get("phone_1_type") in ("landline", "voip"))
-    no_number = sum(1 for p in rows if not p.get("phone_1_type") and p.get("skip_traced_at"))
-    texts_sent = sum(1 for p in rows if p.get("sms_status") in ("day1_sent", "day3_sent", "hot"))
-    hot = sum(1 for p in rows if p.get("sms_status") == "hot")
-    opted_out = sum(1 for p in rows if p.get("opted_out"))
-    dnc = sum(1 for p in rows if p.get("phone_1_dnc"))
-    mail_queue = sum(1 for p in rows if p.get("sms_status") == "mail_queue" or (p.get("phone_1_type") in ("landline", "voip", None) and not p.get("opted_out") and p.get("skip_traced_at")))
+
+    def _cnt(build_fn) -> int:
+        try:
+            q = sb.table("crm_properties").select("id", count="exact").eq("campaign_id", campaign_id)
+            r = build_fn(q).execute()
+            return r.count or 0
+        except Exception as e:
+            print(f"[funnel-stats] count error: {e}", flush=True)
+            return 0
+
+    total       = _cnt(lambda q: q)
+    skip_traced = _cnt(lambda q: q.not_("skip_traced_at", "is", "null"))
+    mobile      = _cnt(lambda q: q.eq("phone_1_type", "mobile"))
+    landline    = _cnt(lambda q: q.in_("phone_1_type", ["landline", "voip"]))
+    no_number   = _cnt(lambda q: q.is_("phone_1_type", "null").not_("skip_traced_at", "is", "null"))
+    texts_sent  = _cnt(lambda q: q.in_("sms_status", ["day1_sent", "day3_sent", "hot"]))
+    hot         = _cnt(lambda q: q.eq("sms_status", "hot"))
+    opted_out   = _cnt(lambda q: q.eq("opted_out", True))
+    dnc         = _cnt(lambda q: q.eq("phone_1_dnc", True))
+    mail_queue  = _cnt(lambda q: q.in_("phone_1_type", ["landline", "voip"]).eq("opted_out", False))
+
+    print(f"[funnel-stats] campaign={campaign_id} total={total} mobile={mobile} dnc={dnc} mail_queue={mail_queue}", flush=True)
+
     return {
         "total": total, "skip_traced": skip_traced, "mobile": mobile,
         "landline": landline, "no_number": no_number,
@@ -3623,36 +3628,47 @@ async def get_campaign_sms_stats(campaign_id: str) -> dict:
     """Comprehensive SMS stats for the campaign status bar."""
     import datetime as _dt
     sb = get_supabase()
-    try:
-        r = sb.table("crm_properties").select(
-            "id,phone_1,phone_1_type,phone_1_dnc,opted_out,sms_status,"
-            "sms_day1_sent_at,sms_day3_sent_at,skip_traced_at"
-        ).eq("campaign_id", campaign_id).limit(10000).execute()
-        rows = r.data or []
-    except Exception:
-        rows = []
 
+    def _cnt(build_fn) -> int:
+        try:
+            q = sb.table("crm_properties").select("id", count="exact").eq("campaign_id", campaign_id)
+            r = build_fn(q).execute()
+            return r.count or 0
+        except Exception as e:
+            print(f"[sms-stats] count error: {e}", flush=True)
+            return 0
+
+    # Counts that need no row data
+    ready_to_text = _cnt(lambda q: q
+        .eq("phone_1_type", "mobile")
+        .not_("phone_1", "is", "null")
+        .or_("phone_1_dnc.is.null,phone_1_dnc.eq.false")
+        .or_("opted_out.is.null,opted_out.eq.false")
+        .is_("sms_day1_sent_at", "null"))
+    sent_total    = _cnt(lambda q: q.not_("sms_day1_sent_at", "is", "null"))
+    day3_sent     = _cnt(lambda q: q.not_("sms_day3_sent_at", "is", "null"))
+    hot           = _cnt(lambda q: q.eq("sms_status", "hot"))
+    replied       = _cnt(lambda q: q.eq("sms_status", "replied"))
+    dnc_blocked   = _cnt(lambda q: q.eq("phone_1_dnc", True))
+    opted_out     = _cnt(lambda q: q.eq("opted_out", True))
+    mail_only     = _cnt(lambda q: q.or_("phone_1.is.null,phone_1_type.in.(landline,voip)"))
+    mail_queue    = _cnt(lambda q: q.eq("sms_status", "mail_queue"))
+    skip_traced   = _cnt(lambda q: q.not_("skip_traced_at", "is", "null"))
+
+    # sent_today needs date comparison — fetch minimal rows for just this
     today = _dt.datetime.utcnow().date().isoformat()
+    today_start = f"{today}T00:00:00"
+    today_end   = f"{today}T23:59:59"
+    sent_today  = _cnt(lambda q: q.gte("sms_day1_sent_at", today_start).lte("sms_day1_sent_at", today_end))
 
-    ready_to_text = sum(1 for p in rows if
-        p.get("phone_1") and p.get("phone_1_type") == "mobile"
-        and not p.get("phone_1_dnc") and not p.get("opted_out")
-        and not p.get("sms_day1_sent_at"))
-    print(f"[sms-stats] campaign={campaign_id} total_rows={len(rows)} mobile_ready_to_text={ready_to_text}", flush=True)
-    sent_today = sum(1 for p in rows if
-        p.get("sms_day1_sent_at") and p["sms_day1_sent_at"][:10] == today)
-    sent_total = sum(1 for p in rows if p.get("sms_day1_sent_at"))
-    day3_sent = sum(1 for p in rows if p.get("sms_day3_sent_at"))
-    hot = sum(1 for p in rows if p.get("sms_status") == "hot")
-    replied = sum(1 for p in rows if p.get("sms_status") == "replied")
-    dnc_blocked = sum(1 for p in rows if p.get("phone_1_dnc"))
-    mail_only = sum(1 for p in rows if not p.get("phone_1") or p.get("phone_1_type") in ("landline", "voip"))
-    opted_out = sum(1 for p in rows if p.get("opted_out"))
-    mail_queue = sum(1 for p in rows if p.get("sms_status") == "mail_queue")
-    skip_traced = sum(1 for p in rows if p.get("skip_traced_at"))
+    # first_sent_date — one lightweight query
+    try:
+        fsd_r = sb.table("crm_properties").select("sms_day1_sent_at").eq("campaign_id", campaign_id).not_("sms_day1_sent_at", "is", "null").order("sms_day1_sent_at", desc=False).limit(1).execute()
+        first_sent_date = fsd_r.data[0]["sms_day1_sent_at"][:10] if fsd_r.data else None
+    except Exception:
+        first_sent_date = None
 
-    sent_dates = sorted(p["sms_day1_sent_at"][:10] for p in rows if p.get("sms_day1_sent_at"))
-    first_sent_date = sent_dates[0] if sent_dates else None
+    print(f"[sms-stats] campaign={campaign_id} ready_to_text={ready_to_text} sent_total={sent_total} dnc={dnc_blocked} opted_out={opted_out}", flush=True)
 
     return {
         "ready_to_text": ready_to_text, "sent_today": sent_today,
