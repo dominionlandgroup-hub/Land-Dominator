@@ -1718,7 +1718,7 @@ _SMS_STOP_WORDS = {"STOP", "UNSUBSCRIBE", "REMOVE", "CANCEL", "END", "QUIT"}
 
 # ── AI SMS Bot (Claude-powered) ──────────────────────────────────────────────
 
-_CLAUDE_SMS_MODEL = os.getenv("CLAUDE_SMS_MODEL", "claude-sonnet-4-20250514")
+_CLAUDE_SMS_MODEL = os.getenv("CLAUDE_SMS_MODEL", "claude-sonnet-4-6")
 _DAMIEN_PHONE = "+12023215846"
 _SMS_MAX_EXCHANGES = 5  # max back-and-forth before handoff
 
@@ -2035,11 +2035,14 @@ async def _detect_sms_ai_outcomes(
 
 
 async def _process_inbound_sms(from_phone: str, message_text: str) -> None:
+    print(f"[sms-bot] Inbound from {from_phone}: {message_text!r}", flush=True)
+    print(f"[sms-bot] Looking up property...", flush=True)
     prop = await _lookup_phone(from_phone)
     if not prop:
         prop = {"id": None}
 
     property_id = prop.get("id")
+    print(f"[sms-bot] Property found: {property_id is not None} (id={property_id})", flush=True)
     await _log_comm(
         property_id=property_id,
         comm_type="sms_inbound",
@@ -2125,10 +2128,14 @@ async def _process_inbound_sms(from_phone: str, message_text: str) -> None:
 
     # --- AI SMS reply (Myra responds to all non-STOP messages) ---
     if not is_stop:
+        print(f"[sms-bot] Calling Claude AI (model={_CLAUDE_SMS_MODEL})...", flush=True)
         try:
             await _ai_sms_reply(from_phone, message_text, prop, property_id)
+            print(f"[sms-bot] AI reply sent to {from_phone}", flush=True)
         except Exception as exc:
-            print(f"[comms] AI SMS reply error: {exc}", flush=True)
+            print(f"[sms-bot] AI SMS reply error: {exc}", flush=True)
+    else:
+        print(f"[sms-bot] STOP word detected — no AI reply sent", flush=True)
 
     owner = prop.get("owner_full_name") or prop.get("owner_first_name") or "Unknown"
     apn = prop.get("apn", "")
