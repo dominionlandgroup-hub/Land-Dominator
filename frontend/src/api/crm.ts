@@ -713,6 +713,18 @@ export async function getSmsPreview(campaignId: string, day = 1): Promise<SmsCam
 
 export interface LeadSherpaImportResult {
   updated: number; dnc_flagged: number; deceased_skipped: number; not_matched: number
+  litigators?: number; mobile_ready?: number; mail_only?: number
+}
+
+export interface LeadSherpaCreateResult {
+  campaign_id: string; campaign_name: string
+  imported: number; mobile_ready: number; dnc_flagged: number
+  deceased_skipped: number; litigators: number; mail_only: number
+}
+
+export interface LeadSherpaMatchInfo {
+  total: number; matched: number; match_pct: number
+  recommended_mode: 'update' | 'create' | 'ask'
 }
 
 export async function importLeadSherpa(campaignId: string, rows: Record<string, string>[]): Promise<LeadSherpaImportResult> {
@@ -720,10 +732,13 @@ export async function importLeadSherpa(campaignId: string, rows: Record<string, 
   return data
 }
 
-export async function createCampaignFromLeadSherpa(rows: Record<string, string>[]): Promise<{
-  campaign_id: string; campaign_name: string; imported: number; mobile_count: number
-}> {
-  const { data } = await api.post('/crm/campaigns/create-from-lead-sherpa', { rows })
+export async function previewLeadSherpaApns(campaignId: string, apns: string[]): Promise<LeadSherpaMatchInfo> {
+  const { data } = await api.post<LeadSherpaMatchInfo>(`/crm/campaigns/${campaignId}/lead-sherpa-preview`, { apns })
+  return data
+}
+
+export async function createCampaignFromLeadSherpa(rows: Record<string, string>[], campaignName: string): Promise<LeadSherpaCreateResult> {
+  const { data } = await api.post('/crm/campaigns/create-from-lead-sherpa', { rows, campaign_name: campaignName })
   return data
 }
 

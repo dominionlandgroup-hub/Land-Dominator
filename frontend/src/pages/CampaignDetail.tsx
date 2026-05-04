@@ -8,8 +8,9 @@ import {
   startSmsCampaign, getSmsStatus,
   getCampaignFunnelStats, exportMailQueue,
   getSmsPreview, importLeadSherpa, getCampaignSmsStats, createCampaignFromLeadSherpa,
+  previewLeadSherpaApns,
 } from '../api/crm'
-import type { CampaignFunnelStats, SmsCampaignPreview, CampaignSmsStats } from '../api/crm'
+import type { CampaignFunnelStats, SmsCampaignPreview, CampaignSmsStats, LeadSherpaMatchInfo, LeadSherpaCreateResult, LeadSherpaImportResult } from '../api/crm'
 import PropertyDetail from './PropertyDetail'
 
 const PAGE_SIZE = 20
@@ -127,11 +128,13 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
   const [showLeadSherpaModal, setShowLeadSherpaModal] = useState(false)
   const [leadSherpaParsed, setLeadSherpaParsed] = useState<{ rows: Record<string, string>[]; apnCol: string } | null>(null)
   const [leadSherpaImporting, setLeadSherpaImporting] = useState(false)
-  const [leadSherpaResult, setLeadSherpaResult] = useState<string | null>(null)
   const [leadSherpaError, setLeadSherpaError] = useState<string | null>(null)
-  const [showCreateCampaignPrompt, setShowCreateCampaignPrompt] = useState(false)
-  const [creatingCampaign, setCreatingCampaign] = useState(false)
-  const [createCampaignResult, setCreateCampaignResult] = useState<string | null>(null)
+  const [lsMatchInfo, setLsMatchInfo] = useState<LeadSherpaMatchInfo | null>(null)
+  const [lsMatchLoading, setLsMatchLoading] = useState(false)
+  const [lsMode, setLsMode] = useState<'update' | 'create' | null>(null)
+  const [lsNewCampaignName, setLsNewCampaignName] = useState('')
+  const [lsUpdateResult, setLsUpdateResult] = useState<LeadSherpaImportResult | null>(null)
+  const [lsCreateResult, setLsCreateResult] = useState<LeadSherpaCreateResult | null>(null)
 
   // Funnel stats
   const [funnel, setFunnel] = useState<CampaignFunnelStats | null>(null)
@@ -408,69 +411,79 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
   }
 
   // ── Lead Sherpa Import ────────────────────────────────────────────────
+  function resetLeadSherpaModal() {
+    setLeadSherpaParsed(null)
+    setLeadSherpaError(null)
+    setLsMatchInfo(null)
+    setLsMatchLoading(false)
+    setLsMode(null)
+    setLsNewCampaignName('')
+    setLsUpdateResult(null)
+    setLsCreateResult(null)
+  }
+
   function handleLeadSherpaFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
     e.target.value = ''
-    setLeadSherpaParsed(null)
-    setLeadSherpaResult(null)
-    setLeadSherpaError(null)
+    resetLeadSherpaModal()
     Papa.parse<Record<string, string>>(file, {
       header: true,
       skipEmptyLines: true,
       transformHeader: (h: string) => h.trim(),
-      complete: (results) => {
+      complete: async (results) => {
         const rows = results.data as Record<string, string>[]
         if (!rows.length) { setLeadSherpaError('No rows found in CSV.'); return }
         const headers = Object.keys(rows[0])
         const apnCol = headers.find(h =>
-          /parcel.?number|^apn$|parcel.?id|property.?parcel/i.test(h)
+          /parcel.?number|^apn$|parcel.?id|property.?parcel|property_apn/i.test(h)
         ) ?? headers[0]
         setLeadSherpaParsed({ rows, apnCol })
+        // Auto-preview
+        setLsMatchLoading(true)
+        try {
+          const apns = rows.map(r => String(r[apnCol] ?? '')).filter(Boolean)
+          const info = await previewLeadSherpaApns(campaign.id, apns)
+          setLsMatchInfo(info)
+          setLsMode(info.recommended_mode === 'create' ? 'create' : info.recommended_mode === 'update' ? 'update' : null)
+          if (info.recommended_mode === 'create') {
+            const st = rows.slice(0, 100).map(r => {
+              const stCol = Object.keys(r).find(k => /property.?state|situs.?state/i.test(k))
+              return stCol ? String(r[stCol] || '').trim().toUpperCase() : ''
+            }).filter(Boolean)
+            const counts: Record<string, number> = {}
+            for (const s of st) counts[s] = (counts[s] || 0) + 1
+            const dom = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? ''
+            const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+            setLsNewCampaignName(`${dom ? dom + ' ' : ''}Lead Sherpa ${today}`.trim())
+          }
+        } catch {
+          setLsMatchInfo(null)
+        } finally { setLsMatchLoading(false) }
       },
       error: () => { setLeadSherpaError('Failed to parse CSV.') },
     })
   }
 
   async function handleLeadSherpaImport() {
-    if (!leadSherpaParsed) return
+    if (!leadSherpaParsed || !lsMode) return
     setLeadSherpaImporting(true)
-    setLeadSherpaResult(null)
     setLeadSherpaError(null)
-    setShowCreateCampaignPrompt(false)
-    setCreateCampaignResult(null)
     try {
-      const res = await importLeadSherpa(campaign.id, leadSherpaParsed.rows)
-      const parts = [`Updated ${res.updated.toLocaleString()} records`]
-      if (res.dnc_flagged > 0) parts.push(`${res.dnc_flagged.toLocaleString()} DNC flagged`)
-      if (res.deceased_skipped > 0) parts.push(`${res.deceased_skipped.toLocaleString()} deceased skipped`)
-      if (res.not_matched > 0) parts.push(`${res.not_matched.toLocaleString()} not matched`)
-      setLeadSherpaResult(parts.join(' · '))
-      if (res.updated === 0 && res.not_matched > 0) {
-        setShowCreateCampaignPrompt(true)
+      if (lsMode === 'update') {
+        const res = await importLeadSherpa(campaign.id, leadSherpaParsed.rows)
+        setLsUpdateResult(res)
+        loadFunnel()
+        loadSmsStats()
+        loadProperties(page, statusFilter, search)
+      } else {
+        const res = await createCampaignFromLeadSherpa(leadSherpaParsed.rows, lsNewCampaignName)
+        setLsCreateResult(res)
       }
-      loadFunnel()
-      loadSmsStats()
-      loadProperties(page, statusFilter, search)
     } catch (e: unknown) {
       const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       setLeadSherpaError(detail ?? 'Import failed')
     } finally { setLeadSherpaImporting(false) }
-  }
-
-  async function handleCreateCampaignFromLeadSherpa() {
-    if (!leadSherpaParsed) return
-    setCreatingCampaign(true)
-    try {
-      const res = await createCampaignFromLeadSherpa(leadSherpaParsed.rows)
-      setCreateCampaignResult(
-        `✓ Created "${res.campaign_name}" with ${res.imported.toLocaleString()} records — ${res.mobile_count.toLocaleString()} mobile numbers ready to text`
-      )
-      setShowCreateCampaignPrompt(false)
-    } catch (e: unknown) {
-      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setLeadSherpaError(detail ?? 'Failed to create campaign')
-    } finally { setCreatingCampaign(false) }
   }
 
   // ── SMS Confirm Modal ─────────────────────────────────────────────────
@@ -742,7 +755,7 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
           </button>
           <button
             className="btn-secondary text-sm"
-            onClick={() => { setShowLeadSherpaModal(true); setLeadSherpaParsed(null); setLeadSherpaResult(null); setLeadSherpaError(null) }}
+            onClick={() => { resetLeadSherpaModal(); setShowLeadSherpaModal(true) }}
             title="Import skip trace results from Lead Sherpa CSV — match by APN, update phone numbers"
           >
             📋 Import Skip Trace
@@ -1420,66 +1433,157 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
       {/* Lead Sherpa Import modal */}
       {showLeadSherpaModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(26,10,46,0.55)' }}
-          onClick={() => { if (!leadSherpaImporting) setShowLeadSherpaModal(false) }}>
-          <div className="bg-white rounded-2xl p-6 shadow-xl" style={{ maxWidth: '480px', width: '100%' }}
+          onClick={() => { if (!leadSherpaImporting) { setShowLeadSherpaModal(false) } }}>
+          <div className="bg-white rounded-2xl p-6 shadow-xl" style={{ maxWidth: '500px', width: '100%' }}
             onClick={e => e.stopPropagation()}>
-            <h2 className="section-heading mb-1">Import Lead Sherpa Skip Trace</h2>
-            <p className="text-xs mb-4" style={{ color: '#9B8AAE' }}>
-              Upload a CSV exported from Lead Sherpa. Records will be matched to campaign properties by APN and phone numbers, types, and DNC flags will be updated.
-            </p>
+            <h2 className="section-heading mb-1">Lead Sherpa Import</h2>
 
-            {!leadSherpaParsed && !leadSherpaResult && (
-              <button
-                className="btn-secondary w-full text-sm mb-4"
-                onClick={() => leadSherpaFileRef.current?.click()}
-                disabled={leadSherpaImporting}
-              >
-                Choose CSV File
-              </button>
-            )}
-
-            {leadSherpaParsed && !leadSherpaResult && (
-              <div style={{ background: '#F0FDF4', borderRadius: 8, padding: '12px 14px', marginBottom: 16 }}>
-                <p style={{ fontSize: 13, color: '#065F46', fontWeight: 600, margin: 0 }}>
-                  Found {leadSherpaParsed.rows.length.toLocaleString()} rows
+            {/* Phase 1: File select */}
+            {!leadSherpaParsed && !lsUpdateResult && !lsCreateResult && (
+              <>
+                <p className="text-xs mb-4" style={{ color: '#9B8AAE' }}>
+                  Upload a Lead Sherpa CSV. We'll detect whether to update this campaign or create a new one.
                 </p>
-                <p style={{ fontSize: 12, color: '#6B7280', margin: '4px 0 0' }}>
-                  APN column detected: <strong>{leadSherpaParsed.apnCol}</strong>
-                </p>
-                <button
-                  className="text-xs mt-2 underline"
-                  style={{ color: '#4F46E5', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-                  onClick={() => { setLeadSherpaParsed(null); leadSherpaFileRef.current?.click() }}
-                >
-                  Choose different file
+                <button className="btn-secondary w-full text-sm mb-4" onClick={() => leadSherpaFileRef.current?.click()}>
+                  Choose CSV File
                 </button>
+              </>
+            )}
+
+            {/* Phase 2: Preview / mode selection */}
+            {leadSherpaParsed && !lsUpdateResult && !lsCreateResult && (
+              <>
+                <div style={{ background: '#F5F3FF', borderRadius: 8, padding: '12px 14px', marginBottom: 12 }}>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: '#3730A3', margin: 0 }}>
+                    {leadSherpaParsed.rows.length.toLocaleString()} rows · APN column: <em>{leadSherpaParsed.apnCol}</em>
+                  </p>
+                  {lsMatchLoading && (
+                    <p style={{ fontSize: 12, color: '#6B7280', margin: '6px 0 0' }}>Analyzing matches…</p>
+                  )}
+                  {lsMatchInfo && !lsMatchLoading && (
+                    <p style={{ fontSize: 12, color: '#6B7280', margin: '6px 0 0' }}>
+                      {lsMatchInfo.matched.toLocaleString()} of {lsMatchInfo.total.toLocaleString()} APNs match this campaign ({lsMatchInfo.match_pct}%)
+                    </p>
+                  )}
+                  <button className="text-xs mt-2 underline" style={{ color: '#4F46E5', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                    onClick={() => { resetLeadSherpaModal(); leadSherpaFileRef.current?.click() }}>
+                    Choose different file
+                  </button>
+                </div>
+
+                {/* Mode: ask if recommended_mode === 'ask', otherwise show auto-selected */}
+                {lsMatchInfo && !lsMatchLoading && (
+                  <div style={{ marginBottom: 12 }}>
+                    {lsMatchInfo.recommended_mode === 'ask' && (
+                      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                        <button
+                          onClick={() => setLsMode('update')}
+                          style={{
+                            flex: 1, padding: '10px 12px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+                            border: `2px solid ${lsMode === 'update' ? '#4F46E5' : '#E5E7EB'}`,
+                            background: lsMode === 'update' ? '#EEF2FF' : '#fff', cursor: 'pointer', color: '#1F2937'
+                          }}>
+                          Update this campaign<br />
+                          <span style={{ fontSize: 11, fontWeight: 400, color: '#6B7280' }}>{lsMatchInfo.matched} records will be updated</span>
+                        </button>
+                        <button
+                          onClick={() => setLsMode('create')}
+                          style={{
+                            flex: 1, padding: '10px 12px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+                            border: `2px solid ${lsMode === 'create' ? '#4F46E5' : '#E5E7EB'}`,
+                            background: lsMode === 'create' ? '#EEF2FF' : '#fff', cursor: 'pointer', color: '#1F2937'
+                          }}>
+                          Create new campaign<br />
+                          <span style={{ fontSize: 11, fontWeight: 400, color: '#6B7280' }}>{leadSherpaParsed.rows.length} records imported</span>
+                        </button>
+                      </div>
+                    )}
+                    {lsMatchInfo.recommended_mode === 'update' && (
+                      <div style={{ background: '#F0FDF4', borderRadius: 8, padding: '10px 12px', marginBottom: 12 }}>
+                        <p style={{ fontSize: 13, color: '#065F46', fontWeight: 600, margin: 0 }}>Update mode selected</p>
+                        <p style={{ fontSize: 12, color: '#6B7280', margin: '4px 0 0' }}>
+                          {lsMatchInfo.matched.toLocaleString()} existing records will be updated with phone numbers, DNC flags, and skip trace data.
+                        </p>
+                        <button className="text-xs mt-1 underline" style={{ color: '#4F46E5', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                          onClick={() => setLsMode('create')}>Switch to Create New Campaign instead</button>
+                      </div>
+                    )}
+                    {lsMatchInfo.recommended_mode === 'create' && (
+                      <div style={{ background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 8, padding: '10px 12px', marginBottom: 12 }}>
+                        <p style={{ fontSize: 13, color: '#92400E', fontWeight: 600, margin: '0 0 4px' }}>
+                          Only {lsMatchInfo.match_pct}% of APNs match — create new campaign?
+                        </p>
+                        <p style={{ fontSize: 12, color: '#6B7280', margin: '0 0 4px' }}>
+                          All {leadSherpaParsed.rows.length.toLocaleString()} records will be imported as new properties.
+                        </p>
+                        <button className="text-xs underline" style={{ color: '#4F46E5', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                          onClick={() => setLsMode('update')}>Update this campaign instead</button>
+                      </div>
+                    )}
+
+                    {lsMode === 'create' && (
+                      <div style={{ marginTop: 8 }}>
+                        <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Campaign name</label>
+                        <input
+                          type="text"
+                          value={lsNewCampaignName}
+                          onChange={e => setLsNewCampaignName(e.target.value)}
+                          placeholder="e.g. TX Lead Sherpa May 2026"
+                          style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #D1D5DB', fontSize: 13, boxSizing: 'border-box' }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {!lsMatchInfo && !lsMatchLoading && (
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button onClick={() => setLsMode('update')} style={{ flex: 1, padding: '10px 12px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: `2px solid ${lsMode === 'update' ? '#4F46E5' : '#E5E7EB'}`, background: lsMode === 'update' ? '#EEF2FF' : '#fff', cursor: 'pointer', color: '#1F2937' }}>
+                        Update this campaign
+                      </button>
+                      <button onClick={() => setLsMode('create')} style={{ flex: 1, padding: '10px 12px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: `2px solid ${lsMode === 'create' ? '#4F46E5' : '#E5E7EB'}`, background: lsMode === 'create' ? '#EEF2FF' : '#fff', cursor: 'pointer', color: '#1F2937' }}>
+                        Create new campaign
+                      </button>
+                    </div>
+                    {lsMode === 'create' && (
+                      <div style={{ marginTop: 8 }}>
+                        <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Campaign name</label>
+                        <input type="text" value={lsNewCampaignName} onChange={e => setLsNewCampaignName(e.target.value)}
+                          placeholder="e.g. TX Lead Sherpa May 2026"
+                          style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #D1D5DB', fontSize: 13, boxSizing: 'border-box' }} />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Phase 3: Update result */}
+            {lsUpdateResult && (
+              <div style={{ background: '#F0FDF4', border: '1px solid #A7F3D0', borderRadius: 8, padding: '14px 16px', marginBottom: 12 }}>
+                <p style={{ fontSize: 14, fontWeight: 700, color: '#065F46', margin: '0 0 8px' }}>Import complete</p>
+                <p style={{ fontSize: 13, color: '#065F46', margin: '2px 0' }}>✓ {lsUpdateResult.updated.toLocaleString()} records updated</p>
+                {(lsUpdateResult.mobile_ready ?? 0) > 0 && <p style={{ fontSize: 13, color: '#065F46', margin: '2px 0' }}>📱 {(lsUpdateResult.mobile_ready ?? 0).toLocaleString()} mobile numbers ready to text</p>}
+                {(lsUpdateResult.mail_only ?? 0) > 0 && <p style={{ fontSize: 13, color: '#6B7280', margin: '2px 0' }}>📬 {(lsUpdateResult.mail_only ?? 0).toLocaleString()} mail only (landline/no phone)</p>}
+                {lsUpdateResult.dnc_flagged > 0 && <p style={{ fontSize: 13, color: '#B45309', margin: '2px 0' }}>🚫 {lsUpdateResult.dnc_flagged.toLocaleString()} DNC numbers flagged</p>}
+                {lsUpdateResult.deceased_skipped > 0 && <p style={{ fontSize: 13, color: '#6B7280', margin: '2px 0' }}>⚰️ {lsUpdateResult.deceased_skipped.toLocaleString()} deceased owners skipped</p>}
+                {(lsUpdateResult.litigators ?? 0) > 0 && <p style={{ fontSize: 13, color: '#B91C1C', margin: '2px 0' }}>⚠️ {(lsUpdateResult.litigators ?? 0).toLocaleString()} litigators flagged</p>}
+                {lsUpdateResult.not_matched > 0 && <p style={{ fontSize: 13, color: '#6B7280', margin: '2px 0' }}>— {lsUpdateResult.not_matched.toLocaleString()} records not matched in this campaign</p>}
               </div>
             )}
 
-            {leadSherpaResult && (
-              <div style={{ background: '#F0FDF4', borderRadius: 8, padding: '12px 14px', marginBottom: 12 }}>
-                <p style={{ fontSize: 13, color: '#065F46', fontWeight: 600, margin: 0 }}>✓ {leadSherpaResult}</p>
-              </div>
-            )}
-
-            {showCreateCampaignPrompt && !createCampaignResult && (
-              <div style={{ background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 8, padding: '12px 14px', marginBottom: 12 }}>
-                <p style={{ fontSize: 13, color: '#92400E', fontWeight: 600, margin: '0 0 8px' }}>
-                  No matches found. Would you like to create a new campaign from this file instead?
-                </p>
-                <button
-                  className="btn-primary text-sm"
-                  onClick={handleCreateCampaignFromLeadSherpa}
-                  disabled={creatingCampaign}
-                >
-                  {creatingCampaign ? 'Creating…' : `✨ Create New Campaign (${leadSherpaParsed?.rows.length.toLocaleString() ?? 0} records)`}
-                </button>
-              </div>
-            )}
-
-            {createCampaignResult && (
-              <div style={{ background: '#F0FDF4', border: '1px solid #A7F3D0', borderRadius: 8, padding: '12px 14px', marginBottom: 12 }}>
-                <p style={{ fontSize: 13, color: '#065F46', fontWeight: 600, margin: 0 }}>{createCampaignResult}</p>
+            {/* Phase 3: Create result */}
+            {lsCreateResult && (
+              <div style={{ background: '#F0FDF4', border: '1px solid #A7F3D0', borderRadius: 8, padding: '14px 16px', marginBottom: 12 }}>
+                <p style={{ fontSize: 14, fontWeight: 700, color: '#065F46', margin: '0 0 8px' }}>Campaign created: {lsCreateResult.campaign_name}</p>
+                <p style={{ fontSize: 13, color: '#065F46', margin: '2px 0' }}>✓ {lsCreateResult.imported.toLocaleString()} records imported</p>
+                <p style={{ fontSize: 13, color: '#065F46', margin: '2px 0' }}>📱 {lsCreateResult.mobile_ready.toLocaleString()} mobile numbers ready to text</p>
+                {lsCreateResult.mail_only > 0 && <p style={{ fontSize: 13, color: '#6B7280', margin: '2px 0' }}>📬 {lsCreateResult.mail_only.toLocaleString()} mail only (landline/no phone)</p>}
+                {lsCreateResult.dnc_flagged > 0 && <p style={{ fontSize: 13, color: '#B45309', margin: '2px 0' }}>🚫 {lsCreateResult.dnc_flagged.toLocaleString()} DNC numbers flagged</p>}
+                {lsCreateResult.deceased_skipped > 0 && <p style={{ fontSize: 13, color: '#6B7280', margin: '2px 0' }}>⚰️ {lsCreateResult.deceased_skipped.toLocaleString()} deceased owners skipped</p>}
+                {lsCreateResult.litigators > 0 && <p style={{ fontSize: 13, color: '#B91C1C', margin: '2px 0' }}>⚠️ {lsCreateResult.litigators.toLocaleString()} litigators flagged</p>}
+                <p style={{ fontSize: 12, color: '#6B7280', margin: '8px 0 0' }}>Navigate to "{lsCreateResult.campaign_name}" to start texting.</p>
               </div>
             )}
 
@@ -1489,15 +1593,20 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
 
             <div className="flex gap-3">
               <button className="btn-secondary flex-1" onClick={() => setShowLeadSherpaModal(false)} disabled={leadSherpaImporting}>
-                {leadSherpaResult ? 'Close' : 'Cancel'}
+                {lsUpdateResult || lsCreateResult ? 'Close' : 'Cancel'}
               </button>
-              {leadSherpaParsed && !leadSherpaResult && (
+              {leadSherpaParsed && !lsUpdateResult && !lsCreateResult && lsMode && (
                 <button
                   className="btn-primary flex-1"
                   onClick={handleLeadSherpaImport}
-                  disabled={leadSherpaImporting}
+                  disabled={leadSherpaImporting || lsMatchLoading || (lsMode === 'create' && !lsNewCampaignName.trim())}
                 >
-                  {leadSherpaImporting ? `Importing…` : `Import ${leadSherpaParsed.rows.length.toLocaleString()} Rows`}
+                  {leadSherpaImporting
+                    ? 'Importing…'
+                    : lsMode === 'update'
+                      ? `Update ${(lsMatchInfo?.matched ?? leadSherpaParsed.rows.length).toLocaleString()} Records`
+                      : `Create Campaign (${leadSherpaParsed.rows.length.toLocaleString()} records)`
+                  }
                 </button>
               )}
             </div>

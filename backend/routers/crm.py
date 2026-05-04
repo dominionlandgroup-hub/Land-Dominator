@@ -3732,114 +3732,179 @@ async def get_sms_preview(campaign_id: str, day: int = Query(1)) -> dict:
 def _normalize_apn(apn: str) -> str:
     return re.sub(r'[^a-z0-9]', '', apn.strip().lower())
 
+# --- Shared Lead Sherpa column helpers (exact Lead Sherpa export format) ---
+
+def _nh_ls(h: str) -> str:
+    return h.strip().lower().replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "_")
+
+def _parse_bool_ls(v) -> bool:
+    return str(v or "").strip().lower() in ("true", "1", "yes", "y", "x")
+
+def _norm_phone_type_ls(t: str) -> str:
+    t = (t or "").strip().lower()
+    if "cell" in t or "mobile" in t:   return "mobile"
+    if "land" in t or "home" in t or "work" in t or "fixed" in t: return "landline"
+    if "voip" in t:                    return "voip"
+    return "mobile"
+
+def _to_e164_ls(phone: str) -> str:
+    digits = re.sub(r"\D", "", phone or "")
+    if len(digits) == 10:                          return f"+1{digits}"
+    if len(digits) == 11 and digits[0] == "1":    return f"+{digits}"
+    return ""
+
+def _strip_float_zero(v: str) -> str:
+    s = (v or "").strip()
+    try:
+        f = float(s)
+        if f == int(f): return str(int(f))
+    except Exception: pass
+    return s
+
+def _parse_ls_row(row: dict) -> dict | None:
+    """Parse one Lead Sherpa CSV row. Returns None to skip (deceased/no data).
+    Uses exact Lead Sherpa column names after _nh_ls() normalization."""
+    nr = {_nh_ls(k): (v or "").strip() for k, v in row.items()}
+
+    if _parse_bool_ls(nr.get("owner_is_deceased")):
+        return None
+
+    is_litigator = _parse_bool_ls(nr.get("litigator"))
+
+    apn = (nr.get("property_apn") or nr.get("apn") or nr.get("parcel_number") or
+           nr.get("parcel_id") or "")
+    full  = nr.get("owner_full_name", "")
+    first = nr.get("owner_first_name", "")
+    last  = nr.get("owner_last_name", "")
+    if not full and (first or last):
+        full = f"{first} {last}".strip()
+
+    p1_raw = nr.get("owner_phone1", "")
+    p1_type = _norm_phone_type_ls(nr.get("owner_phone1_type", "")) if p1_raw else None
+    p1_dnc  = _parse_bool_ls(nr.get("owner_phone1_dnc_registered")) or is_litigator
+    p2_raw  = nr.get("owner_phone2", "")
+    p2_type = _norm_phone_type_ls(nr.get("owner_phone2_type", "")) if p2_raw else None
+    p2_dnc  = _parse_bool_ls(nr.get("owner_phone2_dnc_registered"))
+    p3_raw  = nr.get("owner_phone3", "")
+    p3_type = _norm_phone_type_ls(nr.get("owner_phone3_type", "")) if p3_raw else None
+    p3_dnc  = _parse_bool_ls(nr.get("owner_phone3_dnc_registered"))
+
+    phone1 = _to_e164_ls(p1_raw)
+    phone2 = _to_e164_ls(p2_raw)
+    phone3 = _to_e164_ls(p3_raw)
+    email  = nr.get("owner_email1", "")
+
+    prop_addr  = nr.get("property_address", "")
+    prop_city  = nr.get("property_city", "")
+    prop_state = nr.get("property_state", "")
+    prop_zip   = _strip_float_zero(nr.get("property_zipcode", ""))
+    county     = nr.get("property_county", "").title()
+    fips       = _strip_float_zero(nr.get("property_fips", ""))
+    mail_addr  = nr.get("property_mailing_address", "")
+    mail_city  = nr.get("property_mailing_city", "")
+    mail_state = nr.get("property_mailing_state", "")
+    mail_zip   = _strip_float_zero(nr.get("property_mailing_zipcode", ""))
+
+    rec: dict = {}
+    if apn:        rec["apn"]                    = apn
+    if full:       rec["owner_full_name"]         = full
+    if first:      rec["owner_first_name"]        = first
+    if last:       rec["owner_last_name"]         = last
+    if mail_addr:  rec["owner_mailing_address"]   = mail_addr
+    if mail_city:  rec["owner_mailing_city"]      = mail_city
+    if mail_state: rec["owner_mailing_state"]     = mail_state
+    if mail_zip:   rec["owner_mailing_zip"]       = mail_zip
+    if prop_addr:  rec["property_address"]        = prop_addr
+    if prop_city:  rec["property_city"]           = prop_city
+    if prop_state: rec["state"]                   = prop_state
+    if prop_zip:   rec["property_zip"]            = prop_zip
+    if county:     rec["county"]                  = county
+    if fips:       rec["fips"]                    = fips
+    if phone1:
+        rec["phone_1"] = phone1; rec["phone_1_type"] = p1_type; rec["phone_1_dnc"] = p1_dnc
+    if phone2:
+        rec["phone_2"] = phone2; rec["phone_2_type"] = p2_type; rec["phone_2_dnc"] = p2_dnc
+    if phone3:
+        rec["phone_3"] = phone3; rec["phone_3_type"] = p3_type; rec["phone_3_dnc"] = p3_dnc
+    if email:
+        rec["email_1"] = email
+    if is_litigator:
+        rec["_is_litigator"] = True  # sentinel for caller, removed before DB insert
+    return rec
+
+
+@router.post("/campaigns/{campaign_id}/lead-sherpa-preview")
+async def lead_sherpa_preview(campaign_id: str, body: dict = Body(...)) -> dict:
+    """Return APN match stats so frontend can decide update vs create mode."""
+    apns = body.get("apns", [])
+    if not apns:
+        return {"total": 0, "matched": 0, "match_pct": 0, "recommended_mode": "create"}
+    sb = get_supabase()
+    prop_r = sb.table("crm_properties").select("apn").eq("campaign_id", campaign_id).execute()
+    existing = {_normalize_apn(p["apn"]) for p in (prop_r.data or []) if p.get("apn")}
+    normed = [_normalize_apn(a) for a in apns if (a or "").strip()]
+    matched = sum(1 for a in normed if a in existing)
+    total = len(normed)
+    pct = round(matched / total * 100) if total > 0 else 0
+    mode = "update" if pct >= 80 else ("create" if pct < 10 else "ask")
+    return {"total": total, "matched": matched, "match_pct": pct, "recommended_mode": mode}
+
 
 @router.post("/campaigns/{campaign_id}/import-lead-sherpa")
 async def import_lead_sherpa(campaign_id: str, body: dict = Body(...)) -> dict:
-    """Match Lead Sherpa CSV rows to campaign properties by APN, update phone fields."""
+    """Mode 1: Match Lead Sherpa rows to existing campaign properties by APN, update phones."""
     rows = body.get("rows", [])
     if not rows:
         raise HTTPException(status_code=400, detail="No rows provided")
 
     sb = get_supabase()
     prop_r = sb.table("crm_properties").select("id,apn").eq("campaign_id", campaign_id).execute()
-    apn_to_id: dict[str, str] = {}
-    for p in (prop_r.data or []):
-        raw_apn = (p.get("apn") or "").strip()
-        if raw_apn:
-            apn_to_id[_normalize_apn(raw_apn)] = p["id"]
+    apn_to_id = {_normalize_apn(p["apn"]): p["id"] for p in (prop_r.data or []) if p.get("apn")}
 
-    updated = 0
-    dnc_flagged = 0
-    deceased_skipped = 0
-    not_matched = 0
-
-    def _nh(h: str) -> str:
-        return h.strip().lower().replace(" ", "_").replace("-", "_").replace("/", "_")
-
-    def _parse_bool(v) -> bool:
-        if v is None:
-            return False
-        return str(v).strip().lower() in ("true", "1", "yes", "y", "dnc", "x", "flagged")
-
-    def _norm_phone_type(t: str) -> str:
-        t = t.strip().lower()
-        if "mobile" in t or "cell" in t:
-            return "mobile"
-        if "land" in t or "home" in t or "work" in t or "fixed" in t:
-            return "landline"
-        if "voip" in t:
-            return "voip"
-        return "mobile" if t else "mobile"
+    updated = 0; dnc_flagged = 0; deceased_skipped = 0; litigators = 0
+    not_matched = 0; mobile_ready = 0; mail_only = 0
+    now_ts = _now()
 
     for row in rows:
-        normed = {_nh(k): v for k, v in row.items()}
-
-        if _parse_bool(normed.get("deceased") or normed.get("is_deceased")):
+        parsed = _parse_ls_row(row)
+        if parsed is None:
             deceased_skipped += 1
             continue
+        is_litigator = parsed.pop("_is_litigator", False)
+        if is_litigator:
+            litigators += 1
 
-        apn_raw = (
-            normed.get("parcel_number") or normed.get("apn") or
-            normed.get("parcel_id") or normed.get("property_parcel_number") or
-            normed.get("assessors_parcel_number") or normed.get("assessor_parcel_number") or
-            normed.get("assessors_parcel_#") or normed.get("parcel_#") or ""
-        )
-        apn_norm = _normalize_apn(str(apn_raw))
+        apn_norm = _normalize_apn(parsed.get("apn") or "")
         prop_id = apn_to_id.get(apn_norm)
-
         if not prop_id:
             not_matched += 1
             continue
 
-        update: dict = {}
-        record_has_dnc = False
+        update: dict = {"updated_at": now_ts}
+        for f in ("phone_1","phone_1_type","phone_1_dnc",
+                  "phone_2","phone_2_type","phone_2_dnc",
+                  "phone_3","phone_3_type","phone_3_dnc","email_1"):
+            if f in parsed:
+                update[f] = parsed[f]
+        if any(k.startswith("phone") for k in update if k != "updated_at"):
+            update["skip_traced_at"] = now_ts
 
-        phone1 = (normed.get("phone_1") or normed.get("phone1") or normed.get("primary_phone") or
-                  normed.get("phone_1_number") or normed.get("phone") or "").strip()
-        phone1_type_raw = (normed.get("phone_1_type") or normed.get("phone1_type") or
-                           normed.get("primary_phone_type") or "")
-        phone1_dnc = _parse_bool(normed.get("phone_1_dnc") or normed.get("phone1_dnc") or
-                                  normed.get("dnc_1") or normed.get("dnc"))
-
-        phone2 = (normed.get("phone_2") or normed.get("phone2") or
-                  normed.get("phone_2_number") or "").strip()
-        phone2_type_raw = (normed.get("phone_2_type") or normed.get("phone2_type") or "")
-        phone2_dnc = _parse_bool(normed.get("phone_2_dnc") or normed.get("phone2_dnc") or
-                                  normed.get("dnc_2"))
-
-        email = (normed.get("email") or normed.get("email_1") or normed.get("email_address") or "").strip()
-
-        if phone1:
-            update["phone_1"] = phone1
-            update["phone_1_type"] = _norm_phone_type(phone1_type_raw)
-            update["phone_1_dnc"] = phone1_dnc
-            if phone1_dnc:
-                record_has_dnc = True
-
-        if phone2:
-            update["phone_2"] = phone2
-            update["phone_2_type"] = _norm_phone_type(phone2_type_raw)
-            update["phone_2_dnc"] = phone2_dnc
-
-        if email:
-            update["email_1"] = email
-
-        if update:
-            update["skip_traced_at"] = _now()
-            update["updated_at"] = _now()
-            try:
-                sb.table("crm_properties").update(update).eq("id", prop_id).execute()
-                updated += 1
-                if record_has_dnc:
-                    dnc_flagged += 1
-            except Exception:
-                not_matched += 1
+        try:
+            sb.table("crm_properties").update(update).eq("id", prop_id).execute()
+            updated += 1
+            if parsed.get("phone_1_dnc"):
+                dnc_flagged += 1
+            if parsed.get("phone_1") and parsed.get("phone_1_type") == "mobile" and not parsed.get("phone_1_dnc"):
+                mobile_ready += 1
+            else:
+                mail_only += 1
+        except Exception:
+            not_matched += 1
 
     return {
-        "updated": updated,
-        "dnc_flagged": dnc_flagged,
-        "deceased_skipped": deceased_skipped,
-        "not_matched": not_matched,
+        "updated": updated, "dnc_flagged": dnc_flagged,
+        "deceased_skipped": deceased_skipped, "litigators": litigators,
+        "not_matched": not_matched, "mobile_ready": mobile_ready, "mail_only": mail_only,
     }
 
 
@@ -3847,41 +3912,24 @@ async def import_lead_sherpa(campaign_id: str, body: dict = Body(...)) -> dict:
 async def create_campaign_from_lead_sherpa(body: dict = Body(...)) -> dict:
     """Create a new campaign and import all rows from a Lead Sherpa CSV."""
     import datetime as _dt
+    from collections import Counter
     rows = body.get("rows", [])
     if not rows:
         raise HTTPException(status_code=400, detail="No rows provided")
 
-    def _nh(h: str) -> str:
-        return h.strip().lower().replace(" ", "_").replace("-", "_").replace("/", "_")
+    campaign_name = (body.get("campaign_name") or "").strip()
 
-    def _parse_bool(v) -> bool:
-        if v is None:
-            return False
-        return str(v).strip().lower() in ("true", "1", "yes", "y", "dnc", "x", "flagged")
-
-    def _norm_phone_type(t: str) -> str:
-        t = t.strip().lower()
-        if "mobile" in t or "cell" in t:
-            return "mobile"
-        if "land" in t or "home" in t or "work" in t or "fixed" in t:
-            return "landline"
-        if "voip" in t:
-            return "voip"
-        return "mobile" if t else "mobile"
-
-    # Detect dominant state from first 100 rows
-    from collections import Counter
-    state_counter: Counter = Counter()
-    for row in rows[:100]:
-        nr = {_nh(k): v for k, v in row.items()}
-        st = (nr.get("property_state") or nr.get("state") or nr.get("situs_state") or
-              nr.get("mailing_state") or "").strip().upper()
-        if st:
-            state_counter[st] += 1
-    dominant_state = state_counter.most_common(1)[0][0] if state_counter else ""
-
-    today = _dt.datetime.utcnow().date().strftime("%b %d %Y")
-    campaign_name = f"{dominant_state + ' ' if dominant_state else ''}Lead Sherpa {today}".strip()
+    if not campaign_name:
+        state_counter: Counter = Counter()
+        for row in rows[:100]:
+            parsed = _parse_ls_row(row)
+            if parsed:
+                st = (parsed.get("state") or "").strip().upper()
+                if st:
+                    state_counter[st] += 1
+        dominant_state = state_counter.most_common(1)[0][0] if state_counter else ""
+        today = _dt.datetime.utcnow().date().strftime("%b %d %Y")
+        campaign_name = f"{dominant_state + ' ' if dominant_state else ''}Lead Sherpa {today}".strip()
 
     sb = get_supabase()
     camp_r = sb.table("crm_campaigns").insert({
@@ -3894,94 +3942,54 @@ async def create_campaign_from_lead_sherpa(body: dict = Body(...)) -> dict:
     campaign_id = camp_r.data[0]["id"]
 
     imported = 0
-    mobile_count = 0
+    mobile_ready = 0
+    dnc_flagged = 0
+    deceased_skipped = 0
+    litigators = 0
+    mail_only = 0
     props_batch: list[dict] = []
 
     for row in rows:
-        nr = {_nh(k): v for k, v in row.items()}
-
-        if _parse_bool(nr.get("deceased") or nr.get("is_deceased")):
+        parsed = _parse_ls_row(row)
+        if parsed is None:
+            deceased_skipped += 1
             continue
 
-        apn = (nr.get("parcel_number") or nr.get("apn") or nr.get("parcel_id") or
-               nr.get("property_parcel_number") or nr.get("assessors_parcel_number") or
-               nr.get("assessor_parcel_number") or "").strip()
+        is_litigator = parsed.pop("_is_litigator", False)
+        if is_litigator:
+            litigators += 1
 
-        # Owner name
-        first = (nr.get("first_name") or nr.get("owner_first_name") or "").strip()
-        last = (nr.get("last_name") or nr.get("owner_last_name") or "").strip()
-        full = (nr.get("owner_name") or nr.get("full_name") or nr.get("owner_full_name") or
-                nr.get("name") or "").strip()
-        if not full and (first or last):
-            full = f"{first} {last}".strip()
-
-        # Mailing address
-        mail_addr = (nr.get("mailing_address") or nr.get("owner_mailing_address") or
-                     nr.get("mail_address") or "").strip()
-        mail_city = (nr.get("mailing_city") or nr.get("owner_mailing_city") or "").strip()
-        mail_state = (nr.get("mailing_state") or nr.get("owner_mailing_state") or "").strip()
-        mail_zip = (nr.get("mailing_zip") or nr.get("owner_mailing_zip") or
-                    nr.get("mailing_zipcode") or "").strip()
-
-        # Property info
-        prop_addr = (nr.get("property_address") or nr.get("situs_address") or "").strip()
-        prop_city = (nr.get("property_city") or nr.get("situs_city") or "").strip()
-        prop_state = (nr.get("property_state") or nr.get("state") or nr.get("situs_state") or "").strip()
-        prop_zip = (nr.get("property_zip") or nr.get("situs_zip") or "").strip()
-        county = (nr.get("county") or "").strip()
-        acreage_raw = (nr.get("acreage") or nr.get("acres") or nr.get("lot_size") or "").strip()
-        try:
-            acreage = float(acreage_raw) if acreage_raw else None
-        except Exception:
-            acreage = None
-
-        # Phones
-        phone1 = (nr.get("phone_1") or nr.get("phone1") or nr.get("primary_phone") or
-                  nr.get("phone_1_number") or nr.get("phone") or "").strip()
-        phone1_type_raw = (nr.get("phone_1_type") or nr.get("phone1_type") or
-                           nr.get("primary_phone_type") or "")
-        phone1_dnc = _parse_bool(nr.get("phone_1_dnc") or nr.get("phone1_dnc") or
-                                  nr.get("dnc_1") or nr.get("dnc"))
-        phone2 = (nr.get("phone_2") or nr.get("phone2") or nr.get("phone_2_number") or "").strip()
-        phone2_type_raw = (nr.get("phone_2_type") or nr.get("phone2_type") or "")
-        phone2_dnc = _parse_bool(nr.get("phone_2_dnc") or nr.get("phone2_dnc") or nr.get("dnc_2"))
-        email = (nr.get("email") or nr.get("email_1") or nr.get("email_address") or "").strip()
-
-        p1_type = _norm_phone_type(phone1_type_raw) if phone1 else None
-
-        rec: dict = {
+        rec = {
+            **parsed,
             "campaign_id": campaign_id,
             "created_at": _now(),
             "updated_at": _now(),
             "status": "lead",
         }
-        if apn:        rec["apn"] = apn
-        if full:       rec["owner_full_name"] = full
-        if first:      rec["owner_first_name"] = first
-        if last:       rec["owner_last_name"] = last
-        if mail_addr:  rec["owner_mailing_address"] = mail_addr
-        if mail_city:  rec["owner_mailing_city"] = mail_city
-        if mail_state: rec["owner_mailing_state"] = mail_state
-        if mail_zip:   rec["owner_mailing_zip"] = mail_zip
-        if prop_addr:  rec["property_address"] = prop_addr
-        if prop_city:  rec["property_city"] = prop_city
-        if prop_state: rec["state"] = prop_state
-        if prop_zip:   rec["property_zip"] = prop_zip
-        if county:     rec["county"] = county
-        if acreage:    rec["acreage"] = acreage
-        if phone1:
-            rec["phone_1"] = phone1
-            rec["phone_1_type"] = p1_type
-            rec["phone_1_dnc"] = phone1_dnc
+        if any(k.startswith("phone_") for k in rec):
             rec["skip_traced_at"] = _now()
-            if p1_type == "mobile" and not phone1_dnc:
-                mobile_count += 1
-        if phone2:
-            rec["phone_2"] = phone2
-            rec["phone_2_type"] = _norm_phone_type(phone2_type_raw)
-            rec["phone_2_dnc"] = phone2_dnc
-        if email:
-            rec["email_1"] = email
+
+        p1 = rec.get("phone_1")
+        p1_type = rec.get("phone_1_type")
+        p1_dnc = rec.get("phone_1_dnc", False)
+        p2 = rec.get("phone_2")
+        p2_type = rec.get("phone_2_type")
+        p2_dnc = rec.get("phone_2_dnc", False)
+
+        has_mobile = (
+            (p1 and p1_type == "mobile") or (p2 and p2_type == "mobile")
+        )
+        all_dnc = (
+            (not p1 or p1_dnc) and (not p2 or p2_dnc)
+        )
+
+        if p1_dnc or p2_dnc:
+            dnc_flagged += 1
+
+        if has_mobile and not all_dnc:
+            mobile_ready += 1
+        else:
+            mail_only += 1
 
         props_batch.append(rec)
 
@@ -4004,5 +4012,9 @@ async def create_campaign_from_lead_sherpa(body: dict = Body(...)) -> dict:
         "campaign_id": campaign_id,
         "campaign_name": campaign_name,
         "imported": imported,
-        "mobile_count": mobile_count,
+        "mobile_ready": mobile_ready,
+        "dnc_flagged": dnc_flagged,
+        "deceased_skipped": deceased_skipped,
+        "litigators": litigators,
+        "mail_only": mail_only,
     }
