@@ -270,7 +270,7 @@ export default function Dashboard() {
 function zipDotColor(z: ZipStats, outlierSet: Set<string>): string {
   if (outlierSet.has(z.zip_code)) return '#DC2626'
   if (z.sales_count >= 10) return '#059669'
-  if (z.sales_count >= 5)  return '#D97706'
+  if (z.sales_count >= 3)  return '#D97706'
   return '#DC2626'
 }
 
@@ -296,20 +296,24 @@ function TopMarketsCard({ zipStats, comps, zipVelocity, topCounties }: { zipStat
       ? zipStats.filter(z => (z.median_price_per_acre ?? 0) > 3 * overallMedian).map(z => z.zip_code)
       : []
   )
-  const thinZips = zipStats.filter(z => z.sales_count < 5).map(z => z.zip_code)
-  const warningZips = new Set(zipStats.filter(z => z.sales_count >= 5 && z.sales_count < 10).map(z => z.zip_code))
+  const thinZips = zipStats.filter(z => z.sales_count < 3).map(z => z.zip_code)
+  const warningZips = new Set(zipStats.filter(z => z.sales_count >= 3 && z.sales_count < 10).map(z => z.zip_code))
   const avoidZips = [...outlierSet, ...thinZips]
 
-  // Top 20: exclude outliers, <5 sales, and non-buy-box counties
-  const sorted = [...zipStats]
+  // Top 20: exclude outliers and <3 sales; county filter falls back to all if empty result
+  const _sortedWithCounty = [...zipStats]
     .filter(z => !outlierSet.has(z.zip_code) && !thinZips.includes(z.zip_code))
     .filter(z => {
       if (recommendedCountySet.size === 0) return true
       const county = z.county ?? zipToCounty[fmtZip(z.zip_code)]
-      if (!county) return false
+      if (!county) return true  // include when county unknown — don't exclude thin datasets
       return recommendedCountySet.has(normCounty(county))
     })
     .sort((a, b) => b.sales_count - a.sales_count)
+  const _sortedAll = [...zipStats]
+    .filter(z => !outlierSet.has(z.zip_code) && !thinZips.includes(z.zip_code))
+    .sort((a, b) => b.sales_count - a.sales_count)
+  const sorted = _sortedWithCounty.length > 0 ? _sortedWithCounty : _sortedAll
   const top20 = sorted.slice(0, 20)
   const top20Zips = top20.map(z => z.zip_code)
 
@@ -328,7 +332,7 @@ function TopMarketsCard({ zipStats, comps, zipVelocity, topCounties }: { zipStat
       {/* Legend */}
       <div className="flex items-center gap-4 mb-4 text-xs" style={{ color: '#9CA3AF' }}>
         <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full inline-block" style={{ background: '#059669' }} />Solid (10+ sales)</span>
-        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full inline-block" style={{ background: '#D97706' }} />Thin Data (5–9 sales)</span>
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full inline-block" style={{ background: '#D97706' }} />Thin Data (3–9 sales)</span>
         <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full inline-block" style={{ background: '#DC2626' }} />Avoid (outlier)</span>
       </div>
 
@@ -441,7 +445,7 @@ function CollapsibleZipTable({ zipStats }: { zipStats: ZipStats[] }) {
 
   const filtered = showAll
     ? [...zipStats].sort((a, b) => b.sales_count - a.sales_count)
-    : [...zipStats].filter(z => z.sales_count >= 10 && !outlierSet.has(z.zip_code)).sort((a, b) => b.sales_count - a.sales_count)
+    : [...zipStats].filter(z => z.sales_count >= 3 && !outlierSet.has(z.zip_code)).sort((a, b) => b.sales_count - a.sales_count)
 
   return (
     <div className="card mb-6">
@@ -465,7 +469,7 @@ function CollapsibleZipTable({ zipStats }: { zipStats: ZipStats[] }) {
           <div className="flex items-center justify-between mb-3">
             <p className="text-xs" style={{ color: '#9CA3AF' }}>
               Showing {filtered.length} ZIPs
-              {!showAll && ' with 10+ sales, excluding outliers'}
+              {!showAll && ' with 3+ sales, excluding outliers'}
             </p>
             <button className="text-xs underline" style={{ color: '#4F46E5' }} onClick={() => setShowAll(v => !v)}>
               {showAll ? 'Hide thin/outlier ZIPs' : 'Show all ZIPs'}
@@ -704,18 +708,24 @@ function BuyBoxRecipe({
   }
 
   // Top 20 ZIPs — only ZIPs whose county is in the recommended county list
-  const topZipItems = [...zipStats]
-    .filter(z => !bbOutlierCodes.has(z.zip_code) && z.sales_count >= 5)
+  const _baseZips = [...zipStats].filter(z => !bbOutlierCodes.has(z.zip_code) && z.sales_count >= 3)
+  let topZipItems = _baseZips
     .filter(z => {
       if (recommendedCountySet.size === 0) return true
-      // Check both zipStats.county and the velocity-sourced zipToCounty map
       const county = z.county ?? zipToCounty[fmtZip(z.zip_code)]
-      if (!county) return false  // no county data — exclude when buy box is defined
+      if (!county) return true  // no county data — include rather than exclude thin datasets
       return recommendedCountySet.has(normCounty(county))
     })
     .sort((a, b) => b.sales_count - a.sales_count)
     .slice(0, 20)
     .map(z => ({ zip: fmtZip(z.zip_code), county: z.county ?? zipToCounty[fmtZip(z.zip_code)] ?? null }))
+  // Fallback: if county filter eliminated everything, show all non-outlier ZIPs with 3+ sales
+  if (topZipItems.length === 0 && _baseZips.length > 0) {
+    topZipItems = _baseZips
+      .sort((a, b) => b.sales_count - a.sales_count)
+      .slice(0, 20)
+      .map(z => ({ zip: fmtZip(z.zip_code), county: z.county ?? zipToCounty[fmtZip(z.zip_code)] ?? null }))
+  }
 
   const topZips = topZipItems.map(z => z.zip)
 
@@ -994,8 +1004,7 @@ ${sec('6. Owner',
     if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 400) }
   }
 
-  if (topZips.length === 0) return null
-
+  const thinDataset = totalComps < 500
   const cardStyle = { background: '#F9FAFB', border: '1px solid #E5E7EB' }
   const hdr = (title: string) => (
     <p className="text-[10px] uppercase tracking-wider font-semibold mb-3" style={{ color: '#6B7280' }}>{title}</p>
@@ -1009,6 +1018,11 @@ ${sec('6. Owner',
           <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>
             Exact filter settings derived from your {totalComps.toLocaleString()} sold comps — paste directly into Land Portal
           </p>
+          {thinDataset && (
+            <div className="mt-2 text-xs px-3 py-2 rounded-lg" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)', color: '#B45309' }}>
+              ⚠️ Thin data — buy box based on limited comps. Add more solds for better accuracy.
+            </div>
+          )}
         </div>
         <div className="flex gap-2">
           <button onClick={handleCopy} className="btn-secondary text-xs" style={{ padding: '6px 12px' }}>
