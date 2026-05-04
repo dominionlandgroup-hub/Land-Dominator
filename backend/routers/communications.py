@@ -1689,6 +1689,7 @@ async def _finalize_unmatched_call(call_sid: str) -> None:
 @router.post("/api/sms/inbound")
 async def inbound_sms(request: Request, background_tasks: BackgroundTasks) -> dict:
     from_phone = ""
+    to_phone = ""
     message_text = ""
     try:
         body = await request.json()
@@ -1696,18 +1697,32 @@ async def inbound_sms(request: Request, background_tasks: BackgroundTasks) -> di
         from_data = payload.get("from", {})
         from_phone = from_data.get("phone_number", "") if isinstance(from_data, dict) else str(from_data)
         message_text = payload.get("text", payload.get("body", ""))
+        # Extract which Telnyx number received this message — use it for the reply
+        to_data = payload.get("to", [])
+        if isinstance(to_data, list) and to_data:
+            first_to = to_data[0]
+            to_phone = first_to.get("phone_number", "") if isinstance(first_to, dict) else str(first_to)
+        elif isinstance(to_data, dict):
+            to_phone = to_data.get("phone_number", "")
+        elif isinstance(to_data, str):
+            to_phone = to_data
     except Exception:
         try:
             form = await request.form()
             from_phone = _form_get(form, "From", "from_")
             message_text = _form_get(form, "Body", "text")
+            to_phone = _form_get(form, "To", "to_")
         except Exception:
             pass
 
-    print(f"=== INBOUND SMS RECEIVED from {from_phone}: {message_text[:200]!r}", flush=True)
+    # Fall back to primary number if we couldn't determine which number received it
+    if not to_phone:
+        to_phone = os.getenv("TELNYX_PHONE_NUMBER", "")
+
+    print(f"=== INBOUND SMS: from={from_phone} to={to_phone} msg={message_text[:200]!r}", flush=True)
 
     if from_phone:
-        background_tasks.add_task(_process_inbound_sms, from_phone, message_text)
+        background_tasks.add_task(_process_inbound_sms, from_phone, message_text, to_phone)
     else:
         print("[sms] WARNING: inbound SMS has no from_phone — ignoring", flush=True)
     return {"status": "ok"}
@@ -1757,13 +1772,18 @@ async def _ai_sms_reply(
     message_text: str,
     prop: dict,
     property_id: Optional[str],
+    received_on: str = "",
 ) -> None:
     """Generate a Claude AI reply and send it back via SMS. Rate-limited to _SMS_MAX_EXCHANGES."""
     import anthropic as _anthropic
 
     api_key = _telnyx_key()
-    telnyx_from = _telnyx_phone()
+    # Reply FROM the same number that received the inbound message.
+    # Falls back to the primary TELNYX_PHONE_NUMBER if unknown.
+    telnyx_from = received_on or _telnyx_phone()
     anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
+
+    print(f"[sms-bot] Replying from {telnyx_from} to {from_phone}", flush=True)
 
     if not api_key or not telnyx_from:
         print("[ai-sms] missing TELNYX config — skipping AI reply", flush=True)
@@ -2034,7 +2054,7 @@ async def _detect_sms_ai_outcomes(
             print(f"[ai-sms] HOT alert send error: {exc}", flush=True)
 
 
-async def _process_inbound_sms(from_phone: str, message_text: str) -> None:
+async def _process_inbound_sms(from_phone: str, message_text: str, received_on: str = "") -> None:
     print(f"[sms-bot] Inbound from {from_phone}: {message_text!r}", flush=True)
     print(f"[sms-bot] Looking up property...", flush=True)
     prop = await _lookup_phone(from_phone)
@@ -2130,7 +2150,7 @@ async def _process_inbound_sms(from_phone: str, message_text: str) -> None:
     if not is_stop:
         print(f"[sms-bot] Calling Claude AI (model={_CLAUDE_SMS_MODEL})...", flush=True)
         try:
-            await _ai_sms_reply(from_phone, message_text, prop, property_id)
+            await _ai_sms_reply(from_phone, message_text, prop, property_id, received_on=received_on)
             print(f"[sms-bot] AI reply sent to {from_phone}", flush=True)
         except Exception as exc:
             print(f"[sms-bot] AI SMS reply error: {exc}", flush=True)
