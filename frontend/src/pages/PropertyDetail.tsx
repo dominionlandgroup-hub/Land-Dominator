@@ -337,7 +337,7 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
     if (!property?.id || !form.owner_phone) return
     setSmsSending(true); setSmsError(null); setSmsSuccess(null)
     try {
-      await sendSms(property.id, form.owner_phone, smsMessage)
+      await sendSms(form.owner_phone, smsMessage, property.id)
       setSmsSuccess('SMS sent successfully.')
       setShowSmsModal(false)
       listPropertyCommunications(property.id).then(setComms).catch(() => {})
