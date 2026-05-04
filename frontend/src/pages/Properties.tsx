@@ -194,6 +194,7 @@ export default function Properties() {
     const totalPages = Math.ceil(totalCount / PAGE_SIZE)
     return (
       <PropertyDetail
+        key={selected.id}
         property={selected}
         onBack={() => { setView('list'); setSelected(null); reload({ p: page }) }}
         onSave={async updates => { const u = await updateProperty(selected.id, updates); setSelected(u) }}

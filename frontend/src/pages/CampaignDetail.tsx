@@ -643,6 +643,7 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated, on
   if (viewingProperty) {
     return (
       <PropertyDetail
+        key={viewingProperty.id}
         property={viewingProperty}
         onBack={() => setViewingProperty(null)}
         onSave={handlePropertySave}
