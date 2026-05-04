@@ -5,11 +5,11 @@ import {
   listProperties, updateProperty, deleteProperties, bulkInsertRows, getCrmCampaign,
   exportPropertiesCsv, startCampaignLpPull, getCampaignLpPullStatus,
   sendCampaignMailDrop, updateCrmCampaign, getPropertyTags, recalculateAmountSpent,
-  startSkipTrace, getSkipTraceStatus, startSmsCampaign, getSmsStatus,
+  startSmsCampaign, getSmsStatus,
   getCampaignFunnelStats, exportMailQueue,
-  getLpSkipTraceCount, startLpSkipTrace, getLpSkipTraceStatus,
+  getSmsPreview, importLeadSherpa,
 } from '../api/crm'
-import type { CampaignFunnelStats } from '../api/crm'
+import type { CampaignFunnelStats, SmsCampaignPreview } from '../api/crm'
 import PropertyDetail from './PropertyDetail'
 
 const PAGE_SIZE = 20
@@ -98,24 +98,6 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
   const [lpTokenWarning, setLpTokenWarning] = useState<string | null>(null)
   const lpPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // Skip trace (Batch Leads)
-  const [stJobId, setStJobId] = useState<string | null>(null)
-  const [stDone, setStDone] = useState(0)
-  const [stTotal, setStTotal] = useState(0)
-  const [stStatus, setStStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
-  const [stResult, setStResult] = useState<{ mobile: number; landline: number; no_number: number } | null>(null)
-  const [stError, setStError] = useState<string | null>(null)
-  const stPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  // Skip trace (Land Portal)
-  const [lpStJobId, setLpStJobId] = useState<string | null>(null)
-  const [lpStDone, setLpStDone] = useState(0)
-  const [lpStTotal, setLpStTotal] = useState(0)
-  const [lpStStatus, setLpStStatus] = useState<'idle' | 'running' | 'done' | 'error' | 'interrupted'>('idle')
-  const [lpStResult, setLpStResult] = useState<{ mobile: number; landline: number; no_number: number } | null>(null)
-  const [lpStError, setLpStError] = useState<string | null>(null)
-  const lpStPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const lpSt404Ref = useRef(0)
 
   // SMS campaign
   const [smsJobId, setSmsJobId] = useState<string | null>(null)
@@ -132,6 +114,21 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
   const [singleTextProp, setSingleTextProp] = useState<CRMProperty | null>(null)
   const [singleTextSending, setSingleTextSending] = useState(false)
   const [singleTextResult, setSingleTextResult] = useState<string | null>(null)
+
+  // SMS confirmation modal
+  const [showSmsConfirm, setShowSmsConfirm] = useState(false)
+  const [smsConfirmDay, setSmsConfirmDay] = useState(1)
+  const [smsPreview, setSmsPreview] = useState<SmsCampaignPreview | null>(null)
+  const [smsPreviewLoading, setSmsPreviewLoading] = useState(false)
+  const [smsConfirmSelectedIds, setSmsConfirmSelectedIds] = useState<string[] | undefined>(undefined)
+
+  // Lead Sherpa import
+  const leadSherpaFileRef = useRef<HTMLInputElement>(null)
+  const [showLeadSherpaModal, setShowLeadSherpaModal] = useState(false)
+  const [leadSherpaParsed, setLeadSherpaParsed] = useState<{ rows: Record<string, string>[]; apnCol: string } | null>(null)
+  const [leadSherpaImporting, setLeadSherpaImporting] = useState(false)
+  const [leadSherpaResult, setLeadSherpaResult] = useState<string | null>(null)
+  const [leadSherpaError, setLeadSherpaError] = useState<string | null>(null)
 
   // Funnel stats
   const [funnel, setFunnel] = useState<CampaignFunnelStats | null>(null)
@@ -403,111 +400,64 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
     }
   }
 
-  // ── Skip Trace ──────────────────────────────────────────────────────
-  async function handleStartSkipTrace() {
-    if (stStatus === 'running') return
-    const ids = allPagesSelected ? [] : Array.from(selectedIds)
-    const count = ids.length > 0 ? ids.length : (stats.property_count ?? 0)
-    const scope = ids.length > 0 ? `${count.toLocaleString()} selected records` : `all ${count.toLocaleString()} campaign records`
-    if (!confirm(`This will skip-trace ${scope} using Batch Leads credits. Continue?`)) return
-    setStStatus('running')
-    setStDone(0)
-    setStTotal(0)
-    setStResult(null)
-    setStError(null)
-    try {
-      const { job_id, total } = await startSkipTrace(campaign.id, ids.length > 0 ? ids : undefined)
-      setStJobId(job_id)
-      setStTotal(total)
-      if (stPollRef.current) clearInterval(stPollRef.current)
-      stPollRef.current = setInterval(async () => {
-        try {
-          const s = await getSkipTraceStatus(campaign.id, job_id)
-          setStDone(s.done)
-          setStTotal(s.total)
-          if (s.status === 'done' || s.status === 'error') {
-            setStStatus(s.status as 'done' | 'error')
-            if (s.status === 'done') setStResult({ mobile: s.mobile, landline: s.landline, no_number: s.no_number })
-            if (s.status === 'error') setStError('Skip trace failed')
-            if (stPollRef.current) { clearInterval(stPollRef.current); stPollRef.current = null }
-            loadFunnel()
-          }
-        } catch {}
-      }, 2000)
-    } catch (e: unknown) {
-      const err = e as { response?: { data?: { detail?: string } } }
-      setStError(err?.response?.data?.detail ?? 'Failed to start skip trace')
-      setStStatus('error')
-    }
+  // ── Lead Sherpa Import ────────────────────────────────────────────────
+  function handleLeadSherpaFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setLeadSherpaParsed(null)
+    setLeadSherpaResult(null)
+    setLeadSherpaError(null)
+    Papa.parse<Record<string, string>>(file, {
+      header: true,
+      skipEmptyLines: true,
+      transformHeader: (h: string) => h.trim(),
+      complete: (results) => {
+        const rows = results.data as Record<string, string>[]
+        if (!rows.length) { setLeadSherpaError('No rows found in CSV.'); return }
+        const headers = Object.keys(rows[0])
+        const apnCol = headers.find(h =>
+          /parcel.?number|^apn$|parcel.?id|property.?parcel/i.test(h)
+        ) ?? headers[0]
+        setLeadSherpaParsed({ rows, apnCol })
+      },
+      error: () => { setLeadSherpaError('Failed to parse CSV.') },
+    })
   }
 
-  // ── LP Skip Trace ────────────────────────────────────────────────────
-  async function handleStartLpSkipTrace() {
-    if (lpStStatus === 'running') return
-    const ids = allPagesSelected ? [] : Array.from(selectedIds)
-    const hasSelection = ids.length > 0
+  async function handleLeadSherpaImport() {
+    if (!leadSherpaParsed) return
+    setLeadSherpaImporting(true)
+    setLeadSherpaResult(null)
+    setLeadSherpaError(null)
     try {
-      const { total, with_lp_id } = await getLpSkipTraceCount(campaign.id, hasSelection ? ids : undefined)
-      const noLpId = total - with_lp_id
-      const scopeLabel = hasSelection ? `${total.toLocaleString()} selected` : `all ${total.toLocaleString()}`
-      const msg = [
-        `Skip tracing ${scopeLabel} records.`,
-        ``,
-        `✓ ${with_lp_id.toLocaleString()} have Land Portal IDs → ${with_lp_id.toLocaleString()} tokens used`,
-        noLpId > 0 ? `✓ ${noLpId.toLocaleString()} without LP IDs → will be skipped (use Batch Leads for those)` : '',
-        ``,
-        `Total cost: ${with_lp_id.toLocaleString()} LP tokens`,
-        ``,
-        `Continue?`,
-      ].filter(Boolean).join('\n')
-      if (!confirm(msg)) return
-    } catch {
-      if (!confirm('Could not fetch record counts. Start LP skip trace anyway?')) return
-    }
-    setLpStStatus('running')
-    setLpStDone(0)
-    setLpStTotal(0)
-    setLpStResult(null)
-    setLpStError(null)
-    try {
-      const { job_id, total } = await startLpSkipTrace(campaign.id, hasSelection ? ids : undefined)
-      setLpStJobId(job_id)
-      setLpStTotal(total)
-      lpSt404Ref.current = 0
-      if (lpStPollRef.current) clearInterval(lpStPollRef.current)
-      lpStPollRef.current = setInterval(async () => {
-        try {
-          const s = await getLpSkipTraceStatus(campaign.id, job_id)
-          lpSt404Ref.current = 0
-          setLpStDone(s.done)
-          setLpStTotal(s.total)
-          if (s.status === 'not_found') {
-            if (lpStPollRef.current) { clearInterval(lpStPollRef.current); lpStPollRef.current = null }
-            setLpStStatus('interrupted')
-            setLpStError('Skip trace job was interrupted. Check property records for results so far.')
-            return
-          }
-          if (s.status === 'done' || s.status === 'error') {
-            setLpStStatus(s.status as 'done' | 'error')
-            if (s.status === 'done') setLpStResult({ mobile: s.mobile, landline: s.landline, no_number: s.no_number })
-            if (s.status === 'error') setLpStError('LP skip trace failed')
-            if (lpStPollRef.current) { clearInterval(lpStPollRef.current); lpStPollRef.current = null }
-            loadFunnel()
-          }
-        } catch {
-          lpSt404Ref.current += 1
-          if (lpSt404Ref.current >= 10) {
-            if (lpStPollRef.current) { clearInterval(lpStPollRef.current); lpStPollRef.current = null }
-            setLpStStatus('interrupted')
-            setLpStError('Skip trace job was interrupted. Check property records for results so far.')
-          }
-        }
-      }, 2000)
+      const res = await importLeadSherpa(campaign.id, leadSherpaParsed.rows)
+      const parts = [`Updated ${res.updated.toLocaleString()} records`]
+      if (res.dnc_flagged > 0) parts.push(`${res.dnc_flagged.toLocaleString()} DNC flagged`)
+      if (res.deceased_skipped > 0) parts.push(`${res.deceased_skipped.toLocaleString()} deceased skipped`)
+      if (res.not_matched > 0) parts.push(`${res.not_matched.toLocaleString()} not matched`)
+      setLeadSherpaResult(parts.join(' · '))
+      loadFunnel()
+      loadProperties(page, statusFilter, search)
     } catch (e: unknown) {
-      const err = e as { response?: { data?: { detail?: string } } }
-      setLpStError(err?.response?.data?.detail ?? 'Failed to start LP skip trace')
-      setLpStStatus('error')
-    }
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setLeadSherpaError(detail ?? 'Import failed')
+    } finally { setLeadSherpaImporting(false) }
+  }
+
+  // ── SMS Confirm Modal ─────────────────────────────────────────────────
+  async function openSmsConfirm(day: number, ids?: string[]) {
+    if (smsStatus === 'running') return
+    setSmsConfirmDay(day)
+    setSmsConfirmSelectedIds(ids)
+    setSmsPreview(null)
+    setSmsPreviewLoading(true)
+    setShowSmsConfirm(true)
+    try {
+      const preview = await getSmsPreview(campaign.id, day)
+      setSmsPreview(preview)
+    } catch { setSmsPreview(null) }
+    finally { setSmsPreviewLoading(false) }
   }
 
   // ── SMS Campaign ─────────────────────────────────────────────────────
@@ -695,39 +645,6 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
             </span>
           )}
 
-          {/* Skip trace status (Batch Leads) */}
-          {stStatus === 'running' && (
-            <span className="text-xs" style={{ color: '#9CA3AF' }}>
-              🔍 BL Skip tracing… {stDone.toLocaleString()} of {stTotal.toLocaleString()}
-            </span>
-          )}
-          {stStatus === 'done' && stResult && (
-            <span className="text-xs font-semibold" style={{ color: '#10B981' }}>
-              ✓ BL: {stResult.mobile.toLocaleString()} mobile · {stResult.landline.toLocaleString()} landline · {stResult.no_number.toLocaleString()} no number
-            </span>
-          )}
-          {stStatus === 'error' && (
-            <span className="text-xs font-semibold" style={{ color: '#DC2626' }}>Skip trace failed: {stError}</span>
-          )}
-
-          {/* Skip trace status (Land Portal) */}
-          {lpStStatus === 'running' && (
-            <span className="text-xs" style={{ color: '#9CA3AF' }}>
-              🔍 LP Skip tracing… {lpStDone.toLocaleString()} of {lpStTotal.toLocaleString()}
-            </span>
-          )}
-          {lpStStatus === 'done' && lpStResult && (
-            <span className="text-xs font-semibold" style={{ color: '#10B981' }}>
-              ✓ LP: {lpStResult.mobile.toLocaleString()} mobile · {lpStResult.landline.toLocaleString()} landline · {lpStResult.no_number.toLocaleString()} no number
-            </span>
-          )}
-          {lpStStatus === 'error' && (
-            <span className="text-xs font-semibold" style={{ color: '#DC2626' }}>LP skip trace failed: {lpStError}</span>
-          )}
-          {lpStStatus === 'interrupted' && (
-            <span className="text-xs font-semibold" style={{ color: '#F59E0B' }}>⚠ {lpStError}</span>
-          )}
-
           {/* SMS status */}
           {smsStatus === 'running' && (
             <span className="text-xs" style={{ color: '#9CA3AF' }}>
@@ -773,23 +690,15 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
           </button>
           <button
             className="btn-secondary text-sm"
-            onClick={handleStartSkipTrace}
-            disabled={stStatus === 'running' || lpStStatus === 'running'}
-            title="Find phone numbers via Batch Leads skip trace (uses BL credits)"
+            onClick={() => { setShowLeadSherpaModal(true); setLeadSherpaParsed(null); setLeadSherpaResult(null); setLeadSherpaError(null) }}
+            title="Import skip trace results from Lead Sherpa CSV — match by APN, update phone numbers"
           >
-            🔍 {stStatus === 'running' ? `BL Tracing… ${stDone.toLocaleString()}/${stTotal.toLocaleString()}` : 'Skip Trace (BL)'}
+            📋 Import Skip Trace
           </button>
+          <input ref={leadSherpaFileRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={handleLeadSherpaFileSelected} />
           <button
             className="btn-secondary text-sm"
-            onClick={handleStartLpSkipTrace}
-            disabled={lpStStatus === 'running' || stStatus === 'running'}
-            title="Find phone numbers via Land Portal skip trace (uses LP tokens — only records with LP IDs)"
-          >
-            🔍 {lpStStatus === 'running' ? `LP Tracing… ${lpStDone.toLocaleString()}/${lpStTotal.toLocaleString()}` : 'Skip Trace (LP)'}
-          </button>
-          <button
-            className="btn-secondary text-sm"
-            onClick={() => handleStartSms(1)}
+            onClick={() => openSmsConfirm(1)}
             disabled={smsStatus === 'running'}
             title="Send Day 1 SMS to all mobile numbers"
           >
@@ -798,7 +707,7 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
           {funnel && funnel.skip_traced > 0 && (
             <button
               className="btn-secondary text-sm"
-              onClick={() => handleStartSms(3)}
+              onClick={() => openSmsConfirm(3)}
               disabled={smsStatus === 'running'}
               title="Send Day 3 follow-up to non-responders"
             >
@@ -906,11 +815,12 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
               Export Mail List ({funnel.mail_queue.toLocaleString()})
             </button>
           </div>
-          <div className="flex items-stretch gap-0 rounded-xl overflow-hidden border" style={{ borderColor: '#A7F3D0', maxWidth: 700 }}>
+          <div className="flex items-stretch gap-0 rounded-xl overflow-hidden border" style={{ borderColor: '#A7F3D0', maxWidth: 780 }}>
             {[
               { label: 'Total', value: funnel.total, color: '#6B7280', bg: '#F9FAFB' },
               { label: 'Skip Traced', value: funnel.skip_traced, color: '#4F46E5', bg: '#EEF2FF' },
               { label: 'Mobile', value: funnel.mobile, color: '#059669', bg: '#F0FDF4' },
+              { label: '🚫 DNC', value: funnel.dnc ?? 0, color: '#DC2626', bg: '#FEF2F2' },
               { label: 'Texts Sent', value: funnel.texts_sent, color: '#0891B2', bg: '#ECFEFF' },
               { label: '🔥 HOT', value: funnel.hot, color: '#DC2626', bg: '#FEF2F2' },
               { label: 'Opted Out', value: funnel.opted_out, color: '#9CA3AF', bg: '#F9FAFB' },
@@ -1024,7 +934,7 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
             <button
               className="px-3 py-1.5 text-xs font-semibold rounded-lg"
               style={{ background: '#E8F5E9', color: '#1B5E20', border: '1px solid #A5D6A7' }}
-              onClick={() => handleStartSms(1, Array.from(selectedIds))}
+              onClick={() => openSmsConfirm(1, Array.from(selectedIds))}
               disabled={smsStatus === 'running'}
               title="Send Day 1 SMS to selected records with mobile phones"
             >
@@ -1184,19 +1094,30 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
                         </span>
                       </td>
                       <td style={{ padding: '10px 8px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-                        {p.phone_1 && p.phone_1_type === 'mobile' && !p.opted_out && (
-                          <button
-                            onClick={() => { setSingleTextProp(p); setSingleTextResult(null) }}
-                            title={`Text ${p.owner_first_name || 'owner'} at ${p.phone_1}`}
-                            style={{
-                              padding: '3px 8px', borderRadius: 6, border: '1px solid #A5D6A7',
-                              background: '#E8F5E9', color: '#1B5E20', fontSize: 11, fontWeight: 600,
-                              cursor: 'pointer', whiteSpace: 'nowrap',
-                            }}
-                          >
-                            📱
-                          </button>
-                        )}
+                        {(() => {
+                          if (p.opted_out) return <span title="Opted out" style={{ fontSize: 10, color: '#9CA3AF', whiteSpace: 'nowrap' }}>🚫 Out</span>
+                          if (p.phone_1_dnc) return <span title="DNC flagged" style={{ fontSize: 10, color: '#DC2626', fontWeight: 600, whiteSpace: 'nowrap' }}>🚫 DNC</span>
+                          if (p.sms_status === 'hot') return <span title="HOT lead — replied" style={{ fontSize: 10, color: '#DC2626', fontWeight: 700, whiteSpace: 'nowrap' }}>🔥 HOT</span>
+                          if (p.sms_status === 'day3_sent') return <span title="Day 3 follow-up sent" style={{ fontSize: 10, color: '#0891B2', fontWeight: 600, whiteSpace: 'nowrap' }}>✅ D3</span>
+                          if (p.sms_status === 'day1_sent') return <span title="Day 1 intro sent" style={{ fontSize: 10, color: '#059669', fontWeight: 600, whiteSpace: 'nowrap' }}>✅ D1</span>
+                          if (p.sms_status === 'mail_queue') return <span title="In mail queue" style={{ fontSize: 10, color: '#D97706', whiteSpace: 'nowrap' }}>✉️ Mail</span>
+                          if (p.phone_1 && p.phone_1_type === 'mobile') return (
+                            <button
+                              onClick={() => { setSingleTextProp(p); setSingleTextResult(null) }}
+                              title={`Text ${p.owner_first_name || 'owner'} at ${p.phone_1}`}
+                              style={{
+                                padding: '3px 8px', borderRadius: 6, border: '1px solid #A5D6A7',
+                                background: '#E8F5E9', color: '#1B5E20', fontSize: 11, fontWeight: 600,
+                                cursor: 'pointer', whiteSpace: 'nowrap',
+                              }}
+                            >
+                              📱
+                            </button>
+                          )
+                          if (p.phone_1 && p.phone_1_type === 'landline') return <span title="Landline — mail queue" style={{ fontSize: 10, color: '#D97706', whiteSpace: 'nowrap' }}>✉️ Land</span>
+                          if ((p as any).skip_traced_at) return <span style={{ fontSize: 10, color: '#9CA3AF' }}>No #</span>
+                          return null
+                        })()}
                       </td>
                     </tr>
                   )
@@ -1333,6 +1254,142 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated }: 
                 disabled={deleting}
               >
                 {deleting ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lead Sherpa Import modal */}
+      {showLeadSherpaModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(26,10,46,0.55)' }}
+          onClick={() => { if (!leadSherpaImporting) setShowLeadSherpaModal(false) }}>
+          <div className="bg-white rounded-2xl p-6 shadow-xl" style={{ maxWidth: '480px', width: '100%' }}
+            onClick={e => e.stopPropagation()}>
+            <h2 className="section-heading mb-1">Import Lead Sherpa Skip Trace</h2>
+            <p className="text-xs mb-4" style={{ color: '#9B8AAE' }}>
+              Upload a CSV exported from Lead Sherpa. Records will be matched to campaign properties by APN and phone numbers, types, and DNC flags will be updated.
+            </p>
+
+            {!leadSherpaParsed && !leadSherpaResult && (
+              <button
+                className="btn-secondary w-full text-sm mb-4"
+                onClick={() => leadSherpaFileRef.current?.click()}
+                disabled={leadSherpaImporting}
+              >
+                Choose CSV File
+              </button>
+            )}
+
+            {leadSherpaParsed && !leadSherpaResult && (
+              <div style={{ background: '#F0FDF4', borderRadius: 8, padding: '12px 14px', marginBottom: 16 }}>
+                <p style={{ fontSize: 13, color: '#065F46', fontWeight: 600, margin: 0 }}>
+                  Found {leadSherpaParsed.rows.length.toLocaleString()} rows
+                </p>
+                <p style={{ fontSize: 12, color: '#6B7280', margin: '4px 0 0' }}>
+                  APN column detected: <strong>{leadSherpaParsed.apnCol}</strong>
+                </p>
+                <button
+                  className="text-xs mt-2 underline"
+                  style={{ color: '#4F46E5', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                  onClick={() => { setLeadSherpaParsed(null); leadSherpaFileRef.current?.click() }}
+                >
+                  Choose different file
+                </button>
+              </div>
+            )}
+
+            {leadSherpaResult && (
+              <div style={{ background: '#F0FDF4', borderRadius: 8, padding: '12px 14px', marginBottom: 16 }}>
+                <p style={{ fontSize: 13, color: '#065F46', fontWeight: 600, margin: 0 }}>✓ {leadSherpaResult}</p>
+              </div>
+            )}
+
+            {leadSherpaError && (
+              <p className="text-xs mb-3" style={{ color: '#B71C1C' }}>{leadSherpaError}</p>
+            )}
+
+            <div className="flex gap-3">
+              <button className="btn-secondary flex-1" onClick={() => setShowLeadSherpaModal(false)} disabled={leadSherpaImporting}>
+                {leadSherpaResult ? 'Close' : 'Cancel'}
+              </button>
+              {leadSherpaParsed && !leadSherpaResult && (
+                <button
+                  className="btn-primary flex-1"
+                  onClick={handleLeadSherpaImport}
+                  disabled={leadSherpaImporting}
+                >
+                  {leadSherpaImporting ? `Importing…` : `Import ${leadSherpaParsed.rows.length.toLocaleString()} Rows`}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SMS Confirmation modal */}
+      {showSmsConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(26,10,46,0.55)' }}
+          onClick={() => { if (smsStatus !== 'running') setShowSmsConfirm(false) }}>
+          <div className="bg-white rounded-2xl p-6 shadow-xl" style={{ maxWidth: '440px', width: '100%' }}
+            onClick={e => e.stopPropagation()}>
+            <h2 className="section-heading mb-3">
+              {smsConfirmDay === 1 ? 'Send Day 1 SMS' : 'Send Day 3 Follow-up'}
+              {smsConfirmSelectedIds && ` · ${smsConfirmSelectedIds.length} selected`}
+            </h2>
+
+            {smsPreviewLoading && (
+              <div className="text-sm text-center py-4" style={{ color: '#9B8AAE' }}>Loading preview…</div>
+            )}
+
+            {smsPreview && !smsPreviewLoading && (
+              <div style={{ background: '#F8F5FC', borderRadius: 8, padding: '14px', marginBottom: 16 }}>
+                <div className="flex justify-between text-sm mb-2">
+                  <span style={{ color: '#1A0A2E' }}>📱 Mobile ready to text</span>
+                  <span style={{ fontWeight: 700, color: '#059669' }}>{smsPreview.mobile_ready.toLocaleString()}</span>
+                </div>
+                {smsPreview.dnc > 0 && (
+                  <div className="flex justify-between text-sm mb-2">
+                    <span style={{ color: '#DC2626' }}>🚫 DNC flagged (will skip)</span>
+                    <span style={{ fontWeight: 700, color: '#DC2626' }}>{smsPreview.dnc.toLocaleString()}</span>
+                  </div>
+                )}
+                {smsPreview.opted_out > 0 && (
+                  <div className="flex justify-between text-sm mb-2">
+                    <span style={{ color: '#9CA3AF' }}>🚫 Opted out (will skip)</span>
+                    <span style={{ fontWeight: 700, color: '#9CA3AF' }}>{smsPreview.opted_out.toLocaleString()}</span>
+                  </div>
+                )}
+                {smsPreview.no_phone > 0 && (
+                  <div className="flex justify-between text-sm mb-2">
+                    <span style={{ color: '#9CA3AF' }}>📭 No mobile phone</span>
+                    <span style={{ fontWeight: 700, color: '#9CA3AF' }}>{smsPreview.no_phone.toLocaleString()}</span>
+                  </div>
+                )}
+                {smsPreview.already_sent > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span style={{ color: '#9CA3AF' }}>✅ Already sent (will skip)</span>
+                    <span style={{ fontWeight: 700, color: '#9CA3AF' }}>{smsPreview.already_sent.toLocaleString()}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!smsPreview && !smsPreviewLoading && (
+              <p className="text-sm mb-4" style={{ color: '#9B8AAE' }}>Ready to send Day {smsConfirmDay} messages to eligible mobile numbers.</p>
+            )}
+
+            <div className="flex gap-3">
+              <button className="btn-secondary flex-1" onClick={() => setShowSmsConfirm(false)}>Cancel</button>
+              <button
+                className="btn-primary flex-1"
+                disabled={smsPreviewLoading || (smsPreview?.mobile_ready === 0)}
+                onClick={() => {
+                  setShowSmsConfirm(false)
+                  handleStartSms(smsConfirmDay, smsConfirmSelectedIds)
+                }}
+              >
+                {smsPreview ? `Send to ${smsPreview.mobile_ready.toLocaleString()} Numbers` : `Start Day ${smsConfirmDay}`}
               </button>
             </div>
           </div>

@@ -2915,8 +2915,10 @@ ALTER TABLE crm_deals ADD COLUMN IF NOT EXISTS assignment_fee NUMERIC;
 SKIP_TRACE_MIGRATION_SQL = """
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS phone_1 TEXT;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS phone_1_type TEXT;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS phone_1_dnc BOOLEAN DEFAULT FALSE;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS phone_2 TEXT;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS phone_2_type TEXT;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS phone_2_dnc BOOLEAN DEFAULT FALSE;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS phone_3 TEXT;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS phone_3_type TEXT;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS email_1 TEXT;
@@ -3417,20 +3419,20 @@ async def start_sms_campaign(
     if property_ids:
         # Manual individual / selected send — fetch exactly those records, bypass sms_status filter
         eligible = sb.table("crm_properties").select(
-            "id,owner_first_name,property_address,property_city,state,phone_1,phone_1_type,offer_price,opted_out,sms_status"
+            "id,owner_first_name,property_address,property_city,state,phone_1,phone_1_type,phone_1_dnc,offer_price,opted_out,sms_status"
         ).in_("id", property_ids).execute()
-        props = [p for p in (eligible.data or []) if not p.get("opted_out") and p.get("phone_1") and p.get("phone_1_type") == "mobile"]
+        props = [p for p in (eligible.data or []) if not p.get("opted_out") and not p.get("phone_1_dnc") and p.get("phone_1") and p.get("phone_1_type") == "mobile"]
     elif day == 1:
         eligible = sb.table("crm_properties").select(
-            "id,owner_first_name,property_address,property_city,state,phone_1,phone_1_type,offer_price,opted_out,sms_status"
+            "id,owner_first_name,property_address,property_city,state,phone_1,phone_1_type,phone_1_dnc,offer_price,opted_out,sms_status"
         ).eq("campaign_id", campaign_id).eq("phone_1_type", "mobile").execute()
-        props = [p for p in (eligible.data or []) if not p.get("opted_out") and p.get("sms_status") in ("pending", None)]
+        props = [p for p in (eligible.data or []) if not p.get("opted_out") and not p.get("phone_1_dnc") and p.get("sms_status") in ("pending", None)]
     else:
         cutoff = (_dt.datetime.utcnow() - _dt.timedelta(days=2)).isoformat()
         eligible = sb.table("crm_properties").select(
-            "id,owner_first_name,property_address,property_city,state,phone_1,phone_1_type,offer_price,opted_out,sms_status,sms_day1_sent_at"
+            "id,owner_first_name,property_address,property_city,state,phone_1,phone_1_type,phone_1_dnc,offer_price,opted_out,sms_status,sms_day1_sent_at"
         ).eq("campaign_id", campaign_id).eq("phone_1_type", "mobile").eq("sms_status", "day1_sent").lt("sms_day1_sent_at", cutoff).execute()
-        props = [p for p in (eligible.data or []) if not p.get("opted_out")]
+        props = [p for p in (eligible.data or []) if not p.get("opted_out") and not p.get("phone_1_dnc")]
     total = len(props)
     job_id = str(uuid.uuid4())
     _sms_campaign_jobs[job_id] = {"status": "running", "done": 0, "total": total, "sent": 0, "skipped": 0, "errors": [], "day": day}
@@ -3581,7 +3583,7 @@ async def get_campaign_funnel_stats(campaign_id: str) -> dict:
     sb = get_supabase()
     try:
         r = sb.table("crm_properties").select(
-            "id,phone_1_type,opted_out,sms_status,skip_traced_at"
+            "id,phone_1_type,phone_1_dnc,opted_out,sms_status,skip_traced_at"
         ).eq("campaign_id", campaign_id).execute()
         rows = r.data or []
     except Exception:
@@ -3595,12 +3597,13 @@ async def get_campaign_funnel_stats(campaign_id: str) -> dict:
     texts_sent = sum(1 for p in rows if p.get("sms_status") in ("day1_sent", "day3_sent", "hot"))
     hot = sum(1 for p in rows if p.get("sms_status") == "hot")
     opted_out = sum(1 for p in rows if p.get("opted_out"))
+    dnc = sum(1 for p in rows if p.get("phone_1_dnc"))
     mail_queue = sum(1 for p in rows if p.get("sms_status") == "mail_queue" or (p.get("phone_1_type") in ("landline", "voip", None) and not p.get("opted_out") and p.get("skip_traced_at")))
     return {
         "total": total, "skip_traced": skip_traced, "mobile": mobile,
         "landline": landline, "no_number": no_number,
         "texts_sent": texts_sent, "hot": hot, "opted_out": opted_out,
-        "mail_queue": mail_queue,
+        "mail_queue": mail_queue, "dnc": dnc,
     }
 
 
@@ -3622,3 +3625,174 @@ async def export_mail_queue(campaign_id: str) -> dict:
         )
     ]
     return {"records": mail_rows, "total": len(mail_rows)}
+
+
+# ── SMS Preview ────────────────────────────────────────────────────────
+
+@router.get("/campaigns/{campaign_id}/sms-preview")
+async def get_sms_preview(campaign_id: str, day: int = Query(1)) -> dict:
+    """Return per-category counts for SMS confirmation modal."""
+    import datetime as _dt
+    sb = get_supabase()
+    r = sb.table("crm_properties").select(
+        "id,phone_1,phone_1_type,phone_1_dnc,opted_out,sms_status,sms_day1_sent_at"
+    ).eq("campaign_id", campaign_id).execute()
+    rows = r.data or []
+
+    mobile_ready = 0
+    dnc = 0
+    opted_out_count = 0
+    no_phone = 0
+    already_sent = 0
+
+    for p in rows:
+        if p.get("opted_out"):
+            opted_out_count += 1
+            continue
+        if not p.get("phone_1") or p.get("phone_1_type") != "mobile":
+            no_phone += 1
+            continue
+        if p.get("phone_1_dnc"):
+            dnc += 1
+            continue
+        sms_status = p.get("sms_status")
+        if day == 1:
+            if sms_status not in ("pending", None):
+                already_sent += 1
+                continue
+        else:
+            if sms_status != "day1_sent":
+                already_sent += 1
+                continue
+            sent_at = p.get("sms_day1_sent_at")
+            if sent_at:
+                cutoff = (_dt.datetime.utcnow() - _dt.timedelta(days=2)).isoformat()
+                if sent_at >= cutoff:
+                    already_sent += 1
+                    continue
+        mobile_ready += 1
+
+    return {
+        "mobile_ready": mobile_ready,
+        "dnc": dnc,
+        "opted_out": opted_out_count,
+        "no_phone": no_phone,
+        "already_sent": already_sent,
+        "total": len(rows),
+    }
+
+
+# ── Lead Sherpa Skip Trace Import ──────────────────────────────────────
+
+def _normalize_apn(apn: str) -> str:
+    return re.sub(r'[^a-z0-9]', '', apn.strip().lower())
+
+
+@router.post("/campaigns/{campaign_id}/import-lead-sherpa")
+async def import_lead_sherpa(campaign_id: str, body: dict = Body(...)) -> dict:
+    """Match Lead Sherpa CSV rows to campaign properties by APN, update phone fields."""
+    rows = body.get("rows", [])
+    if not rows:
+        raise HTTPException(status_code=400, detail="No rows provided")
+
+    sb = get_supabase()
+    prop_r = sb.table("crm_properties").select("id,apn").eq("campaign_id", campaign_id).execute()
+    apn_to_id: dict[str, str] = {}
+    for p in (prop_r.data or []):
+        raw_apn = (p.get("apn") or "").strip()
+        if raw_apn:
+            apn_to_id[_normalize_apn(raw_apn)] = p["id"]
+
+    updated = 0
+    dnc_flagged = 0
+    deceased_skipped = 0
+    not_matched = 0
+
+    def _nh(h: str) -> str:
+        return h.strip().lower().replace(" ", "_").replace("-", "_").replace("/", "_")
+
+    def _parse_bool(v) -> bool:
+        if v is None:
+            return False
+        return str(v).strip().lower() in ("true", "1", "yes", "y", "dnc", "x", "flagged")
+
+    def _norm_phone_type(t: str) -> str:
+        t = t.strip().lower()
+        if "mobile" in t or "cell" in t:
+            return "mobile"
+        if "land" in t or "home" in t or "work" in t or "fixed" in t:
+            return "landline"
+        if "voip" in t:
+            return "voip"
+        return "mobile" if t else "mobile"
+
+    for row in rows:
+        normed = {_nh(k): v for k, v in row.items()}
+
+        if _parse_bool(normed.get("deceased") or normed.get("is_deceased")):
+            deceased_skipped += 1
+            continue
+
+        apn_raw = (
+            normed.get("parcel_number") or normed.get("apn") or
+            normed.get("parcel_id") or normed.get("property_parcel_number") or
+            normed.get("assessors_parcel_number") or normed.get("assessor_parcel_number") or
+            normed.get("assessors_parcel_#") or normed.get("parcel_#") or ""
+        )
+        apn_norm = _normalize_apn(str(apn_raw))
+        prop_id = apn_to_id.get(apn_norm)
+
+        if not prop_id:
+            not_matched += 1
+            continue
+
+        update: dict = {}
+        record_has_dnc = False
+
+        phone1 = (normed.get("phone_1") or normed.get("phone1") or normed.get("primary_phone") or
+                  normed.get("phone_1_number") or normed.get("phone") or "").strip()
+        phone1_type_raw = (normed.get("phone_1_type") or normed.get("phone1_type") or
+                           normed.get("primary_phone_type") or "")
+        phone1_dnc = _parse_bool(normed.get("phone_1_dnc") or normed.get("phone1_dnc") or
+                                  normed.get("dnc_1") or normed.get("dnc"))
+
+        phone2 = (normed.get("phone_2") or normed.get("phone2") or
+                  normed.get("phone_2_number") or "").strip()
+        phone2_type_raw = (normed.get("phone_2_type") or normed.get("phone2_type") or "")
+        phone2_dnc = _parse_bool(normed.get("phone_2_dnc") or normed.get("phone2_dnc") or
+                                  normed.get("dnc_2"))
+
+        email = (normed.get("email") or normed.get("email_1") or normed.get("email_address") or "").strip()
+
+        if phone1:
+            update["phone_1"] = phone1
+            update["phone_1_type"] = _norm_phone_type(phone1_type_raw)
+            update["phone_1_dnc"] = phone1_dnc
+            if phone1_dnc:
+                record_has_dnc = True
+
+        if phone2:
+            update["phone_2"] = phone2
+            update["phone_2_type"] = _norm_phone_type(phone2_type_raw)
+            update["phone_2_dnc"] = phone2_dnc
+
+        if email:
+            update["email_1"] = email
+
+        if update:
+            update["skip_traced_at"] = _now()
+            update["updated_at"] = _now()
+            try:
+                sb.table("crm_properties").update(update).eq("id", prop_id).execute()
+                updated += 1
+                if record_has_dnc:
+                    dnc_flagged += 1
+            except Exception:
+                not_matched += 1
+
+    return {
+        "updated": updated,
+        "dnc_flagged": dnc_flagged,
+        "deceased_skipped": deceased_skipped,
+        "not_matched": not_matched,
+    }

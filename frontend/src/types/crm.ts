@@ -121,6 +121,18 @@ export interface CRMProperty {
   tags?: string[]
   additional_phones?: string[]
   notes?: string
+
+  phone_1?: string
+  phone_1_type?: string
+  phone_1_dnc?: boolean
+  phone_2_type?: string
+  phone_2_dnc?: boolean
+  email_1?: string
+  opted_out?: boolean
+  sms_status?: string
+  skip_traced_at?: string
+  sms_day1_sent_at?: string
+  sms_day3_sent_at?: string
 }
 
 export interface CRMContact {
@@ -203,6 +215,10 @@ export interface CRMCampaign {
   start_date?: string
   amount_spent?: number
   offer_pct?: number
+  sms_start_time?: string
+  sms_end_time?: string
+  sms_timezone?: string
+  sms_daily_limit?: number
 }
 
 export type MailDropStatus = 'scheduled' | 'approved' | 'sent' | 'error'

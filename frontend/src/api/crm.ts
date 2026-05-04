@@ -697,11 +697,34 @@ export async function getSmsStatus(campaignId: string, jobId: string): Promise<{
   return data
 }
 
+// ── SMS Preview ───────────────────────────────────────────────────────
+
+export interface SmsCampaignPreview {
+  mobile_ready: number; dnc: number; opted_out: number; no_phone: number
+  already_sent: number; total: number
+}
+
+export async function getSmsPreview(campaignId: string, day = 1): Promise<SmsCampaignPreview> {
+  const { data } = await api.get(`/crm/campaigns/${campaignId}/sms-preview`, { params: { day } })
+  return data
+}
+
+// ── Lead Sherpa Import ────────────────────────────────────────────────
+
+export interface LeadSherpaImportResult {
+  updated: number; dnc_flagged: number; deceased_skipped: number; not_matched: number
+}
+
+export async function importLeadSherpa(campaignId: string, rows: Record<string, string>[]): Promise<LeadSherpaImportResult> {
+  const { data } = await api.post(`/crm/campaigns/${campaignId}/import-lead-sherpa`, { rows })
+  return data
+}
+
 // ── Funnel Stats ──────────────────────────────────────────────────────
 
 export interface CampaignFunnelStats {
   total: number; skip_traced: number; mobile: number; landline: number; no_number: number
-  texts_sent: number; hot: number; opted_out: number; mail_queue: number
+  texts_sent: number; hot: number; opted_out: number; mail_queue: number; dnc: number
 }
 
 export async function getCampaignFunnelStats(campaignId: string): Promise<CampaignFunnelStats> {
