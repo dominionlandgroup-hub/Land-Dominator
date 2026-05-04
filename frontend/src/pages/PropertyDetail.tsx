@@ -267,6 +267,62 @@ function AccordionSection({
   )
 }
 
+// ── Field context — lets the Field component live OUTSIDE PropertyDetail ──────
+// Defining Field inside PropertyDetail causes React to see a new component type
+// on every re-render, which unmounts/remounts every input and loses focus.
+type FieldCtxType = {
+  form: Partial<CRMProperty>
+  setField: (field: keyof CRMProperty, value: unknown) => void
+}
+const FieldCtx = React.createContext<FieldCtxType>({ form: {}, setField: () => {} })
+
+// Field must be defined OUTSIDE the parent so its reference is stable across renders.
+// It uses local state so typing never triggers a parent re-render.
+function Field({
+  label, field, type = 'text', placeholder = '', span = 1,
+}: {
+  label: string
+  field: string
+  type?: 'text' | 'number' | 'date' | 'textarea'
+  placeholder?: string
+  span?: number
+}) {
+  const { form, setField } = React.useContext(FieldCtx)
+  const raw = (form as Record<string, unknown>)[field]
+  const [local, setLocal] = React.useState(raw != null ? String(raw) : '')
+
+  React.useEffect(() => { setLocal(raw != null ? String(raw) : '') }, [raw])
+
+  function commit() {
+    if (type === 'number') {
+      const n = parseFloat(local)
+      setField(field as keyof CRMProperty, local === '' ? undefined : (isNaN(n) ? undefined : n))
+    } else {
+      setField(field as keyof CRMProperty, local)
+    }
+  }
+
+  const taStyle: React.CSSProperties = {
+    resize: 'vertical', padding: '8px 12px', width: '100%',
+    background: '#F7F3FC', border: '1.5px solid #E8E0F0', borderRadius: '8px',
+    fontSize: '13px', fontFamily: "'Montserrat', sans-serif", color: '#1A0A2E', outline: 'none',
+  }
+
+  return (
+    <div className={`flex flex-col gap-1${span > 1 ? ` col-span-${span}` : ''}`}>
+      <label className="label-caps">{label}</label>
+      {type === 'textarea' ? (
+        <textarea value={local} onChange={e => setLocal(e.target.value)} onBlur={commit}
+          placeholder={placeholder} rows={3} style={taStyle} />
+      ) : (
+        <input type={type} className="input-base" value={local}
+          onChange={e => setLocal(e.target.value)} onBlur={commit}
+          placeholder={placeholder} step={type === 'number' ? 'any' : undefined} />
+      )}
+    </div>
+  )
+}
+
 interface Props {
   property: CRMProperty | null
   onBack: () => void
@@ -438,6 +494,13 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
     set(field, isNaN(v as number) ? undefined : v)
   }
 
+  // Local state for fields not managed by Field component
+  const [notesLocal, setNotesLocal] = useState(property?.notes || '')
+  const [confLocal, setConfLocal] = useState((property?.confidence_level as string | undefined) || '')
+
+  useEffect(() => { setNotesLocal(form.notes || '') }, [form.notes])
+  useEffect(() => { setConfLocal((form.confidence_level as string | undefined) || '') }, [form.confidence_level])
+
   async function handleSave() {
     setSaving(true)
     setSavedOk(false)
@@ -517,14 +580,15 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
   }
 
   async function handleSaveNotes() {
-    if (isNew || noteSaving || !form.notes?.trim()) return
+    if (isNew || noteSaving || !notesLocal.trim()) return
+    set('notes', notesLocal)
     setNoteSaving(true)
     try {
-      await onSave({ notes: form.notes })
+      await onSave({ notes: notesLocal })
       // Add to timestamped history
       if (property?.id) {
         try {
-          const note = await addPropertyNote(property.id, form.notes.trim())
+          const note = await addPropertyNote(property.id, notesLocal.trim())
           setNoteHistory(prev => [note, ...prev])
         } catch {
           // history append is best-effort
@@ -538,57 +602,6 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
       setNoteSaving(false)
     }
   }
-
-  const Field = ({
-    label, field, type = 'text', placeholder = '', span = 1,
-  }: {
-    label: string
-    field: keyof CRMProperty
-    type?: 'text' | 'number' | 'date' | 'textarea'
-    placeholder?: string
-    span?: number
-  }) => (
-    <div className={`flex flex-col gap-1${span > 1 ? ` col-span-${span}` : ''}`}>
-      <label className="label-caps">{label}</label>
-      {type === 'textarea' ? (
-        <textarea
-          value={(form[field] as string | undefined) || ''}
-          onChange={e => set(field, e.target.value)}
-          placeholder={placeholder}
-          rows={3}
-          style={{
-            resize: 'vertical',
-            padding: '8px 12px',
-            width: '100%',
-            background: '#F7F3FC',
-            border: '1.5px solid #E8E0F0',
-            borderRadius: '8px',
-            fontSize: '13px',
-            fontFamily: "'Montserrat', sans-serif",
-            color: '#1A0A2E',
-            outline: 'none',
-          }}
-        />
-      ) : type === 'number' ? (
-        <input
-          type="number"
-          className="input-base"
-          value={form[field] != null ? String(form[field]) : ''}
-          onChange={e => setFloat(field, e.target.value)}
-          placeholder={placeholder}
-          step="any"
-        />
-      ) : (
-        <input
-          type={type}
-          className="input-base"
-          value={(form[field] as string | undefined) || ''}
-          onChange={e => set(field, e.target.value)}
-          placeholder={placeholder}
-        />
-      )}
-    </div>
-  )
 
   const accordionProps = { openSections, toggleSection }
 
@@ -686,6 +699,7 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
           </div>
         )}
 
+        <FieldCtx.Provider value={{ form, setField: set }}>
         <div className="space-y-2">
 
           {/* Basic Information */}
@@ -1037,8 +1051,9 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
                   <input
                     type="text"
                     className="input-base"
-                    value={(form.confidence_level as string | undefined) || ''}
-                    onChange={e => set('confidence_level', e.target.value)}
+                    value={confLocal}
+                    onChange={e => setConfLocal(e.target.value)}
+                    onBlur={() => set('confidence_level', confLocal)}
                     placeholder="High / Medium / Low"
                     style={{ maxWidth: 200 }}
                   />
@@ -1077,8 +1092,9 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
             <div className="flex flex-col gap-1">
               <label className="label-caps">Notes</label>
               <textarea
-                value={form.notes || ''}
-                onChange={e => set('notes', e.target.value)}
+                value={notesLocal}
+                onChange={e => setNotesLocal(e.target.value)}
+                onBlur={() => set('notes', notesLocal)}
                 rows={4}
                 style={{
                   padding: '8px 12px',
@@ -1291,6 +1307,7 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
           )}
 
         </div>
+        </FieldCtx.Provider>
       </div>
 
       {/* SMS Modal */}
