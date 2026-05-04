@@ -1780,7 +1780,7 @@ async def _ai_sms_reply(
     api_key = _telnyx_key()
     # Reply FROM the same number that received the inbound message.
     # Falls back to the primary TELNYX_PHONE_NUMBER if unknown.
-    telnyx_from = received_on or _telnyx_phone()
+    telnyx_from = prop.get("sms_from_number") or received_on or _telnyx_phone()
     anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
 
     print(f"[sms-bot] Replying from {telnyx_from} to {from_phone}", flush=True)

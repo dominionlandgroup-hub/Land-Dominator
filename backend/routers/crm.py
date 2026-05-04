@@ -2932,6 +2932,7 @@ ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS opted_out BOOLEAN DEFAULT FA
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS sms_status TEXT DEFAULT 'pending';
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS sms_day1_sent_at TIMESTAMPTZ;
 ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS sms_day3_sent_at TIMESTAMPTZ;
+ALTER TABLE crm_properties ADD COLUMN IF NOT EXISTS sms_from_number TEXT;
 CREATE TABLE IF NOT EXISTS crm_sms_opt_out (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   phone_number TEXT NOT NULL UNIQUE,
@@ -3554,7 +3555,7 @@ def _run_sms_campaign_job(job_id: str, campaign_id: str, props: list[dict], day:
             print(f"[sms-campaign] {to_number} → HTTP {r.status_code}", flush=True)
             if r.status_code < 300:
                 now_ts = _now()
-                update: dict = {"updated_at": now_ts}
+                update: dict = {"updated_at": now_ts, "sms_from_number": from_e164}
                 if day == 1:
                     update["sms_status"] = "day1_sent"
                     update["sms_day1_sent_at"] = now_ts
