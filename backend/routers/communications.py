@@ -1172,38 +1172,80 @@ async def call_gather(step: str, request: Request, background_tasks: BackgroundT
 @router.post("/api/calls/recording-status")
 async def recording_status(request: Request) -> dict:
     """Receive Telnyx recording-ready webhook and store recording URL."""
-    recording_url = ""
-    call_sid = ""
-    try:
-        form = await request.form()
-        call_sid = _form_get(form, "CallSid", "call_control_id")
-        recording_url = _form_get(form, "RecordingUrl", "recording_url")
-    except Exception:
-        pass
+    print("=== RECORDING WEBHOOK RECEIVED ===", flush=True)
 
-    if not call_sid or not recording_url:
+    # Try JSON body first (Telnyx sends JSON webhooks)
+    body: dict = {}
+    try:
+        body = await request.json()
+        print(f"[recording] Full payload: {json.dumps(body, indent=2)}", flush=True)
+        print(f"[recording] Top-level keys: {list(body.keys())}", flush=True)
+    except Exception:
+        # Fall back to form data (TeXML callbacks)
         try:
-            body = await request.json()
-            data = body.get("data", {}).get("payload", body)
-            call_sid = call_sid or data.get("call_leg_id", data.get("call_control_id", data.get("CallSid", "")))
-            # Telnyx sends recording_urls.mp3 for TeXML/webhook recordings
-            rec_urls = data.get("recording_urls", {})
-            recording_url = recording_url or rec_urls.get("mp3") or rec_urls.get("wav") or data.get("recording_url", data.get("RecordingUrl", ""))
-        except Exception:
-            pass
+            form = await request.form()
+            body = dict(form)
+            print(f"[recording] Form keys: {list(body.keys())}", flush=True)
+        except Exception as exc:
+            print(f"[recording] Could not parse request: {exc}", flush=True)
+
+    # Extract nested payload — Telnyx wraps in data.payload
+    nested = body.get("data", {}).get("payload", {})
+
+    recording_url = (
+        nested.get("recording_url")
+        or nested.get("public_recording_url")
+        or (nested.get("recording_urls") or {}).get("mp3")
+        or (nested.get("recording_urls") or {}).get("wav")
+        or body.get("recording_url")
+        or body.get("public_recording_url")
+        or body.get("RecordingUrl")
+        or (body.get("recording_urls") or {}).get("mp3")
+        or (body.get("recording_urls") or {}).get("wav")
+        or body.get("payload", {}).get("recording_url")
+        or body.get("payload", {}).get("public_recording_url")
+        or ""
+    )
+
+    call_sid = (
+        nested.get("call_leg_id")
+        or nested.get("call_control_id")
+        or nested.get("call_session_id")
+        or nested.get("CallSid")
+        or body.get("call_leg_id")
+        or body.get("call_control_id")
+        or body.get("call_session_id")
+        or body.get("CallSid")
+        or body.get("payload", {}).get("call_leg_id")
+        or body.get("payload", {}).get("call_control_id")
+        or ""
+    )
+
+    print(f"[recording] Extracted call_sid={call_sid!r}", flush=True)
+    print(f"[recording] Extracted recording_url={recording_url!r}", flush=True)
 
     if call_sid and recording_url:
         try:
             sb = get_supabase()
-            sb.table("crm_communications").update(
+            # Match by call_id (stored as call_control_id or call_leg_id)
+            r = sb.table("crm_communications").update(
                 {"recording_url": recording_url}
             ).eq("call_id", call_sid).execute()
-            # Also try matching by call_leg_id stored as call_id
-            print(f"[comms] Recording saved for call_id={call_sid}: {recording_url}", flush=True)
+            affected = len(r.data) if r.data else 0
+            print(f"[recording] Saved — call_id={call_sid} rows_updated={affected} url={recording_url}", flush=True)
+            if affected == 0:
+                # Try matching by call_session_id stored as call_id
+                call_session = nested.get("call_session_id") or body.get("call_session_id", "")
+                if call_session and call_session != call_sid:
+                    r2 = sb.table("crm_communications").update(
+                        {"recording_url": recording_url}
+                    ).eq("call_id", call_session).execute()
+                    print(f"[recording] Retry by call_session_id={call_session} rows_updated={len(r2.data or [])}", flush=True)
         except Exception as exc:
-            print(f"[comms] recording_status DB error: {exc}", flush=True)
+            print(f"[recording] DB error: {exc}", flush=True)
     else:
-        print(f"[comms] recording_status: missing call_sid={call_sid!r} or recording_url={recording_url!r}", flush=True)
+        print(f"[recording] Missing call_sid or recording_url — cannot save", flush=True)
+
     return {"status": "ok"}
 
 
