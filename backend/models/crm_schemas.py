@@ -14,9 +14,20 @@ class PropertyBase(BaseModel):
     owner_first_name: Optional[str] = None
     owner_last_name: Optional[str] = None
     owner_phone: Optional[str] = None
+
+    # Skip-traced phones (Lead Sherpa / skip trace)
+    phone_1: Optional[str] = None
+    phone_1_type: Optional[str] = None
+    phone_1_dnc: Optional[bool] = None
     phone_2: Optional[str] = None
+    phone_2_type: Optional[str] = None
+    phone_2_dnc: Optional[bool] = None
     phone_3: Optional[str] = None
+    skip_traced_at: Optional[str] = None
+
+    email_1: Optional[str] = None
     owner_email: Optional[str] = None
+    seller_asking_price: Optional[float] = None
     owner_mailing_address: Optional[str] = None
     owner_mailing_city: Optional[str] = None
     owner_mailing_state: Optional[str] = None

@@ -114,6 +114,72 @@ function PhoneField({
   )
 }
 
+// ── Skip-traced phone row: number + type dropdown + DNC checkbox ──────────────
+function SkipTracedPhoneRow({
+  label, phone, phoneType, dnc,
+  onPhone, onType, onDnc,
+}: {
+  label: string
+  phone: string | null | undefined
+  phoneType: string | null | undefined
+  dnc: boolean | null | undefined
+  onPhone: (v: string) => void
+  onType: (v: string) => void
+  onDnc: (v: boolean) => void
+}) {
+  const [local, setLocal] = React.useState(phone ?? '')
+  const [invalid, setInvalid] = React.useState(false)
+
+  React.useEffect(() => { setLocal(phone ?? '') }, [phone])
+
+  function handleBlur() {
+    const digits = local.replace(/\D/g, '')
+    if (!digits) { onPhone(''); setInvalid(false); return }
+    if (digits.length === 10) { onPhone(`+1${digits}`); setInvalid(false) }
+    else if (digits.length === 11 && digits.startsWith('1')) { onPhone(`+${digits}`); setInvalid(false) }
+    else { setInvalid(true) }
+  }
+
+  return (
+    <div className="flex flex-col gap-1" style={{ gridColumn: 'span 2' }}>
+      <label className="label-caps">{label}</label>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+        <div style={{ flex: 1 }}>
+          <input
+            type="tel"
+            className="input-base"
+            value={local}
+            onChange={e => { setLocal(e.target.value); setInvalid(false) }}
+            onBlur={handleBlur}
+            placeholder="(xxx) xxx-xxxx"
+            style={invalid ? { borderColor: '#DC2626' } : undefined}
+          />
+          {invalid && <span style={{ fontSize: 11, color: '#DC2626' }}>Invalid phone number</span>}
+        </div>
+        <select
+          className="input-base"
+          style={{ width: 110, flexShrink: 0 }}
+          value={phoneType || 'mobile'}
+          onChange={e => onType(e.target.value)}
+        >
+          <option value="mobile">Mobile</option>
+          <option value="landline">Landline</option>
+          <option value="voip">VoIP</option>
+        </select>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#6B7280', whiteSpace: 'nowrap', paddingTop: 8, flexShrink: 0, cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={!!dnc}
+            onChange={e => onDnc(e.target.checked)}
+            style={{ accentColor: '#DC2626' }}
+          />
+          DNC
+        </label>
+      </div>
+    </div>
+  )
+}
+
 function fmtLandLocked(v: string | null | undefined): string {
   if (!v) return '—'
   const up = v.trim().toLowerCase()
@@ -649,10 +715,24 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
               <Field label="Full Name" field="owner_full_name" />
               <Field label="First Name" field="owner_first_name" />
               <Field label="Last Name" field="owner_last_name" />
-              <PhoneField label="Primary Phone" value={form.owner_phone} onChange={v => set('owner_phone', v)} />
-              <PhoneField label="Phone 2 (Skip Traced)" value={form.phone_2} onChange={v => set('phone_2', v)} />
-              <PhoneField label="Phone 3" value={form.phone_3} onChange={v => set('phone_3', v)} />
+              <PhoneField label="Owner Phone (raw)" value={form.owner_phone} onChange={v => set('owner_phone', v)} />
               <Field label="Email" field="owner_email" placeholder="owner@email.com" />
+              <Field label="Email (Skip Traced)" field="email_1" placeholder="skip@traced.com" />
+              <SkipTracedPhoneRow
+                label="Phone 1 (Skip Traced — used for SMS)"
+                phone={form.phone_1} phoneType={form.phone_1_type} dnc={form.phone_1_dnc}
+                onPhone={v => set('phone_1', v)}
+                onType={v => set('phone_1_type', v)}
+                onDnc={v => set('phone_1_dnc', v)}
+              />
+              <SkipTracedPhoneRow
+                label="Phone 2 (Skip Traced)"
+                phone={form.phone_2} phoneType={form.phone_2_type} dnc={form.phone_2_dnc}
+                onPhone={v => set('phone_2', v)}
+                onType={v => set('phone_2_type', v)}
+                onDnc={v => set('phone_2_dnc', v)}
+              />
+              <PhoneField label="Phone 3" value={form.phone_3} onChange={v => set('phone_3', v)} />
               <div />
               <div />
               <Field label="Mailing Address (Line 1)" field="owner_mailing_address" placeholder="123 Main St" />
