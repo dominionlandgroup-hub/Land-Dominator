@@ -3236,15 +3236,23 @@ def _run_lp_skip_trace_job(job_id: str, token: str, properties: list[dict]) -> N
         fips = prop.get("fips", "")
         prop_db_id = prop["id"]
         try:
+            print(f"[lp-skip-trace] → request propertyid={repr(lp_pid)} fips={repr(fips)}", flush=True)
             r = _httpx.post(
                 _LP_SKIP_TRACE_URL,
                 json={"propertyid": lp_pid, "fips": fips},
                 headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
                 timeout=20.0,
             )
+            print(f"[lp-skip-trace] ← status={r.status_code} body={r.text[:800]}", flush=True)
             data = r.json() if r.status_code < 300 else {}
+            if r.status_code >= 300:
+                print(f"[lp-skip-trace] ERROR response: {r.text[:300]}", flush=True)
+            else:
+                top_keys = list(data.keys()) if isinstance(data, dict) else f"list[{len(data)}]"
+                print(f"[lp-skip-trace] response keys: {top_keys}", flush=True)
             phones = _parse_lp_skip_trace_phones(data)
             emails = _parse_lp_skip_trace_emails(data)
+            print(f"[lp-skip-trace] parsed phones={phones} emails={emails}", flush=True)
             update: dict = {"skip_traced_at": _now()}
             if phones:
                 update["phone_1"] = phones[0]["number"]
