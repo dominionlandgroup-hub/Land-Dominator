@@ -394,16 +394,14 @@ def _texml_hangup(inner_xml: str) -> Response:
 # ── Business hours ──────────────────────────────────────────────────────────────
 
 def _is_business_hours() -> bool:
-    """True if current time is within business hours (8am–8pm Eastern Mon–Sun).
-    Covers FL/TN/NC/SC/GA (9am–7pm ET) and TX (8am–6pm CT) with margin."""
+    """True if current time is within business hours (8am–9pm Eastern)."""
     try:
-        from datetime import timezone as _tz
         import zoneinfo
         eastern = zoneinfo.ZoneInfo("America/New_York")
         now_et = datetime.now(eastern)
-        return 8 <= now_et.hour < 20
+        return 8 <= now_et.hour < 21
     except Exception:
-        return True  # default open on zoneinfo error
+        return True  # default open on any error
 
 
 # ── Acquisitions manager helper ──────────────────────────────────────────────────
