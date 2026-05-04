@@ -801,6 +801,76 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
             </div>
           </AccordionSection>
 
+          {/* Communications History — always visible, full thread */}
+          {!isNew && (
+            <div style={{ border: '1px solid #E8E0F0', borderRadius: '8px', background: '#FFFFFF', overflow: 'hidden' }}>
+              <div style={{ padding: '12px 16px', background: '#EDE8F5', borderBottom: '1px solid #E8E0F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '14px', fontWeight: 600, color: '#1A0A2E', fontFamily: "'Montserrat', sans-serif" }}>
+                  Communications History
+                </span>
+                <span style={{ fontSize: '11px', color: '#9B8AAE' }}>{comms.length} messages</span>
+              </div>
+              <div style={{ padding: '16px', maxHeight: 480, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {commsLoading ? (
+                  <p style={{ fontSize: 12, color: '#9B8AAE' }}>Loading…</p>
+                ) : comms.length === 0 ? (
+                  <p style={{ fontSize: 12, color: '#9B8AAE' }}>
+                    No communications yet. Use "Send Text" to SMS, or history appears when seller calls or texts your Telnyx number.
+                  </p>
+                ) : (
+                  [...comms]
+                    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+                    .map(c => {
+                      const isOut = c.direction === 'outbound' || c.type === 'sms_outbound'
+                      const isCall = c.type?.startsWith('call')
+                      const ts = new Date(c.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+                      if (isCall) {
+                        return (
+                          <div key={c.id} style={{ borderRadius: 10, background: '#F7F3FC', border: '1px solid #E8E0F0', padding: '10px 14px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#5C2977" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.63 3.38 2 2 0 0 1 3.6 1.21h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.9a16 16 0 0 0 6 6l1.06-1.06a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
+                              </svg>
+                              <span style={{ fontSize: 11, fontWeight: 600, color: '#5C2977' }}>
+                                {isOut ? 'Outbound Call' : 'Inbound Call'}
+                              </span>
+                              {c.duration_seconds != null && (
+                                <span style={{ fontSize: 11, color: '#9B8AAE' }}>{fmtTalk(c.duration_seconds)}</span>
+                              )}
+                              <ScoreBadge score={c.lead_score} />
+                              <span style={{ fontSize: 10, color: '#9B8AAE', marginLeft: 'auto' }}>{ts}</span>
+                            </div>
+                            {c.summary && <p style={{ fontSize: 11, color: '#374151', lineHeight: 1.5, marginBottom: c.recording_url ? 6 : 0 }}>{c.summary}</p>}
+                            {c.recording_url && (
+                              <audio controls src={c.recording_url} style={{ width: '100%', height: 32, marginTop: 4 }} />
+                            )}
+                          </div>
+                        )
+                      }
+                      return (
+                        <div key={c.id} style={{ display: 'flex', justifyContent: isOut ? 'flex-end' : 'flex-start' }}>
+                          <div style={{
+                            maxWidth: '78%',
+                            padding: '8px 12px',
+                            borderRadius: isOut ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
+                            background: isOut ? '#EEF2FF' : '#F3F4F6',
+                            border: isOut ? '1px solid #C7D2FE' : '1px solid #E5E7EB',
+                          }}>
+                            <div style={{ fontSize: 10, color: '#9CA3AF', marginBottom: 3 }}>
+                              {isOut ? '→ SENT' : '← RECEIVED'} · {ts}
+                            </div>
+                            <div style={{ fontSize: 13, color: '#1A0A2E', lineHeight: 1.5 }}>
+                              {c.message_body ?? <em style={{ color: '#9CA3AF' }}>(no message body)</em>}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Campaign & Sale */}
           <AccordionSection title="Campaign & Sale" sectionKey="campaign" {...accordionProps}>
             <div className="grid grid-cols-2 gap-4">
@@ -940,6 +1010,84 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
             </div>
           </AccordionSection>
 
+          {/* Tags & Notes */}
+          <AccordionSection title="Tags & Notes" sectionKey="tags" {...accordionProps}>
+            <div className="mb-4">
+              <label className="label-caps">Tags</label>
+              <div className="flex gap-2 mt-1">
+                <input
+                  type="text"
+                  className="input-base"
+                  value={tagInput}
+                  onChange={e => setTagInput(e.target.value)}
+                  placeholder="Add a tag"
+                  onKeyDown={e => { if (e.key === 'Enter') addTag() }}
+                />
+                <button className="btn-secondary" style={{ padding: '0 16px', flexShrink: 0 }} onClick={addTag}>Add</button>
+              </div>
+              {(form.tags || []).length > 0 && (
+                <div className="flex gap-2 mt-2 flex-wrap">
+                  {(form.tags || []).map(t => (
+                    <span key={t} className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs"
+                      style={{ background: '#F7F3FC', color: '#5C2977', border: '1px solid #E8E0F0' }}>
+                      {t}
+                      <button onClick={() => removeTag(t)} style={{ color: '#9B8AAE', lineHeight: 1 }}>×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="label-caps">Notes</label>
+              <textarea
+                value={notesLocal}
+                onChange={e => setNotesLocal(e.target.value)}
+                onBlur={() => set('notes', notesLocal)}
+                rows={4}
+                style={{
+                  padding: '8px 12px',
+                  width: '100%',
+                  background: '#F7F3FC',
+                  border: '1.5px solid #E8E0F0',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  fontFamily: "'Montserrat', sans-serif",
+                  color: '#1A0A2E',
+                  outline: 'none',
+                  resize: 'vertical',
+                }}
+              />
+              <div className="flex items-center gap-3 mt-2">
+                <button
+                  className="btn-secondary text-xs"
+                  style={{ padding: '6px 14px' }}
+                  onClick={handleSaveNotes}
+                  disabled={noteSaving || isNew || !form.notes?.trim()}
+                >
+                  {noteSaving ? 'Saving…' : 'Save Note'}
+                </button>
+                {noteSaved && (
+                  <span className="text-xs font-medium" style={{ color: '#059669' }}>Saved to history</span>
+                )}
+              </div>
+              {noteHistory.length > 0 && (
+                <div className="mt-4">
+                  <p className="label-caps mb-2">Note History</p>
+                  <div className="flex flex-col gap-2">
+                    {noteHistory.map(n => (
+                      <div key={n.id} className="rounded-lg p-3" style={{ background: '#F7F3FC', border: '1px solid #E8E0F0' }}>
+                        <p className="text-[11px] mb-1" style={{ color: '#9B8AAE' }}>
+                          {new Date(n.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                        </p>
+                        <p className="text-xs whitespace-pre-wrap" style={{ color: '#1A0A2E' }}>{n.content}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </AccordionSection>
+
           {/* Due Diligence */}
           <AccordionSection title="Due Diligence" sectionKey="dd" {...accordionProps}>
             <div className="grid grid-cols-3 gap-4">
@@ -1062,84 +1210,6 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
             </div>
           </AccordionSection>
 
-          {/* Tags & Notes */}
-          <AccordionSection title="Tags & Notes" sectionKey="tags" {...accordionProps}>
-            <div className="mb-4">
-              <label className="label-caps">Tags</label>
-              <div className="flex gap-2 mt-1">
-                <input
-                  type="text"
-                  className="input-base"
-                  value={tagInput}
-                  onChange={e => setTagInput(e.target.value)}
-                  placeholder="Add a tag"
-                  onKeyDown={e => { if (e.key === 'Enter') addTag() }}
-                />
-                <button className="btn-secondary" style={{ padding: '0 16px', flexShrink: 0 }} onClick={addTag}>Add</button>
-              </div>
-              {(form.tags || []).length > 0 && (
-                <div className="flex gap-2 mt-2 flex-wrap">
-                  {(form.tags || []).map(t => (
-                    <span key={t} className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs"
-                      style={{ background: '#F7F3FC', color: '#5C2977', border: '1px solid #E8E0F0' }}>
-                      {t}
-                      <button onClick={() => removeTag(t)} style={{ color: '#9B8AAE', lineHeight: 1 }}>×</button>
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="label-caps">Notes</label>
-              <textarea
-                value={notesLocal}
-                onChange={e => setNotesLocal(e.target.value)}
-                onBlur={() => set('notes', notesLocal)}
-                rows={4}
-                style={{
-                  padding: '8px 12px',
-                  width: '100%',
-                  background: '#F7F3FC',
-                  border: '1.5px solid #E8E0F0',
-                  borderRadius: '8px',
-                  fontSize: '13px',
-                  fontFamily: "'Montserrat', sans-serif",
-                  color: '#1A0A2E',
-                  outline: 'none',
-                  resize: 'vertical',
-                }}
-              />
-              <div className="flex items-center gap-3 mt-2">
-                <button
-                  className="btn-secondary text-xs"
-                  style={{ padding: '6px 14px' }}
-                  onClick={handleSaveNotes}
-                  disabled={noteSaving || isNew || !form.notes?.trim()}
-                >
-                  {noteSaving ? 'Saving…' : 'Save Note'}
-                </button>
-                {noteSaved && (
-                  <span className="text-xs font-medium" style={{ color: '#059669' }}>Saved to history</span>
-                )}
-              </div>
-              {noteHistory.length > 0 && (
-                <div className="mt-4">
-                  <p className="label-caps mb-2">Note History</p>
-                  <div className="flex flex-col gap-2">
-                    {noteHistory.map(n => (
-                      <div key={n.id} className="rounded-lg p-3" style={{ background: '#F7F3FC', border: '1px solid #E8E0F0' }}>
-                        <p className="text-[11px] mb-1" style={{ color: '#9B8AAE' }}>
-                          {new Date(n.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
-                        </p>
-                        <p className="text-xs whitespace-pre-wrap" style={{ color: '#1A0A2E' }}>{n.content}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </AccordionSection>
-
           {/* Documents */}
           {!isNew && (
             <AccordionSection title="Documents" sectionKey="docs" {...accordionProps}>
@@ -1223,88 +1293,6 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
             </AccordionSection>
           )}
 
-          {/* SMS History (chat log) */}
-          {!isNew && comms.some(c => c.type.startsWith('sms')) && (
-            <AccordionSection title="SMS History" sectionKey="sms-history" {...accordionProps}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {comms
-                  .filter(c => c.type.startsWith('sms'))
-                  .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-                  .map(c => {
-                    const isOut = c.direction === 'outbound' || c.type === 'sms_outbound'
-                    const ts = new Date(c.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
-                    return (
-                      <div key={c.id} style={{ display: 'flex', justifyContent: isOut ? 'flex-end' : 'flex-start' }}>
-                        <div style={{
-                          maxWidth: '78%',
-                          padding: '8px 12px',
-                          borderRadius: isOut ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
-                          background: isOut ? '#EEF2FF' : '#F3F4F6',
-                          border: isOut ? '1px solid #C7D2FE' : '1px solid #E5E7EB',
-                        }}>
-                          <div style={{ fontSize: 10, color: '#9CA3AF', marginBottom: 3 }}>
-                            {isOut ? '→ SENT' : '← RECEIVED'} · {ts}
-                          </div>
-                          <div style={{ fontSize: 12, color: '#374151', lineHeight: 1.5 }}>
-                            {c.message_body ?? <em style={{ color: '#9CA3AF' }}>(no message body)</em>}
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })}
-              </div>
-            </AccordionSection>
-          )}
-
-          {/* Communications History */}
-          {!isNew && (
-            <AccordionSection title="Communications History" sectionKey="comms" {...accordionProps}>
-              {commsLoading ? (
-                <p className="text-xs" style={{ color: '#9B8AAE' }}>Loading…</p>
-              ) : comms.length === 0 ? (
-                <p className="text-xs" style={{ color: '#9B8AAE' }}>
-                  No communications yet. Use the "Send Text" button to send an SMS, or communications will appear here when this seller calls or texts your Telnyx number.
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {comms.map(c => {
-                    const isCall = c.type.startsWith('call')
-                    const previewText = c.summary
-                      ? c.summary.replace(/Next action:.+$/i, '').trim().slice(0, 100) + (c.summary.length > 100 ? '…' : '')
-                      : c.message_body?.slice(0, 100) ?? ''
-                    return (
-                      <button
-                        key={c.id}
-                        type="button"
-                        className="w-full text-left rounded-lg p-3"
-                        style={{ background: '#F7F3FC', border: '1px solid #E8E0F0', cursor: 'pointer', transition: 'background 0.1s' }}
-                        onClick={() => setDetailComm(c)}
-                        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#EDE8F5' }}
-                        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = '#F7F3FC' }}
-                      >
-                        <div className="flex items-center justify-between mb-1.5">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <TypeBadge type={c.type} />
-                            <ScoreBadge score={c.lead_score} />
-                            {isCall && c.duration_seconds != null && (
-                              <span className="text-[11px]" style={{ color: '#9B8AAE' }}>{fmtTalk(c.duration_seconds)}</span>
-                            )}
-                          </div>
-                          <span className="text-[11px] flex-shrink-0 ml-2" style={{ color: '#9B8AAE' }}>
-                            {new Date(c.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-                          </span>
-                        </div>
-                        {previewText && (
-                          <p className="text-xs" style={{ color: '#6B5B8A' }}>{previewText}</p>
-                        )}
-                        <p className="text-[10px] mt-1" style={{ color: '#9B8AAE' }}>Click to view full details →</p>
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-            </AccordionSection>
-          )}
 
         </div>
         </FieldCtx.Provider>
