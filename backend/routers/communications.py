@@ -1854,8 +1854,17 @@ async def send_sms(body: SmsSendRequest) -> dict:
         from_phone = f"+{raw}"
     # else trust whatever was configured
 
+    # Normalize to-number to E.164
+    to_digits = re.sub(r"\D", "", body.to_phone)
+    if len(to_digits) == 10:
+        to_phone_e164 = f"+1{to_digits}"
+    elif len(to_digits) == 11 and to_digits.startswith("1"):
+        to_phone_e164 = f"+{to_digits}"
+    else:
+        to_phone_e164 = body.to_phone  # pass through and let Telnyx reject with clear error
+
     try:
-        payload: dict = {"from": from_phone, "to": body.to_phone, "text": body.message}
+        payload: dict = {"from": from_phone, "to": to_phone_e164, "text": body.message}
         profile_id = os.getenv("TELNYX_MESSAGING_PROFILE_ID", "")
         if profile_id:
             payload["messaging_profile_id"] = profile_id

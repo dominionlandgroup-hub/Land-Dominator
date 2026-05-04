@@ -76,6 +76,44 @@ function CurrencyInput({
   )
 }
 
+// ── Phone input with local state (saves on blur only) ────────────────────────
+function PhoneField({
+  label, value, onChange,
+}: {
+  label: string
+  value: string | null | undefined
+  onChange: (v: string) => void
+}) {
+  const [local, setLocal] = React.useState(value ?? '')
+  const [invalid, setInvalid] = React.useState(false)
+
+  React.useEffect(() => { setLocal(value ?? '') }, [value])
+
+  function handleBlur() {
+    const digits = local.replace(/\D/g, '')
+    if (!digits) { onChange(''); setInvalid(false); return }
+    if (digits.length === 10) { onChange(`+1${digits}`); setInvalid(false) }
+    else if (digits.length === 11 && digits.startsWith('1')) { onChange(`+${digits}`); setInvalid(false) }
+    else { setInvalid(true) }
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="label-caps">{label}</label>
+      <input
+        type="tel"
+        className="input-base"
+        value={local}
+        onChange={e => { setLocal(e.target.value); setInvalid(false) }}
+        onBlur={handleBlur}
+        placeholder="(xxx) xxx-xxxx"
+        style={invalid ? { borderColor: '#DC2626' } : undefined}
+      />
+      {invalid && <span style={{ fontSize: 11, color: '#DC2626' }}>Invalid phone number</span>}
+    </div>
+  )
+}
+
 function fmtLandLocked(v: string | null | undefined): string {
   if (!v) return '—'
   const up = v.trim().toLowerCase()
@@ -184,6 +222,7 @@ const STATUS_OPTIONS: { value: PropertyStatus; label: string }[] = [
 export default function PropertyDetail({ property, onBack, onSave, onDelete }: Props) {
   const [form, setForm] = useState<Partial<CRMProperty>>(property ?? { status: 'lead' })
   const [saving, setSaving] = useState(false)
+  const [savedOk, setSavedOk] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -320,10 +359,16 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
 
   async function handleSave() {
     setSaving(true)
+    setSavedOk(false)
     setError(null)
     try {
       await onSave(form)
-      if (isNew) onBack()
+      if (isNew) {
+        onBack()
+      } else {
+        setSavedOk(true)
+        setTimeout(() => setSavedOk(false), 2000)
+      }
     } catch (e: unknown) {
       const err = e as { response?: { data?: { detail?: string } } }
       setError(err?.response?.data?.detail ?? 'Save failed')
@@ -514,28 +559,14 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
               {lpPulling ? 'Pulling LP…' : 'Pull LP Data'}
             </button>
           )}
-          {!isNew && !property?.property_id && form.apn && (
-            <a
-              href={`https://app.landportal.io/search?q=${encodeURIComponent(form.apn)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn-secondary text-sm flex items-center gap-1.5"
-              title="Search for this parcel in Land Portal"
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="11" cy="11" r="8"/>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-              </svg>
-              Find in Land Portal ↗
-            </a>
-          )}
           {!isNew && (
             <button className="btn-danger" onClick={() => setConfirmDelete(true)} disabled={deleting}>
               Delete
             </button>
           )}
-          <button className="btn-primary" onClick={handleSave} disabled={saving}>
-            {saving ? 'Saving…' : isNew ? 'Create Property' : 'Save Changes'}
+          <button className="btn-primary" onClick={handleSave} disabled={saving}
+            style={savedOk ? { background: '#059669' } : undefined}>
+            {saving ? 'Saving…' : savedOk ? 'Saved ✓' : isNew ? 'Create Property' : 'Save Changes'}
           </button>
         </div>
       </div>
@@ -592,9 +623,9 @@ export default function PropertyDetail({ property, onBack, onSave, onDelete }: P
               <Field label="Full Name" field="owner_full_name" />
               <Field label="First Name" field="owner_first_name" />
               <Field label="Last Name" field="owner_last_name" />
-              <Field label="Primary Phone" field="owner_phone" />
-              <Field label="Phone 2" field="phone_2" />
-              <Field label="Phone 3" field="phone_3" />
+              <PhoneField label="Primary Phone" value={form.owner_phone} onChange={v => set('owner_phone', v)} />
+              <PhoneField label="Phone 2 (Skip Traced)" value={form.phone_2} onChange={v => set('phone_2', v)} />
+              <PhoneField label="Phone 3" value={form.phone_3} onChange={v => set('phone_3', v)} />
               <Field label="Email" field="owner_email" placeholder="owner@email.com" />
               <div />
               <div />

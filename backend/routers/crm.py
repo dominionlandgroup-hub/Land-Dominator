@@ -3336,12 +3336,19 @@ def _run_sms_campaign_job(job_id: str, campaign_id: str, props: list[dict], day:
     except Exception:
         suppressed = set()
 
+    print(f"[sms-campaign] {job_id} day={day} starting — {len(props)} eligible records", flush=True)
+
     for prop in props:
         if sent >= daily_cap:
-            # Queue remainder — mark sms_status as queued if needed
             break
-        phone = prop.get("phone_1") or ""
-        if not phone or phone in suppressed:
+        raw_phone = prop.get("phone_1") or ""
+        phone = _normalize_phone(raw_phone)
+        if not phone:
+            print(f"[sms-campaign] skipping {prop.get('id')} — invalid phone: {repr(raw_phone)}", flush=True)
+            skipped += 1
+            _sms_campaign_jobs[job_id].update({"done": sent + skipped, "sent": sent, "skipped": skipped})
+            continue
+        if phone in suppressed:
             skipped += 1
             _sms_campaign_jobs[job_id].update({"done": sent + skipped, "sent": sent, "skipped": skipped})
             continue
@@ -3361,6 +3368,7 @@ def _run_sms_campaign_job(job_id: str, campaign_id: str, props: list[dict], day:
                 json={"from": from_e164, "to": phone, "text": text},
                 timeout=15.0,
             )
+            print(f"[sms-campaign] {phone} → HTTP {r.status_code}", flush=True)
             if r.status_code < 300:
                 now_ts = _now()
                 update: dict = {"updated_at": now_ts}
@@ -3371,12 +3379,11 @@ def _run_sms_campaign_job(job_id: str, campaign_id: str, props: list[dict], day:
                     update["sms_status"] = "day3_sent"
                     update["sms_day3_sent_at"] = now_ts
                 sb.table("crm_properties").update(update).eq("id", prop["id"]).execute()
-                # Log in crm_communications
                 try:
                     sb.table("crm_communications").insert({
                         "property_id": prop["id"],
-                        "comm_type": "sms_outbound",
-                        "phone": phone,
+                        "type": "sms_outbound",
+                        "phone_number": phone,
                         "direction": "outbound",
                         "message_body": text,
                         "is_read": True,
@@ -3386,9 +3393,12 @@ def _run_sms_campaign_job(job_id: str, campaign_id: str, props: list[dict], day:
                     pass
                 sent += 1
             else:
-                errors.append(f"{phone}: HTTP {r.status_code}")
+                err_detail = r.text[:120]
+                print(f"[sms-campaign] FAILED {phone}: {err_detail}", flush=True)
+                errors.append(f"{phone}: HTTP {r.status_code} {err_detail}")
                 skipped += 1
         except Exception as exc:
+            print(f"[sms-campaign] EXCEPTION {phone}: {exc}", flush=True)
             errors.append(f"{phone}: {str(exc)[:80]}")
             skipped += 1
         _sms_campaign_jobs[job_id].update({"done": sent + skipped, "sent": sent, "skipped": skipped, "errors": errors[:5]})
