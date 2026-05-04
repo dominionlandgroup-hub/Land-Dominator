@@ -190,18 +190,22 @@ async def _tts_generate(text: str, cache_key: str) -> bool:
         return True
     try:
         import cartesia as _cartesia_mod
-        client = _cartesia_mod.Cartesia(api_key=api_key)
-        audio_bytes = await asyncio.to_thread(
-            client.tts.bytes,
-            model_id="sonic-english",
-            transcript=text,
-            voice_id=voice_id,
-            output_format={
-                "container": "wav",
-                "encoding": "pcm_s16le",
-                "sample_rate": 16000,
-            },
-        )
+
+        def _do_tts() -> bytes:
+            client = _cartesia_mod.Cartesia(api_key=api_key)
+            resp = client.tts.generate(
+                model_id="sonic-2",
+                transcript=text,
+                voice={"mode": "id", "id": voice_id},
+                output_format={
+                    "container": "wav",
+                    "encoding": "pcm_s16le",
+                    "sample_rate": 8000,
+                },
+            )
+            return resp.read()
+
+        audio_bytes = await asyncio.to_thread(_do_tts)
         if audio_bytes:
             path.write_bytes(audio_bytes)
             return True
