@@ -1068,6 +1068,7 @@ async def send_campaign_mail_drop(campaign_id: str, body: dict = Body(default={}
             "Property Address", "Property City", "Property State", "Property Zip",
             "APN", "County", "FIPS", "State", "Acreage",
             "Campaign Code", "Offer Price", "Status",
+            "Latitude", "Longitude",
         ]
         writer = _csv.writer(buf)
         writer.writerow(headers)
@@ -1101,6 +1102,8 @@ async def send_campaign_mail_drop(campaign_id: str, body: dict = Body(default={}
                 p.get("campaign_code", ""),
                 _fmtp(p.get("offer_price")),
                 p.get("status", "lead"),
+                p.get("latitude") if p.get("latitude") is not None else "",
+                p.get("longitude") if p.get("longitude") is not None else "",
             ])
         csv_content = buf.getvalue()
         record_count = len(properties)
@@ -2037,6 +2040,7 @@ async def export_properties_csv(
             "Property Address", "Property City", "Property State", "Property Zip",
             "APN", "County", "FIPS", "State", "Acreage",
             "Campaign Code", "Offer Price", "Status",
+            "Latitude", "Longitude",
         ]
 
         def _fmt_price(v) -> str:
@@ -2071,6 +2075,8 @@ async def export_properties_csv(
                 row.get("campaign_code") or "",
                 _fmt_price(row.get("offer_price")),
                 row.get("status") or "",
+                row.get("latitude") if row.get("latitude") is not None else "",
+                row.get("longitude") if row.get("longitude") is not None else "",
             ]
 
         writer.writerow(HEADERS)

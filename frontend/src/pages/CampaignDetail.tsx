@@ -328,6 +328,7 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated, on
       'Property Address', 'Property City', 'Property State', 'Property Zip',
       'APN', 'County', 'State', 'Acreage',
       'Campaign Code', 'Offer Price', 'Status',
+      'Latitude', 'Longitude',
     ]
     const rows = selected.map(p => [
       p.owner_full_name ?? '',
@@ -348,6 +349,8 @@ export default function CampaignDetail({ campaign, onBack, onCampaignUpdated, on
       p.campaign_code ?? '',
       p.offer_price != null ? Number(p.offer_price).toFixed(2) : '',
       p.status ?? 'lead',
+      p.latitude ?? '',
+      p.longitude ?? '',
     ])
     const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })

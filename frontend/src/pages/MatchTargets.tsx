@@ -1013,7 +1013,7 @@ export default function MatchTargets() {
                       const outOfStateRows = matchResult.results.filter(r => r.owner_out_of_state === true && r.pricing_flag === 'MATCHED')
                       const inStateRows = matchResult.results.filter(r => r.owner_out_of_state === false && r.pricing_flag === 'MATCHED')
                       const mkCsv = (rows: typeof matchResult.results) => {
-                        const cols = ['apn','owner_name','mail_address','mail_city','mail_state','mail_zip','parcel_zip','lot_acres','retail_estimate','suggested_offer_mid','pricing_description','pricing_flag']
+                        const cols = ['apn','owner_name','mail_address','mail_city','mail_state','mail_zip','parcel_zip','lot_acres','retail_estimate','suggested_offer_mid','pricing_description','pricing_flag','latitude','longitude']
                         const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g,'""')}"`
                         return [cols.join(','), ...rows.map(r => cols.map(c => esc(r[c as keyof typeof r])).join(','))].join('\n')
                       }

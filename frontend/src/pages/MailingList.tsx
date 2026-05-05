@@ -729,7 +729,7 @@ function rowId(r: MatchedParcel, idx: number): string {
 }
 
 function downloadRows(rows: MatchedParcel[], suffix: string) {
-  const headers = ['Owner Name', 'Mail Address', 'Mail City', 'Mail State', 'Mail Zip', 'APN', 'Parcel Zip', 'Lot Acres', 'Match Score', 'Offer Mid']
+  const headers = ['Owner Name', 'Mail Address', 'Mail City', 'Mail State', 'Mail Zip', 'APN', 'Parcel Zip', 'Lot Acres', 'Match Score', 'Offer Mid', 'Latitude', 'Longitude']
   const body = rows.map((r) => [
     r.owner_name,
     r.mail_address,
@@ -741,6 +741,8 @@ function downloadRows(rows: MatchedParcel[], suffix: string) {
     r.lot_acres ?? '',
     r.match_score,
     r.suggested_offer_mid ?? '',
+    r.latitude ?? '',
+    r.longitude ?? '',
   ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','))
   const csv = [headers.join(','), ...body].join('\n')
   const blob = new Blob([csv], { type: 'text/csv' })
